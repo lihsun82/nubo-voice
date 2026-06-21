@@ -1,120 +1,66 @@
 "use client";
 
-import {
-  OpenAIRealtimeWebRTC,
-  RealtimeSession,
-} from "@openai/agents/realtime";
-import { useRef, useState } from "react";
-import { nuboAgent } from "@/lib/nubo-agent";
+import { useEffect, useState } from "react";
+import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
+import { OpenAIVoiceConsole } from "@/components/OpenAIVoiceConsole";
 
-type ConnectionState = "idle" | "connecting" | "connected" | "error";
+type VoiceProvider = "gemini" | "openai" | "none";
+
+type ProviderData = {
+  voiceProvider: VoiceProvider;
+  workChain: string[];
+  researchChain: string[];
+  providers: Array<{ name: string; configured: boolean; model: string }>;
+};
 
 export function NuboVoiceConsole() {
-  const sessionRef = useRef<RealtimeSession | null>(null);
-  const [state, setState] = useState<ConnectionState>("idle");
+  const [data, setData] = useState<ProviderData | null>(null);
+  const [selected, setSelected] = useState<VoiceProvider>("none");
   const [error, setError] = useState("");
 
-  const connect = async () => {
-    setError("");
-    setState("connecting");
+  useEffect(() => {
+    fetch("/api/providers", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? "無法讀取AI引擎設定");
+        setData(payload);
+        setSelected(payload.voiceProvider);
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "引擎設定錯誤"));
+  }, []);
 
-    try {
-      const transport = new OpenAIRealtimeWebRTC({
-        baseUrl: `${window.location.origin}/api/realtime-call`,
-        useInsecureApiKey: true,
-      });
+  if (error) return <div className="error">{error}</div>;
+  if (!data) return <section className="console">正在載入AI引擎…</section>;
 
-      const session = new RealtimeSession(nuboAgent, {
-        model: "gpt-realtime-2",
-        transport,
-        config: {
-          audio: {
-            output: { voice: "marin" },
-          },
-        },
-      });
-
-      session.on("error", (event) => {
-        console.error("NUBO realtime session error", event);
-        setError(
-          "語音連線失敗。請查看執行 npm.cmd run dev 的 PowerShell 視窗，取得真正的 OpenAI 錯誤原因。",
-        );
-        setState("error");
-      });
-
-      // 真正的 OpenAI API Key 僅存在 Next.js 伺服器。
-      // 這個佔位字串只會送到本機 /api/realtime-call，
-      // useInsecureApiKey 僅用來略過 SDK 對 ephemeral key 格式的前端檢查。
-      await session.connect({ apiKey: "nubo-server-proxy" });
-      sessionRef.current = session;
-      setState("connected");
-    } catch (cause) {
-      console.error("NUBO connection failed", cause);
-      setError(
-        "無法完成 WebRTC 連線。請查看 PowerShell 是否出現 OpenAI Realtime call failed。",
-      );
-      setState("error");
-    }
-  };
-
-  const disconnect = () => {
-    sessionRef.current?.close();
-    sessionRef.current = null;
-    setState("idle");
-    setError("");
-  };
-
-  const stateLabel = {
-    idle: ["NUBO 待命", "按下啟動後允許麥克風權限"],
-    connecting: ["正在建立安全連線", "請稍候"],
-    connected: ["NUBO 正在聆聽", "直接說出你的需求"],
-    error: ["連線未完成", "請查看 PowerShell 內的 OpenAI 錯誤訊息"],
-  }[state];
+  const geminiReady = data.providers.some((item) => item.name === "gemini" && item.configured);
+  const openaiReady = data.providers.some((item) => item.name === "openai" && item.configured);
 
   return (
-    <section className="console" aria-live="polite">
-      <div className="orb-wrap">
-        <div className={`orb ${state === "connected" ? "active" : ""}`} />
-      </div>
-
-      <div className="status">
-        <strong>{stateLabel[0]}</strong>
-        <span>{stateLabel[1]}</span>
-      </div>
-
-      <div className="actions">
-        <button
-          className="primary"
-          onClick={connect}
-          disabled={state === "connecting" || state === "connected"}
-        >
-          {state === "connecting" ? "連線中…" : "啟動 NUBO"}
-        </button>
-        <button
-          className="secondary"
-          onClick={disconnect}
-          disabled={state !== "connected"}
-        >
-          結束對話
-        </button>
-      </div>
-
-      {error ? <div className="error">{error}</div> : null}
-
-      <div className="capabilities">
-        <div className="capability">
-          <b>即時語音</b>
-          <small>低延遲繁體中文對話與自然打斷。</small>
+    <>
+      <div className="provider-switcher">
+        <div>
+          <span className="provider-label">語音引擎</span>
+          <strong>{selected === "gemini" ? "Gemini Live" : selected === "openai" ? "OpenAI Realtime" : "尚未設定"}</strong>
         </div>
-        <div className="capability">
-          <b>任務草稿</b>
-          <small>可把每日或每小時追蹤需求轉成結構化草稿。</small>
+        <div className="provider-buttons">
+          <button className={selected === "gemini" ? "selected" : ""} disabled={!geminiReady} onClick={() => setSelected("gemini")}>
+            Gemini優先
+          </button>
+          <button className={selected === "openai" ? "selected" : ""} disabled={!openaiReady} onClick={() => setSelected("openai")}>
+            OpenAI備援
+          </button>
         </div>
-        <div className="capability">
-          <b>安全權限</b>
-          <small>寄信、付款、刪除、改價等操作預設禁止自動執行。</small>
-        </div>
+        <small>工作鏈：{data.workChain.join(" → ")}</small>
       </div>
-    </section>
+      {selected === "gemini" ? (
+        <GeminiVoiceConsole />
+      ) : selected === "openai" ? (
+        <OpenAIVoiceConsole />
+      ) : (
+        <section className="console">
+          <div className="error">請先設定GEMINI_API_KEY，或保留OPENAI_API_KEY作為語音備援。</div>
+        </section>
+      )}
+    </>
   );
 }
