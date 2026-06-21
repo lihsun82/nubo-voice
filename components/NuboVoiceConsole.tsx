@@ -20,7 +20,8 @@ export function NuboVoiceConsole() {
 
     try {
       const transport = new OpenAIRealtimeWebRTC({
-        baseUrl: "/api/realtime-call",
+        baseUrl: `${window.location.origin}/api/realtime-call`,
+        useInsecureApiKey: true,
       });
 
       const session = new RealtimeSession(nuboAgent, {
@@ -41,9 +42,9 @@ export function NuboVoiceConsole() {
         setState("error");
       });
 
-      // 實際 OpenAI API Key 僅存在 Next.js 伺服器。
-      // 自訂 WebRTC transport 會把 SDP 傳到 /api/realtime-call，
-      // 這裡的字串只用來符合 SDK 連線介面，不是正式金鑰。
+      // 真正的 OpenAI API Key 僅存在 Next.js 伺服器。
+      // 這個佔位字串只會送到本機 /api/realtime-call，
+      // useInsecureApiKey 僅用來略過 SDK 對 ephemeral key 格式的前端檢查。
       await session.connect({ apiKey: "nubo-server-proxy" });
       sessionRef.current = session;
       setState("connected");
