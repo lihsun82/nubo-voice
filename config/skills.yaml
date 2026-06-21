@@ -1,0 +1,27 @@
+version: 1
+skills:
+  - id: nubo_status
+    status: enabled
+    description: 查詢 NUBO 能力與狀態
+
+  - id: tracking_request
+    status: enabled_draft_only
+    description: 建立每日或每小時追蹤需求草稿
+
+  - id: persistent_scheduler
+    status: planned
+    description: 使用 Supabase + Cloud Scheduler 或 n8n 執行持久化排程
+
+  - id: gmail
+    status: planned
+
+  - id: google_calendar
+    status: planned
+
+  - id: line_notification
+    status: planned
+
+  - id: ainubox1_adapter
+    status: planned
+    isolation: api_only
+    description: 僅透過受權限控管的 API 呼叫 AinuboX1，不共用程式碼或資料庫
