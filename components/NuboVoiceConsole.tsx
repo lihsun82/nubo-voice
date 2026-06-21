@@ -1,6 +1,9 @@
 "use client";
 
-import { RealtimeSession } from "@openai/agents/realtime";
+import {
+  OpenAIRealtimeWebRTC,
+  RealtimeSession,
+} from "@openai/agents/realtime";
 import { useRef, useState } from "react";
 import { nuboAgent } from "@/lib/nubo-agent";
 
@@ -16,15 +19,13 @@ export function NuboVoiceConsole() {
     setState("connecting");
 
     try {
-      const tokenResponse = await fetch("/api/realtime-token", { cache: "no-store" });
-      const tokenData = await tokenResponse.json();
-      if (!tokenResponse.ok || !tokenData.value) {
-        throw new Error(tokenData.error ?? "無法取得即時語音憑證");
-      }
+      const transport = new OpenAIRealtimeWebRTC({
+        baseUrl: "/api/realtime-call",
+      });
 
       const session = new RealtimeSession(nuboAgent, {
         model: "gpt-realtime-2",
-        transport: "webrtc",
+        transport,
         config: {
           audio: {
             output: { voice: "marin" },
@@ -33,17 +34,24 @@ export function NuboVoiceConsole() {
       });
 
       session.on("error", (event) => {
-        console.error(event);
-        setError("語音連線發生錯誤，請重新連線。");
+        console.error("NUBO realtime session error", event);
+        setError(
+          "語音連線失敗。請查看執行 npm.cmd run dev 的 PowerShell 視窗，取得真正的 OpenAI 錯誤原因。",
+        );
         setState("error");
       });
 
-      await session.connect({ apiKey: tokenData.value });
+      // 實際 OpenAI API Key 僅存在 Next.js 伺服器。
+      // 自訂 WebRTC transport 會把 SDP 傳到 /api/realtime-call，
+      // 這裡的字串只用來符合 SDK 連線介面，不是正式金鑰。
+      await session.connect({ apiKey: "nubo-server-proxy" });
       sessionRef.current = session;
       setState("connected");
     } catch (cause) {
-      console.error(cause);
-      setError(cause instanceof Error ? cause.message : "語音連線失敗");
+      console.error("NUBO connection failed", cause);
+      setError(
+        "無法完成 WebRTC 連線。請查看 PowerShell 是否出現 OpenAI Realtime call failed。",
+      );
       setState("error");
     }
   };
@@ -59,7 +67,7 @@ export function NuboVoiceConsole() {
     idle: ["NUBO 待命", "按下啟動後允許麥克風權限"],
     connecting: ["正在建立安全連線", "請稍候"],
     connected: ["NUBO 正在聆聽", "直接說出你的需求"],
-    error: ["連線未完成", "請檢查 API Key 與麥克風權限"],
+    error: ["連線未完成", "請查看 PowerShell 內的 OpenAI 錯誤訊息"],
   }[state];
 
   return (
@@ -74,10 +82,18 @@ export function NuboVoiceConsole() {
       </div>
 
       <div className="actions">
-        <button className="primary" onClick={connect} disabled={state === "connecting" || state === "connected"}>
+        <button
+          className="primary"
+          onClick={connect}
+          disabled={state === "connecting" || state === "connected"}
+        >
           {state === "connecting" ? "連線中…" : "啟動 NUBO"}
         </button>
-        <button className="secondary" onClick={disconnect} disabled={state !== "connected"}>
+        <button
+          className="secondary"
+          onClick={disconnect}
+          disabled={state !== "connected"}
+        >
           結束對話
         </button>
       </div>
