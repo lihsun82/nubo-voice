@@ -1,3 +1,6 @@
+import { runGroqEngine } from "@/lib/groq-engine";
+import { runOpenAIEngine } from "@/lib/openai-engine";
+
 export type EngineName = "gemini" | "ollama" | "groq" | "openai";
 
 export type EngineResult = {
@@ -72,6 +75,19 @@ function geminiText(payload: any): string {
     .trim();
 }
 
+function geminiSources(payload: any): string[] {
+  const chunks = payload?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+  return chunks
+    .map((chunk: any) => {
+      const title = chunk?.web?.title;
+      const uri = chunk?.web?.uri;
+      return typeof uri === "string" ? `${title || "來源"}: ${uri}` : "";
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 async function runGemini(prompt: string, needsCurrentSources: boolean) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY 尚未設定");
@@ -100,8 +116,10 @@ async function runGemini(prompt: string, needsCurrentSources: boolean) {
   if (!response.ok) {
     throw new Error(errorMessage(payload, `Gemini 回應錯誤：${response.status}`));
   }
-  const text = geminiText(payload);
+  let text = geminiText(payload);
   if (!text) throw new Error("Gemini 沒有回傳可讀成果");
+  const sources = needsCurrentSources ? geminiSources(payload) : [];
+  if (sources.length > 0) text += `\n\n來源：\n${sources.map((item) => `- ${item}`).join("\n")}`;
   return { text, model };
 }
 
@@ -132,4 +150,40 @@ async function runOllama(prompt: string) {
   const text = typeof payload?.message?.content === "string" ? payload.message.content.trim() : "";
   if (!text) throw new Error("Ollama 沒有回傳可讀成果");
   return { text, model };
+}
+
+export async function generateWithFallback(
+  prompt: string,
+  options: GenerateOptions = {},
+): Promise<EngineResult> {
+  const needsCurrentSources = options.needsCurrentSources ?? false;
+  const attempts: EngineResult["attempts"] = [];
+  const chain = getEngineChain(needsCurrentSources);
+
+  for (const provider of chain) {
+    if (!isEngineConfigured(provider)) {
+      attempts.push({ provider, error: "未設定" });
+      continue;
+    }
+    try {
+      const result =
+        provider === "gemini"
+          ? await runGemini(prompt, needsCurrentSources)
+          : provider === "ollama"
+            ? await runOllama(prompt)
+            : provider === "groq"
+              ? await runGroqEngine(prompt, needsCurrentSources)
+              : await runOpenAIEngine(prompt, needsCurrentSources);
+      attempts.push({ provider });
+      return { ...result, provider, attempts };
+    } catch (error) {
+      attempts.push({
+        provider,
+        error: error instanceof Error ? error.message : "未知錯誤",
+      });
+    }
+  }
+
+  const detail = attempts.map((item) => `${item.provider}: ${item.error}`).join("；");
+  throw new Error(`所有 AI 引擎皆無法完成工作。${detail}`);
 }
