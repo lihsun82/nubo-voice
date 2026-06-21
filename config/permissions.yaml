@@ -1,0 +1,28 @@
+version: 1
+
+auto_execute:
+  - read_status
+  - summarize
+  - create_draft
+  - create_tracking_request_draft
+
+execute_and_notify:
+  - create_calendar_event
+  - update_tracking_rule
+  - generate_internal_report
+
+require_confirmation:
+  - send_external_email
+  - delete_data
+  - publish_content
+  - change_hotel_price
+  - cancel_booking
+  - operate_production_pms
+  - payment
+  - money_transfer
+
+deny_in_v0:
+  - payment
+  - money_transfer
+  - legal_signature
+  - irreversible_bulk_action
