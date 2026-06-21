@@ -1,8 +1,8 @@
 {
   "name": "nubo-voice",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "NUBO personal realtime voice agent",
+  "description": "NUBO personal realtime voice agent and task center",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
