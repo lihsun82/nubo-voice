@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { addInboxItem, markInboxRead } from "@/lib/inbox-store";
-import { generateResult } from "@/lib/report-generator";
+import { markInboxRead } from "@/lib/inbox-store";
 import { saveRun } from "@/lib/run-store";
 import { calculateNextRun } from "@/lib/schedule";
 import { getTask, updateTask } from "@/lib/task-store";
+import { deliverTaskOutput, generateTaskOutput } from "@/lib/task-workflow";
 import type { TaskRun } from "@/lib/task-types";
 
 export const runtime = "nodejs";
@@ -50,31 +50,28 @@ export async function POST(request: Request) {
   await saveRun(run);
 
   try {
-    const output =
-      task.kind === "reminder"
-        ? task.instruction
-        : await generateResult(task);
+    const output = await generateTaskOutput(task);
+    const matched =
+      task.kind !== "research" ||
+      output.trimStart().toUpperCase().startsWith("CONDITION: MATCH");
+    const delivery = matched ? await deliverTaskOutput(task, output) : null;
+
     const finished = new Date();
     run.status = "success";
     run.finishedAt = finished.toISOString();
-    run.output = output;
+    run.output = delivery ? `${output}\n\n交付結果：${delivery.note}` : output;
     await saveRun(run);
 
     const oneTime = task.schedule.type === "once";
     await updateTask(id, {
       status: oneTime ? "completed" : "active",
       lastRunAt: finished.toISOString(),
-      lastResult: output,
+      lastResult: run.output,
       lastError: null,
       nextRunAt: oneTime ? null : calculateNextRun(task.schedule, finished),
     });
 
-    const matched =
-      task.kind !== "research" ||
-      output.trimStart().toUpperCase().startsWith("CONDITION: MATCH");
-    if (matched) await addInboxItem(id, task.title, output);
-
-    return NextResponse.json({ ok: true, run, matched });
+    return NextResponse.json({ ok: true, run, matched, delivery });
   } catch (error) {
     const message = error instanceof Error ? error.message : "任務處理失敗";
     run.status = "failed";

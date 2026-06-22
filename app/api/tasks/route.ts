@@ -16,11 +16,32 @@ const scheduleSchema = z.object({
   timezone: z.literal("Asia/Taipei").default("Asia/Taipei"),
 });
 
+const sourceSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }),
+  z.object({
+    type: z.literal("gmail"),
+    query: z.string().min(1).max(500),
+    maxResults: z.number().int().min(1).max(20).optional(),
+    includeBody: z.boolean().optional(),
+  }),
+]);
+
+const deliverySchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("inbox") }),
+  z.object({
+    type: z.enum(["gmail_draft", "gmail_send"]),
+    to: z.string().email(),
+    subject: z.string().min(1).max(300).optional(),
+  }),
+]);
+
 const taskSchema = z.object({
   title: z.string().min(2).max(100),
   kind: z.enum(["reminder", "report", "research", "brief"]),
   instruction: z.string().min(2).max(4000),
   condition: z.string().max(1000).optional(),
+  source: sourceSchema.optional(),
+  delivery: deliverySchema.optional(),
   schedule: scheduleSchema,
 });
 
