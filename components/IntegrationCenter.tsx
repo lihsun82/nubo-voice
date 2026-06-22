@@ -65,7 +65,7 @@ export function IntegrationCenter() {
       "nubo-gmail-oauth",
       "width=620,height=760,noopener=no",
     );
-    if (!popup) setMessage("瀏覽器阻擋了OAuth視窗，請允許彈出式視窗後再試一次");
+    if (!popup) setMessage("瀏覽器阻擋了OAuth視窗，請允許後再試一次");
   };
 
   const testYouTube = async () => {
@@ -83,9 +83,7 @@ export function IntegrationCenter() {
 
   const testFacebook = async () => {
     try {
-      primeBrowserActions();
-      const result = await openWebsiteInBrowser("facebook");
-      setMessage(result.message);
+      await openWebsiteInBrowser("facebook");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "開啟Facebook失敗");
     }
@@ -138,35 +136,34 @@ export function IntegrationCenter() {
           <div className="integration-card-top">
             <strong>YouTube／YouTube Music</strong>
             <span className={`badge ${youtube?.configured ? "active" : "paused"}`}>
-              {youtube?.configured ? "主頁內播放" : "待設定API Key"}
+              {youtube?.configured ? "主頁單一播放器" : "待設定API Key"}
             </span>
           </div>
-          <p>
-            音樂改在NUBO主頁右下角播放器直接載入，不再開外部YouTube視窗。
-          </p>
+          <p>音樂只在NUBO右下角播放器載入，不再開啟任何額外NUBO或YouTube視窗。</p>
           <button
             className="secondary"
             onClick={() => void testYouTube()}
             disabled={!youtube?.configured}
           >
-            測試主頁播放
+            測試自動播放
           </button>
           {!youtube?.configured ? (
             <small>請在.env.local設定YOUTUBE_API_KEY並重新啟動NUBO。</small>
           ) : (
-            <small>按過啟動NUBO後，主頁已具有媒體互動權限。</small>
+            <small>要穩定有聲自動播放，請用scripts/start-nubo.ps1啟動專用單一視窗。</small>
           )}
         </article>
 
         <article className="integration-card">
           <div className="integration-card-top">
             <strong>網頁開啟</strong>
-            <span className="badge active">專用動作視窗</span>
+            <span className="badge active">目前分頁</span>
           </div>
-          <p>啟動NUBO時預先開啟待命視窗，語音指令再將該視窗導向Facebook或指定網站。</p>
+          <p>Facebook、Gmail及指定網站會直接在目前分頁開啟，不再建立獨立動作視窗。</p>
           <button className="secondary" onClick={() => void testFacebook()}>
-            測試開啟Facebook
+            在目前分頁開啟Facebook
           </button>
+          <small>開啟後會離開NUBO頁面；使用瀏覽器返回即可回到NUBO。</small>
         </article>
 
         <article className="integration-card">
