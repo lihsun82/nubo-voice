@@ -1,0 +1,32 @@
+:root {
+  --accent: #745dff;
+  --accent-2: #62d8ff;
+}
+
+body {
+  background: radial-gradient(circle at 50% 18%, rgba(91, 63, 177, 0.22), transparent 35%), linear-gradient(180deg, #050713, #02030a);
+}
+
+.orb-wrap {
+  min-height: 590px;
+  overflow: visible;
+}
+
+.nubo-energy-orb {
+  width: 560px;
+  height: 560px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 36px rgba(86, 190, 255, 0.38)) drop-shadow(0 0 72px rgba(160, 62, 255, 0.32));
+}
+
+.nubo-energy-orb canvas {
+  display: block;
+  width: 560px;
+  height: 560px;
+}
+
+@media (max-width: 680px) {
+  .orb-wrap { min-height: 410px; }
+  .nubo-energy-orb { transform: scale(0.7); }
+}

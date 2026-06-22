@@ -3,6 +3,7 @@ import "./globals.css";
 import "./task-center.css";
 import "./integration-center.css";
 import "./youtube-player.css";
+import "./orb-theme.css";
 
 export const metadata: Metadata = {
   title: "NUBO Voice",

@@ -21,6 +21,8 @@ const desktopApps: Record<
   string,
   { command: string; args?: string[]; label: string }
 > = {
+  line: { command: "explorer.exe", args: ["line://"], label: "LINE" },
+  賴: { command: "explorer.exe", args: ["line://"], label: "LINE" },
   calculator: { command: "calc.exe", label: "計算機" },
   calc: { command: "calc.exe", label: "計算機" },
   計算機: { command: "calc.exe", label: "計算機" },
@@ -56,7 +58,7 @@ export function resolveWebsite(target: string): string {
 
   if (/^https?:\/\//i.test(trimmed)) {
     const url = new URL(trimmed);
-    if (!['http:', 'https:'].includes(url.protocol)) {
+    if (!["http:", "https:"].includes(url.protocol)) {
       throw new Error("只允許開啟HTTP或HTTPS網頁");
     }
     return url.toString();
@@ -97,7 +99,7 @@ export function openDesktopApp(app: string) {
   const action = desktopApps[key];
   if (!action) {
     throw new Error(
-      "目前可開啟：計算機、記事本、小畫家、檔案總管、Windows設定、時鐘",
+      "目前可開啟：LINE、計算機、記事本、小畫家、檔案總管、Windows設定、時鐘",
     );
   }
 

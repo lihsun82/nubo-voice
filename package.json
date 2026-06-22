@@ -1,6 +1,6 @@
 {
   "name": "nubo-voice",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "NUBO personal voice automation system",
   "scripts": {
@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@openai/agents": "0.11.8",
+    "loudness": "0.4.2",
     "next": "16.2.9",
+    "open": "11.0.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "zod": "4.4.3"
