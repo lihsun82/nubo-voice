@@ -1,12 +1,13 @@
 {
   "name": "nubo-voice",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "NUBO personal voice automation system",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start -H 127.0.0.1",
+    "app": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-nubo.ps1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

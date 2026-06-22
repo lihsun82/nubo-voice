@@ -197,8 +197,8 @@ export function GeminiVoiceConsole() {
 
   const stateLabel = {
     idle: ["NUBO待命", "Gemini Live語音與Actions工具"],
-    connecting: ["正在連接Gemini", "請允許麥克風與彈出式視窗"],
-    connected: ["NUBO正在聆聽", "音樂、網頁、桌面工具與工作流已啟用"],
+    connecting: ["正在連接Gemini", "請允許麥克風權限"],
+    connected: ["NUBO正在聆聽", "音樂、同分頁網頁、桌面工具與工作流已啟用"],
     error: ["Gemini語音未連線", "可重新嘗試或切換OpenAI"],
   }[state];
 
@@ -222,7 +222,7 @@ export function GeminiVoiceConsole() {
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>瀏覽器動作橋接</b><small>在頁面內播放音樂並控制專用網頁視窗。</small></div>
+        <div className="capability"><b>單一視窗控制</b><small>音樂留在NUBO播放，網站在目前分頁開啟。</small></div>
         <div className="capability"><b>研究與Gmail</b><small>找解方、讀信、草稿與確認寄送。</small></div>
         <div className="capability"><b>排程工作流</b><small>定時研究、郵件摘要與白名單交付。</small></div>
       </div>

@@ -16,8 +16,6 @@ export type YouTubePlayRequest = {
   watchUrl: string;
 };
 
-let actionWindow: Window | null = null;
-
 async function requestJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   const payload = await response.json();
@@ -49,20 +47,7 @@ export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
 export function primeBrowserActions() {
   notifyNuboVoicePhase("connecting");
   window.dispatchEvent(new CustomEvent("nubo-media-prime"));
-
-  if (actionWindow && !actionWindow.closed) return true;
-
-  try {
-    actionWindow = window.open(
-      "/action-ready",
-      "nubo-action-window",
-      "popup=yes,width=760,height=720,left=80,top=80",
-    );
-    return Boolean(actionWindow);
-  } catch {
-    actionWindow = null;
-    return false;
-  }
+  return true;
 }
 
 export async function playYouTubeInNubo(
@@ -95,28 +80,16 @@ export async function openWebsiteInBrowser(target: string) {
     target,
   })) as { url: string };
 
-  if (!actionWindow || actionWindow.closed) {
-    actionWindow = window.open(
-      result.url,
-      "nubo-action-window",
-      "popup=yes,width=1280,height=900,left=80,top=50",
-    );
-  } else {
-    actionWindow.location.href = result.url;
-    actionWindow.focus();
-  }
-
-  if (!actionWindow) {
-    throw new Error(
-      "瀏覽器阻擋NUBO動作視窗。請允許127.0.0.1的彈出式視窗後重新啟動NUBO。",
-    );
-  }
+  window.setTimeout(() => {
+    window.location.assign(result.url);
+  }, 120);
 
   return {
     ok: true,
     opened: true,
+    mode: "same_tab",
     url: result.url,
-    message: `已開啟：${result.url}`,
+    message: `即將在目前分頁開啟：${result.url}`,
   };
 }
 

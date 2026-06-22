@@ -5,18 +5,10 @@
 }
 
 body {
-  background: #03050d;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(57, 38, 110, .2), transparent 34%),
+    linear-gradient(180deg, #050713 0%, #03050d 54%, #02030a 100%);
   overflow-x: hidden;
-}
-
-.nubo-tech-background {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: -3;
-  pointer-events: none;
-  opacity: .32;
 }
 
 body::before {
@@ -29,7 +21,7 @@ body::before {
     linear-gradient(rgba(85, 112, 255, 0.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(85, 112, 255, 0.018) 1px, transparent 1px);
   background-size: 54px 54px;
-  mask-image: radial-gradient(circle at 50% 42%, black, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 35%, black, transparent 82%);
 }
 
 .shell { position: relative; z-index: 1; }
@@ -45,44 +37,46 @@ body::before {
 }
 
 .orb-wrap {
-  min-height: 390px;
+  min-height: 500px;
   overflow: visible;
 }
 
 .nubo-energy-orb {
   position: relative;
-  width: 360px;
-  height: 360px;
+  width: 460px;
+  height: 460px;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 0 26px rgba(86, 187, 255, .34)) drop-shadow(0 0 48px rgba(159, 61, 255, .28));
+  filter:
+    drop-shadow(0 0 32px rgba(86, 187, 255, .36))
+    drop-shadow(0 0 62px rgba(159, 61, 255, .3));
 }
 
 .nubo-energy-orb::before,
 .nubo-energy-orb::after {
   content: "";
   position: absolute;
-  inset: 34px;
   border-radius: 50%;
   pointer-events: none;
 }
 
 .nubo-energy-orb::before {
-  border: 1px solid rgba(106, 207, 255, .22);
-  box-shadow: 0 0 32px rgba(95, 184, 255, .12), inset 0 0 30px rgba(130, 67, 255, .12);
-  animation: orb-halo-spin 14s linear infinite;
+  inset: 38px;
+  border: 1px solid rgba(106, 207, 255, .2);
+  box-shadow: 0 0 42px rgba(95, 184, 255, .13), inset 0 0 36px rgba(130, 67, 255, .12);
+  animation: orb-halo-spin 18s linear infinite;
 }
 
 .nubo-energy-orb::after {
-  inset: 58px;
+  inset: 66px;
   border: 1px dashed rgba(186, 95, 255, .2);
-  animation: orb-halo-spin-reverse 10s linear infinite;
+  animation: orb-halo-spin-reverse 12s linear infinite;
 }
 
 .nubo-energy-orb canvas {
   display: block;
-  width: 360px;
-  height: 360px;
+  width: 460px;
+  height: 460px;
 }
 
 @keyframes orb-halo-spin {
@@ -93,19 +87,6 @@ body::before {
   to { transform: rotate(-360deg); }
 }
 
-.orb {
-  background:
-    radial-gradient(circle at 34% 26%, rgba(255,255,255,.92), transparent 7%),
-    radial-gradient(circle at 46% 42%, #a9efff, #6c8cff 28%, #8f3cff 56%, #150a35 78%, #060811 100%);
-  box-shadow: 0 0 34px rgba(78,182,255,.46), 0 0 88px rgba(154,63,255,.34), inset -24px -24px 50px rgba(0,0,0,.4);
-}
-
-.orb.active { animation: tech-pulse 1.5s ease-in-out infinite; }
-@keyframes tech-pulse {
-  0%,100% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) saturate(1.05); }
-  50% { transform: scale(1.065) rotate(2deg); filter: hue-rotate(12deg) saturate(1.25); }
-}
-
 .nubo-media-dock {
   position: fixed;
   right: 18px;
@@ -114,7 +95,7 @@ body::before {
   width: min(420px, calc(100vw - 36px));
   border: 1px solid rgba(119,131,255,.28);
   border-radius: 20px;
-  background: rgba(6,9,23,.9);
+  background: rgba(6,9,23,.92);
   backdrop-filter: blur(24px);
   box-shadow: 0 24px 80px rgba(0,0,0,.48);
   overflow: hidden;
@@ -135,40 +116,22 @@ body::before {
 .nubo-media-title small,.nubo-media-status { color: var(--muted); }
 .nubo-inline-player-wrap { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border-radius: 14px; background: #000; }
 .nubo-inline-player-wrap > div,.nubo-inline-player-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
-.nubo-media-status { margin: 10px 2px; font-size: 13px; }
+.nubo-media-status { margin: 10px 2px; font-size: 13px; line-height: 1.45; }
 .nubo-media-controls { display: flex; gap: 9px; }
 .nubo-media-controls button { padding: 9px 15px; }
 
-.action-ready-shell {
-  min-height: 100vh; display: grid; place-items: center; padding: 24px;
-  background: radial-gradient(circle at 50% 35%, rgba(108,69,255,.25), transparent 34%), #040610;
-}
-.action-ready-card {
-  width: min(620px,100%); text-align: center; padding: 44px; border-radius: 28px;
-  border: 1px solid rgba(122,135,255,.24); background: rgba(9,12,28,.82);
-  box-shadow: 0 30px 100px rgba(0,0,0,.5);
-}
-.action-ready-card p,.action-ready-card small { color: var(--muted); line-height: 1.65; }
-.action-ready-orb {
-  width: 150px; height: 150px; margin: 0 auto 26px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 28%, #fff, #55d9ff 8%, #785dff 38%, #a238ff 62%, #10072b 82%);
-  box-shadow: 0 0 55px rgba(92,177,255,.5), 0 0 100px rgba(159,64,255,.35);
-  animation: action-orb 2.4s ease-in-out infinite;
-}
-@keyframes action-orb { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); filter: hue-rotate(18deg); } }
-
 @media (max-width: 680px) {
   .nubo-media-dock { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
-  .orb-wrap { min-height: 320px; }
+  .orb-wrap { min-height: 380px; }
   .nubo-energy-orb,
   .nubo-energy-orb canvas {
-    width: 300px;
-    height: 300px;
+    width: 460px;
+    height: 460px;
   }
-  .nubo-energy-orb { transform: scale(.84); }
+  .nubo-energy-orb { transform: scale(.72); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nubo-tech-background { display: none; }
-  .orb.active,.action-ready-orb,.nubo-energy-orb::before,.nubo-energy-orb::after { animation: none; }
+  .nubo-energy-orb::before,
+  .nubo-energy-orb::after { animation: none; }
 }
