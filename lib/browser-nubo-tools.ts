@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  openDesktopTool,
+  openWebsiteInBrowser,
+  playYouTubeInNubo,
+} from "@/lib/browser-action-bridge";
+
 export type FunctionCall = {
   id?: string;
   name?: string;
@@ -198,9 +204,14 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "gmail_status") return requestJson("/api/gmail/status", { cache: "no-store" });
   if (name === "task_action") return post("/api/tasks/action", { id: args.id, action: args.action });
   if (name === "research_now") return post("/api/research/run", { question: args.question, title: args.title || undefined });
-  if (name === "open_youtube") return post("/api/youtube/open", { query: args.query, service: args.service || "youtube_music" });
-  if (name === "open_website") return post("/api/system/open-website", { target: args.target });
-  if (name === "open_desktop_app") return post("/api/system/open-app", { app: args.app });
+  if (name === "open_youtube") {
+    return playYouTubeInNubo(
+      String(args.query ?? ""),
+      args.service === "youtube" ? "youtube" : "youtube_music",
+    );
+  }
+  if (name === "open_website") return openWebsiteInBrowser(String(args.target ?? ""));
+  if (name === "open_desktop_app") return openDesktopTool(String(args.app ?? ""));
   if (name === "gmail_search") return post("/api/gmail/search", { query: args.query, maxResults: args.maxResults || 10 });
   if (name === "gmail_read") return post("/api/gmail/read", { id: args.id });
   if (name === "gmail_create_draft") return post("/api/gmail/draft", { to: args.to, subject: args.subject, body: args.body });
