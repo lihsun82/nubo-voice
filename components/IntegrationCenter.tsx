@@ -22,6 +22,17 @@ type YouTubeStatus = {
   playerUrl: string;
 };
 
+async function postAction(url: string, body: Record<string, unknown>) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "操作失敗");
+  return result;
+}
+
 export function IntegrationCenter() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
   const [providers, setProviders] = useState<ProviderStatus | null>(null);
@@ -63,16 +74,33 @@ export function IntegrationCenter() {
   };
 
   const testYouTube = async () => {
-    const response = await fetch("/api/youtube/open", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const result = await postAction("/api/youtube/open", {
         query: "relaxing hotel lobby music",
         service: "youtube_music",
-      }),
-    });
-    const result = await response.json();
-    setMessage(response.ok ? result.message : result.error ?? "YouTube測試失敗");
+      });
+      setMessage(result.message);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "YouTube測試失敗");
+    }
+  };
+
+  const testFacebook = async () => {
+    try {
+      const result = await postAction("/api/system/open-website", { target: "facebook" });
+      setMessage(`已開啟：${result.url}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "開啟Facebook失敗");
+    }
+  };
+
+  const testCalculator = async () => {
+    try {
+      const result = await postAction("/api/system/open-app", { app: "calculator" });
+      setMessage(`已開啟${result.app}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "開啟計算機失敗");
+    }
   };
 
   return (
@@ -117,7 +145,7 @@ export function IntegrationCenter() {
             </span>
           </div>
           <p>
-            語音說出歌曲、歌手或影片主題後，NUBO會搜尋可嵌入影片並在專用視窗自動播放。
+            NUBO會搜尋可嵌入影片，在播放器就緒後主動解除靜音、播放並自動重試。
           </p>
           <button
             className="secondary"
@@ -135,6 +163,28 @@ export function IntegrationCenter() {
                 : "目前平台可能需要第一次手動按播放。"}
             </small>
           )}
+        </article>
+
+        <article className="integration-card">
+          <div className="integration-card-top">
+            <strong>網頁開啟</strong>
+            <span className="badge active">Windows可用</span>
+          </div>
+          <p>可開啟Facebook、Google、Gmail、Maps、Calendar、指定網址或搜尋關鍵字。</p>
+          <button className="secondary" onClick={() => void testFacebook()}>
+            測試開啟Facebook
+          </button>
+        </article>
+
+        <article className="integration-card">
+          <div className="integration-card-top">
+            <strong>Windows工具</strong>
+            <span className="badge active">安全白名單</span>
+          </div>
+          <p>可開啟計算機、記事本、小畫家、檔案總管、Windows設定與時鐘。</p>
+          <button className="secondary" onClick={() => void testCalculator()}>
+            測試開啟計算機
+          </button>
         </article>
 
         <article className="integration-card">
