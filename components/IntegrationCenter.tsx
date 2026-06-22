@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  openDesktopTool,
+  openWebsiteInBrowser,
+  playYouTubeInNubo,
+  primeBrowserActions,
+} from "@/lib/browser-action-bridge";
 
 type GmailStatus = {
   configured: boolean;
@@ -21,17 +27,6 @@ type YouTubeStatus = {
   autoplayMode: boolean;
   playerUrl: string;
 };
-
-async function postAction(url: string, body: Record<string, unknown>) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? "操作失敗");
-  return result;
-}
 
 export function IntegrationCenter() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
@@ -75,10 +70,11 @@ export function IntegrationCenter() {
 
   const testYouTube = async () => {
     try {
-      const result = await postAction("/api/youtube/open", {
-        query: "relaxing hotel lobby music",
-        service: "youtube_music",
-      });
+      primeBrowserActions();
+      const result = await playYouTubeInNubo(
+        "relaxing hotel lobby music",
+        "youtube_music",
+      );
       setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "YouTube測試失敗");
@@ -87,8 +83,9 @@ export function IntegrationCenter() {
 
   const testFacebook = async () => {
     try {
-      const result = await postAction("/api/system/open-website", { target: "facebook" });
-      setMessage(`已開啟：${result.url}`);
+      primeBrowserActions();
+      const result = await openWebsiteInBrowser("facebook");
+      setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "開啟Facebook失敗");
     }
@@ -96,7 +93,7 @@ export function IntegrationCenter() {
 
   const testCalculator = async () => {
     try {
-      const result = await postAction("/api/system/open-app", { app: "calculator" });
+      const result = await openDesktopTool("calculator");
       setMessage(`已開啟${result.app}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "開啟計算機失敗");
@@ -141,36 +138,32 @@ export function IntegrationCenter() {
           <div className="integration-card-top">
             <strong>YouTube／YouTube Music</strong>
             <span className={`badge ${youtube?.configured ? "active" : "paused"}`}>
-              {youtube?.configured ? "可自動播放" : "待設定API Key"}
+              {youtube?.configured ? "主頁內播放" : "待設定API Key"}
             </span>
           </div>
           <p>
-            NUBO會搜尋可嵌入影片，在播放器就緒後主動解除靜音、播放並自動重試。
+            音樂改在NUBO主頁右下角播放器直接載入，不再開外部YouTube視窗。
           </p>
           <button
             className="secondary"
             onClick={() => void testYouTube()}
             disabled={!youtube?.configured}
           >
-            測試自動播放
+            測試主頁播放
           </button>
           {!youtube?.configured ? (
             <small>請在.env.local設定YOUTUBE_API_KEY並重新啟動NUBO。</small>
           ) : (
-            <small>
-              {youtube.autoplayMode
-                ? "Windows專用自動播放模式已啟用。"
-                : "目前平台可能需要第一次手動按播放。"}
-            </small>
+            <small>按過啟動NUBO後，主頁已具有媒體互動權限。</small>
           )}
         </article>
 
         <article className="integration-card">
           <div className="integration-card-top">
             <strong>網頁開啟</strong>
-            <span className="badge active">Windows可用</span>
+            <span className="badge active">專用動作視窗</span>
           </div>
-          <p>可開啟Facebook、Google、Gmail、Maps、Calendar、指定網址或搜尋關鍵字。</p>
+          <p>啟動NUBO時預先開啟待命視窗，語音指令再將該視窗導向Facebook或指定網站。</p>
           <button className="secondary" onClick={() => void testFacebook()}>
             測試開啟Facebook
           </button>

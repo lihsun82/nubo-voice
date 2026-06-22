@@ -1,7 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
+import {
+  notifyNuboVoicePhase,
+  primeBrowserActions,
+} from "@/lib/browser-action-bridge";
 import {
   executeNuboBrowserTool,
   geminiFunctionDeclarations,
@@ -33,9 +37,25 @@ export function GeminiVoiceConsole() {
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
+  const phaseTimerRef = useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+
+  useEffect(() => {
+    if (state === "idle") notifyNuboVoicePhase("idle");
+    else if (state === "connecting") notifyNuboVoicePhase("connecting");
+    else if (state === "connected") notifyNuboVoicePhase("listening");
+    else notifyNuboVoicePhase("error");
+  }, [state]);
+
+  const markSpeaking = () => {
+    notifyNuboVoicePhase("speaking");
+    if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
+    phaseTimerRef.current = window.setTimeout(() => {
+      notifyNuboVoicePhase("listening");
+    }, 1400);
+  };
 
   const disconnect = async () => {
     closingRef.current = true;
@@ -50,6 +70,7 @@ export function GeminiVoiceConsole() {
   };
 
   const connect = async () => {
+    primeBrowserActions();
     setError("");
     setTranscript("");
     setState("connecting");
@@ -99,11 +120,15 @@ export function GeminiVoiceConsole() {
           }
 
           const serverContent = message.serverContent;
-          if (serverContent?.interrupted) playbackRef.current?.interrupt();
+          if (serverContent?.interrupted) {
+            playbackRef.current?.interrupt();
+            notifyNuboVoicePhase("listening");
+          }
           const parts = serverContent?.modelTurn?.parts;
           if (Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
+                markSpeaking();
                 await playbackRef.current?.enqueue(part.inlineData.data, 24000);
               }
             }
@@ -114,11 +139,13 @@ export function GeminiVoiceConsole() {
           if (typeof modelText === "string" && modelText.trim()) {
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
+            notifyNuboVoicePhase("thinking");
             setTranscript(`你：${userText.trim()}`);
           }
 
           const calls = message.toolCall?.functionCalls;
           if (Array.isArray(calls) && calls.length > 0) {
+            notifyNuboVoicePhase("thinking");
             const functionResponses = [];
             for (const call of calls as FunctionCall[]) {
               try {
@@ -169,13 +196,13 @@ export function GeminiVoiceConsole() {
 
   const stateLabel = {
     idle: ["NUBO待命", "Gemini Live語音與Actions工具"],
-    connecting: ["正在連接Gemini", "請允許麥克風權限"],
-    connected: ["NUBO正在聆聽", "研究、YouTube、Gmail與排程已啟用"],
+    connecting: ["正在連接Gemini", "請允許麥克風與彈出式視窗"],
+    connected: ["NUBO正在聆聽", "音樂、網頁、桌面工具與工作流已啟用"],
     error: ["Gemini語音未連線", "可重新嘗試或切換OpenAI"],
   }[state];
 
   return (
-    <section className="console" aria-live="polite">
+    <section className="console voice-console" aria-live="polite">
       <div className="orb-wrap">
         <div className={`orb ${state === "connected" ? "active" : ""}`} />
       </div>
@@ -194,8 +221,8 @@ export function GeminiVoiceConsole() {
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>研究Actions</b><small>自動搜尋、比較方案並提供解方。</small></div>
-        <div className="capability"><b>YouTube與Gmail</b><small>開音樂、讀信、草稿與確認寄送。</small></div>
+        <div className="capability"><b>瀏覽器動作橋接</b><small>在頁面內播放音樂並控制專用網頁視窗。</small></div>
+        <div className="capability"><b>研究與Gmail</b><small>找解方、讀信、草稿與確認寄送。</small></div>
         <div className="capability"><b>排程工作流</b><small>定時研究、郵件摘要與白名單交付。</small></div>
       </div>
     </section>
