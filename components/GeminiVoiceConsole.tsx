@@ -7,7 +7,7 @@ import {
   geminiFunctionDeclarations,
   geminiSystemInstruction,
   type FunctionCall,
-} from "@/lib/browser-nubo-tools";
+} from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
