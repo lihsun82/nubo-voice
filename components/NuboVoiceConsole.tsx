@@ -13,24 +13,62 @@ type ProviderData = {
   providers: Array<{ name: string; configured: boolean; model: string }>;
 };
 
+async function loadProviderData(signal: AbortSignal): Promise<ProviderData> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      const response = await fetch("/api/providers", {
+        cache: "no-store",
+        signal,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "無法讀取AI引擎設定");
+      }
+      return payload;
+    } catch (cause) {
+      if (signal.aborted) throw cause;
+      lastError = cause;
+      await new Promise((resolve) => window.setTimeout(resolve, 750));
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("NUBO後端尚未就緒，請重新整理頁面。");
+}
+
 export function NuboVoiceConsole() {
   const [data, setData] = useState<ProviderData | null>(null);
   const [selected, setSelected] = useState<VoiceProvider>("none");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/providers", { cache: "no-store" })
-      .then(async (response) => {
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error ?? "無法讀取AI引擎設定");
+    const controller = new AbortController();
+
+    loadProviderData(controller.signal)
+      .then((payload) => {
         setData(payload);
         setSelected(payload.voiceProvider);
+        setError("");
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "引擎設定錯誤"));
+      .catch((cause) => {
+        if (controller.signal.aborted) return;
+        setError(
+          cause instanceof Error
+            ? cause.message === "Failed to fetch"
+              ? "NUBO後端尚未完成啟動，請稍候後重新整理。"
+              : cause.message
+            : "引擎設定錯誤",
+        );
+      });
+
+    return () => controller.abort();
   }, []);
 
   if (error) return <div className="error">{error}</div>;
-  if (!data) return <section className="console">正在載入AI引擎…</section>;
+  if (!data) return <section className="console">正在等待NUBO後端啟動…</section>;
 
   const geminiReady = data.providers.some((item) => item.name === "gemini" && item.configured);
   const openaiReady = data.providers.some((item) => item.name === "openai" && item.configured);
