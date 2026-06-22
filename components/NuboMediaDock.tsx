@@ -7,7 +7,9 @@ type Player = {
   loadVideoById: (videoId: string) => void;
   playVideo: () => void;
   stopVideo: () => void;
+  mute: () => void;
   unMute: () => void;
+  isMuted?: () => boolean;
   setVolume: (volume: number) => void;
   getPlayerState: () => number;
   destroy: () => void;
@@ -26,28 +28,68 @@ declare global {
 
 const PLAYER_ID = "nubo-inline-youtube-player";
 
+function unlockTopLevelAudio() {
+  try {
+    const AudioContextClass =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const buffer = context.createBuffer(1, 1, 22050);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    void context.resume();
+    source.start(0);
+    window.setTimeout(() => void context.close(), 300);
+  } catch {
+    // The dedicated NUBO browser mode handles autoplay even when this fallback is unavailable.
+  }
+}
+
 export function NuboMediaDock() {
   const playerRef = useRef<Player | null>(null);
   const pendingRef = useRef<YouTubePlayRequest | null>(null);
   const retryRef = useRef<number[]>([]);
+  const unmuteTimerRef = useRef<number | null>(null);
+  const primedRef = useRef(false);
   const [request, setRequest] = useState<YouTubePlayRequest | null>(null);
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState("按下啟動NUBO後，播放器會進入待命");
   const [expanded, setExpanded] = useState(false);
 
-  const clearRetries = () => {
+  const clearTimers = () => {
     retryRef.current.forEach((timer) => window.clearTimeout(timer));
     retryRef.current = [];
+    if (unmuteTimerRef.current) window.clearTimeout(unmuteTimerRef.current);
+    unmuteTimerRef.current = null;
+  };
+
+  const releaseSound = (player: Player) => {
+    player.setVolume(100);
+    player.unMute();
+    player.playVideo();
+    unmuteTimerRef.current = window.setTimeout(() => {
+      player.setVolume(100);
+      player.unMute();
+      player.playVideo();
+      if (player.isMuted?.()) {
+        setStatus("影片已啟動，但一般瀏覽器仍保持靜音；請改用NUBO專用啟動器");
+      }
+    }, 450);
   };
 
   const scheduleRetries = (player: Player) => {
-    clearRetries();
-    for (const delay of [100, 400, 900, 1600, 2800, 4500, 7000]) {
+    clearTimers();
+    for (const delay of [120, 420, 900, 1600, 2800, 4500, 7000]) {
       retryRef.current.push(
         window.setTimeout(() => {
-          if (player.getPlayerState() === 1) return;
-          player.setVolume(100);
-          player.unMute();
+          if (player.getPlayerState() === 1) {
+            releaseSound(player);
+            return;
+          }
+          player.mute();
           player.playVideo();
         }, delay),
       );
@@ -58,12 +100,12 @@ export function NuboMediaDock() {
     pendingRef.current = next;
     setRequest(next);
     setExpanded(true);
-    setStatus(`正在播放：${next.title}`);
+    setStatus(`正在啟動：${next.title}`);
 
     const player = playerRef.current;
     if (!player) return;
-    player.setVolume(100);
-    player.unMute();
+    player.setVolume(0);
+    player.mute();
     player.loadVideoById(next.videoId);
     player.playVideo();
     scheduleRetries(player);
@@ -88,19 +130,29 @@ export function NuboMediaDock() {
         events: {
           onReady: (event: PlayerEvent) => {
             event.target.setVolume(100);
-            event.target.unMute();
             setReady(true);
-            setStatus("播放器已就緒，等待音樂指令");
+            setStatus(
+              primedRef.current
+                ? "播放器與聲音權限已就緒"
+                : "播放器已就緒；按下啟動NUBO以取得聲音權限",
+            );
             if (pendingRef.current) playRequest(pendingRef.current);
           },
           onStateChange: (event: PlayerEvent) => {
             if (event.data === 1) {
-              clearRetries();
-              setStatus("播放中");
+              releaseSound(event.target);
+              window.setTimeout(() => {
+                if (!event.target.isMuted?.()) {
+                  clearTimers();
+                  setStatus("播放中");
+                }
+              }, 650);
             }
           },
           onAutoplayBlocked: (event: PlayerEvent) => {
-            setStatus("瀏覽器暫時未播放，NUBO正在重試");
+            setStatus("瀏覽器暫時阻擋聲音，NUBO正在以靜音啟播後解除靜音");
+            event.target.mute();
+            event.target.playVideo();
             scheduleRetries(event.target);
           },
           onError: (event: PlayerEvent) => {
@@ -131,9 +183,16 @@ export function NuboMediaDock() {
     };
 
     const onPrime = () => {
+      primedRef.current = true;
+      unlockTopLevelAudio();
       setExpanded(true);
-      setStatus("正在初始化NUBO播放器…");
+      setStatus("正在初始化播放器與聲音權限…");
       ensureApi();
+      const player = playerRef.current;
+      if (player) {
+        player.setVolume(100);
+        setStatus("播放器與聲音權限已就緒");
+      }
     };
 
     const onPlay = (event: Event) => {
@@ -149,7 +208,7 @@ export function NuboMediaDock() {
 
     return () => {
       disposed = true;
-      clearRetries();
+      clearTimers();
       window.removeEventListener("nubo-media-prime", onPrime);
       window.removeEventListener("nubo-youtube-play", onPlay);
       playerRef.current?.destroy();
@@ -160,6 +219,8 @@ export function NuboMediaDock() {
   const manualPlay = () => {
     const player = playerRef.current;
     if (!player) return;
+    primedRef.current = true;
+    unlockTopLevelAudio();
     player.setVolume(100);
     player.unMute();
     player.playVideo();
@@ -167,7 +228,7 @@ export function NuboMediaDock() {
   };
 
   const stop = () => {
-    clearRetries();
+    clearTimers();
     playerRef.current?.stopVideo();
     setStatus("已停止播放");
   };
@@ -193,7 +254,7 @@ export function NuboMediaDock() {
         <div className="nubo-media-status">{status}</div>
         <div className="nubo-media-controls">
           <button className="primary" onClick={manualPlay} disabled={!ready}>
-            播放
+            播放並開啟聲音
           </button>
           <button className="secondary" onClick={stop} disabled={!ready}>
             停止
