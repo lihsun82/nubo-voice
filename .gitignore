@@ -7,3 +7,6 @@ out/
 npm-debug.log*
 .DS_Store
 coverage/
+data/google-auth.json
+data/google-oauth-state.json
+data/pending-email-actions.json
