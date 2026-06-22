@@ -6,6 +6,7 @@ import {
 } from "@openai/agents/realtime";
 import { useEffect, useRef, useState } from "react";
 import {
+  installNuboActionFetchBridge,
   notifyNuboVoicePhase,
   primeBrowserActions,
 } from "@/lib/browser-action-bridge";
@@ -15,6 +16,7 @@ type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 export function OpenAIVoiceConsole() {
   const sessionRef = useRef<RealtimeSession | null>(null);
+  const fetchCleanupRef = useRef<(() => void) | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
 
@@ -25,8 +27,14 @@ export function OpenAIVoiceConsole() {
     else notifyNuboVoicePhase("error");
   }, [state]);
 
+  useEffect(() => {
+    return () => fetchCleanupRef.current?.();
+  }, []);
+
   const connect = async () => {
     primeBrowserActions();
+    fetchCleanupRef.current?.();
+    fetchCleanupRef.current = installNuboActionFetchBridge();
     setError("");
     setState("connecting");
     try {
@@ -48,6 +56,8 @@ export function OpenAIVoiceConsole() {
       sessionRef.current = session;
       setState("connected");
     } catch (cause) {
+      fetchCleanupRef.current?.();
+      fetchCleanupRef.current = null;
       console.error("NUBO OpenAI connection failed", cause);
       setError(cause instanceof Error ? cause.message : "OpenAI語音連線失敗");
       setState("error");
@@ -57,6 +67,8 @@ export function OpenAIVoiceConsole() {
   const disconnect = () => {
     sessionRef.current?.close();
     sessionRef.current = null;
+    fetchCleanupRef.current?.();
+    fetchCleanupRef.current = null;
     setState("idle");
     setError("");
   };
