@@ -16,6 +16,7 @@ body {
   height: 100vh;
   z-index: -3;
   pointer-events: none;
+  opacity: .32;
 }
 
 body::before {
@@ -25,8 +26,8 @@ body::before {
   z-index: -2;
   pointer-events: none;
   background:
-    linear-gradient(rgba(85, 112, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(85, 112, 255, 0.025) 1px, transparent 1px);
+    linear-gradient(rgba(85, 112, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 112, 255, 0.018) 1px, transparent 1px);
   background-size: 54px 54px;
   mask-image: radial-gradient(circle at 50% 42%, black, transparent 78%);
 }
@@ -41,6 +42,55 @@ body::before {
   background: linear-gradient(145deg, rgba(12,17,38,.75), rgba(8,10,24,.58));
   border-color: rgba(127,135,255,.22);
   box-shadow: 0 28px 90px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.045);
+}
+
+.orb-wrap {
+  min-height: 390px;
+  overflow: visible;
+}
+
+.nubo-energy-orb {
+  position: relative;
+  width: 360px;
+  height: 360px;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 0 26px rgba(86, 187, 255, .34)) drop-shadow(0 0 48px rgba(159, 61, 255, .28));
+}
+
+.nubo-energy-orb::before,
+.nubo-energy-orb::after {
+  content: "";
+  position: absolute;
+  inset: 34px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.nubo-energy-orb::before {
+  border: 1px solid rgba(106, 207, 255, .22);
+  box-shadow: 0 0 32px rgba(95, 184, 255, .12), inset 0 0 30px rgba(130, 67, 255, .12);
+  animation: orb-halo-spin 14s linear infinite;
+}
+
+.nubo-energy-orb::after {
+  inset: 58px;
+  border: 1px dashed rgba(186, 95, 255, .2);
+  animation: orb-halo-spin-reverse 10s linear infinite;
+}
+
+.nubo-energy-orb canvas {
+  display: block;
+  width: 360px;
+  height: 360px;
+}
+
+@keyframes orb-halo-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes orb-halo-spin-reverse {
+  to { transform: rotate(-360deg); }
 }
 
 .orb {
@@ -109,9 +159,16 @@ body::before {
 
 @media (max-width: 680px) {
   .nubo-media-dock { right: 10px; bottom: 10px; width: calc(100vw - 20px); }
+  .orb-wrap { min-height: 320px; }
+  .nubo-energy-orb,
+  .nubo-energy-orb canvas {
+    width: 300px;
+    height: 300px;
+  }
+  .nubo-energy-orb { transform: scale(.84); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .nubo-tech-background { display: none; }
-  .orb.active,.action-ready-orb { animation: none; }
+  .orb.active,.action-ready-orb,.nubo-energy-orb::before,.nubo-energy-orb::after { animation: none; }
 }
