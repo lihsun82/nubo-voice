@@ -63,6 +63,24 @@ async function requestJson(url: string, init?: RequestInit) {
   return payload;
 }
 
+async function parseSocketMessage(data: unknown) {
+  let text: string;
+
+  if (typeof data === "string") {
+    text = data;
+  } else if (data instanceof Blob) {
+    text = await data.text();
+  } else if (data instanceof ArrayBuffer) {
+    text = new TextDecoder().decode(data);
+  } else if (ArrayBuffer.isView(data)) {
+    text = new TextDecoder().decode(data);
+  } else {
+    throw new Error(`不支援的 WebSocket 訊息格式：${Object.prototype.toString.call(data)}`);
+  }
+
+  return JSON.parse(text);
+}
+
 async function executeTool(call: FunctionCall) {
   const name = call.name ?? "";
   const args = call.args ?? {};
@@ -130,6 +148,7 @@ export function GeminiVoiceConsole() {
       const endpoint =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
+      socket.binaryType = "arraybuffer";
       socketRef.current = socket;
       playbackRef.current = new PcmPlaybackQueue();
 
@@ -149,60 +168,67 @@ export function GeminiVoiceConsole() {
       };
 
       socket.onmessage = async (event) => {
-        const message = JSON.parse(String(event.data));
-        if (message.setupComplete) {
-          const microphone = new MicrophonePcmStream();
-          microphoneRef.current = microphone;
-          await microphone.start((data) => {
-            if (socket.readyState !== WebSocket.OPEN) return;
-            socket.send(
-              JSON.stringify({
-                realtimeInput: {
-                  audio: { data, mimeType: "audio/pcm;rate=16000" },
-                },
-              }),
-            );
-          });
-          setState("connected");
-        }
+        try {
+          const message = await parseSocketMessage(event.data);
+          if (message.setupComplete) {
+            const microphone = new MicrophonePcmStream();
+            microphoneRef.current = microphone;
+            await microphone.start((data) => {
+              if (socket.readyState !== WebSocket.OPEN) return;
+              socket.send(
+                JSON.stringify({
+                  realtimeInput: {
+                    audio: { data, mimeType: "audio/pcm;rate=16000" },
+                  },
+                }),
+              );
+            });
+            setState("connected");
+          }
 
-        const serverContent = message.serverContent;
-        if (serverContent?.interrupted) playbackRef.current?.interrupt();
-        const parts = serverContent?.modelTurn?.parts;
-        if (Array.isArray(parts)) {
-          for (const part of parts) {
-            if (part?.inlineData?.data) {
-              await playbackRef.current?.enqueue(part.inlineData.data, 24000);
+          const serverContent = message.serverContent;
+          if (serverContent?.interrupted) playbackRef.current?.interrupt();
+          const parts = serverContent?.modelTurn?.parts;
+          if (Array.isArray(parts)) {
+            for (const part of parts) {
+              if (part?.inlineData?.data) {
+                await playbackRef.current?.enqueue(part.inlineData.data, 24000);
+              }
             }
           }
-        }
-        const userText = serverContent?.inputTranscription?.text;
-        const modelText = serverContent?.outputTranscription?.text;
-        if (typeof modelText === "string" && modelText.trim()) setTranscript(modelText.trim());
-        else if (typeof userText === "string" && userText.trim()) setTranscript(`你：${userText.trim()}`);
+          const userText = serverContent?.inputTranscription?.text;
+          const modelText = serverContent?.outputTranscription?.text;
+          if (typeof modelText === "string" && modelText.trim()) setTranscript(modelText.trim());
+          else if (typeof userText === "string" && userText.trim()) setTranscript(`你：${userText.trim()}`);
 
-        const calls = message.toolCall?.functionCalls;
-        if (Array.isArray(calls) && calls.length > 0) {
-          const functionResponses = [];
-          for (const call of calls as FunctionCall[]) {
-            try {
-              const result = await executeTool(call);
-              functionResponses.push({
-                id: call.id,
-                name: call.name,
-                response: { result },
-              });
-            } catch (cause) {
-              functionResponses.push({
-                id: call.id,
-                name: call.name,
-                response: {
-                  error: cause instanceof Error ? cause.message : "工具執行失敗",
-                },
-              });
+          const calls = message.toolCall?.functionCalls;
+          if (Array.isArray(calls) && calls.length > 0) {
+            const functionResponses = [];
+            for (const call of calls as FunctionCall[]) {
+              try {
+                const result = await executeTool(call);
+                functionResponses.push({
+                  id: call.id,
+                  name: call.name,
+                  response: { result },
+                });
+              } catch (cause) {
+                functionResponses.push({
+                  id: call.id,
+                  name: call.name,
+                  response: {
+                    error: cause instanceof Error ? cause.message : "工具執行失敗",
+                  },
+                });
+              }
             }
+            socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
           }
-          socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+        } catch (cause) {
+          console.error("Gemini Live message decode failed", cause, event.data);
+          setError("Gemini Live 訊息解析失敗，請更新程式後重新連線。");
+          setState("error");
+          socket.close();
         }
       };
 
