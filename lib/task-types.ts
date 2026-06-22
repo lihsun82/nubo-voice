@@ -11,12 +11,31 @@ export type TaskSchedule = {
   timezone: "Asia/Taipei";
 };
 
+export type TaskSource =
+  | { type: "none" }
+  | {
+      type: "gmail";
+      query: string;
+      maxResults?: number;
+      includeBody?: boolean;
+    };
+
+export type TaskDelivery =
+  | { type: "inbox" }
+  | {
+      type: "gmail_draft" | "gmail_send";
+      to: string;
+      subject?: string;
+    };
+
 export type NuboTask = {
   id: string;
   title: string;
   kind: TaskKind;
   instruction: string;
   condition?: string;
+  source?: TaskSource;
+  delivery?: TaskDelivery;
   schedule: TaskSchedule;
   status: TaskStatus;
   nextRunAt: string | null;
@@ -51,5 +70,7 @@ export type CreateTaskInput = {
   kind: TaskKind;
   instruction: string;
   condition?: string;
+  source?: TaskSource;
+  delivery?: TaskDelivery;
   schedule: TaskSchedule;
 };
