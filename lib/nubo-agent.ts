@@ -16,12 +16,14 @@ const getNuboStatus = tool({
   parameters: z.object({}),
   execute: async () => ({
     status: "online",
-    version: "0.4.0",
+    version: "0.5.0",
     taipeiTime: new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }),
     enabled: [
       "即時繁體中文語音",
       "研究與解方搜尋",
-      "YouTube與YouTube Music開啟",
+      "YouTube與YouTube Music自動播放",
+      "自動開啟Facebook、Google、Gmail與任意安全網址",
+      "開啟計算機、記事本、小畫家、檔案總管、設定與時鐘",
       "Gmail搜尋、讀取、草稿與確認寄送",
       "一次性與週期任務",
       "Gmail來源摘要與白名單交付",
@@ -138,7 +140,7 @@ const researchNow = tool({
 
 const openYouTube = tool({
   name: "open_youtube",
-  description: "依歌曲、歌手、影片或主題在Windows開啟YouTube或YouTube Music搜尋。",
+  description: "依歌曲、歌手、影片或主題搜尋並在NUBO專用播放器直接自動播放。",
   parameters: z.object({
     query: z.string().min(1),
     service: z.enum(["youtube", "youtube_music"]).default("youtube_music"),
@@ -148,6 +150,36 @@ const openYouTube = tool({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, service }),
+    }),
+});
+
+const openWebsite = tool({
+  name: "open_website",
+  description:
+    "開啟Facebook、Google、Gmail、YouTube、Google Maps、Calendar、任意HTTP/HTTPS網址，或搜尋關鍵字。",
+  parameters: z.object({
+    target: z.string().min(1),
+  }),
+  execute: async ({ target }) =>
+    jsonRequest("/api/system/open-website", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target }),
+    }),
+});
+
+const openDesktopApp = tool({
+  name: "open_desktop_app",
+  description:
+    "開啟安全白名單內的Windows工具：計算機、記事本、小畫家、檔案總管、設定或時鐘。",
+  parameters: z.object({
+    app: z.string().min(1),
+  }),
+  execute: async ({ app }) =>
+    jsonRequest("/api/system/open-app", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app }),
     }),
 });
 
@@ -238,16 +270,20 @@ export const nuboAgent = new RealtimeAgent({
 
 工作原則：
 1. 使用者提出問題或要找解方時，主動呼叫research_now，不要只給一般性建議。
-2. 使用者想聽音樂或看影片時，確認歌曲／歌手／主題後呼叫open_youtube。
-3. 使用者問郵件時，先用gmail_search，再視需要用gmail_read；摘要時不得捏造內容。
-4. 使用者要寄信時，可直接建立草稿；若要正式寄出，先呼叫gmail_prepare_send並完整覆誦預覽。只有下一句明確表示「確認寄出」才呼叫gmail_confirm_send。
-5. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
-6. 使用者要求把排程結果寄信時，設定deliveryType。gmail_send只有系統白名單允許才會自動寄出，否則會自動改成草稿。
-7. 時區固定Asia/Taipei。具體時間使用含+08:00的ISO 8601。
-8. 使用者說現在就做時，建立任務後再呼叫task_action的run。
+2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
+3. 使用者要開啟Facebook、Google、Gmail、網站或網址時，呼叫open_website。
+4. 使用者要開啟計算機、記事本、小畫家、檔案總管、設定或時鐘時，呼叫open_desktop_app。
+5. 使用者問郵件時，先用gmail_search，再視需要用gmail_read；摘要時不得捏造內容。
+6. 使用者要寄信時，可直接建立草稿；若要正式寄出，先呼叫gmail_prepare_send並完整覆誦預覽。只有下一句明確表示「確認寄出」才呼叫gmail_confirm_send。
+7. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
+8. 使用者要求把排程結果寄信時，設定deliveryType。gmail_send只有系統白名單允許才會自動寄出，否則會自動改成草稿。
+9. 時區固定Asia/Taipei。具體時間使用含+08:00的ISO 8601。
+10. 使用者說現在就做時，建立任務後再呼叫task_action的run。
 
 安全規則：
-- 研究、讀信、摘要、建立草稿、開啟YouTube可直接執行。
+- 研究、讀信、摘要、建立草稿、播放YouTube、開啟HTTP/HTTPS網頁與白名單Windows工具可直接執行。
+- open_website不可開啟file、shell、javascript或其他非HTTP/HTTPS協定。
+- open_desktop_app不可執行任意程式或任意命令，只能使用預先列出的Windows工具。
 - 正式寄信必須兩階段確認；排程自動寄送只允許環境白名單。
 - 付款、轉帳、刪除、改價、取消訂單、正式PMS操作不得自行執行。
 - 不得假裝完成尚未串接或失敗的操作。
@@ -259,6 +295,8 @@ export const nuboAgent = new RealtimeAgent({
     taskAction,
     researchNow,
     openYouTube,
+    openWebsite,
+    openDesktopApp,
     gmailStatus,
     gmailSearch,
     gmailRead,
