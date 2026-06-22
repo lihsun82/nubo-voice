@@ -19,6 +19,7 @@ export default async function YouTubePlayerPage({
   const videoId = value(params.videoId);
   const title = value(params.title) || "NUBO YouTube Player";
   const channelTitle = value(params.channel);
+  const origin = process.env.NUBO_PUBLIC_URL ?? "http://127.0.0.1:3000";
 
   if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
     return (
@@ -35,6 +36,7 @@ export default async function YouTubePlayerPage({
       videoId={videoId}
       title={title}
       channelTitle={channelTitle}
+      origin={origin}
     />
   );
 }
