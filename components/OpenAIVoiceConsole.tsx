@@ -76,8 +76,8 @@ export function OpenAIVoiceConsole() {
 
   const stateLabel = {
     idle: ["NUBO待命", "OpenAI Realtime備援語音"],
-    connecting: ["正在連接OpenAI", "請允許麥克風與彈出式視窗"],
-    connected: ["NUBO正在聆聽", "音樂、網頁與桌面工具已啟用"],
+    connecting: ["正在連接OpenAI", "請允許麥克風權限"],
+    connected: ["NUBO正在聆聽", "音樂、同分頁網頁與桌面工具已啟用"],
     error: ["OpenAI語音未連線", "請檢查API額度與PowerShell訊息"],
   }[state];
 
@@ -100,8 +100,8 @@ export function OpenAIVoiceConsole() {
       </div>
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>OpenAI Realtime</b><small>備援語音與瀏覽器動作橋接。</small></div>
-        <div className="capability"><b>桌面與網頁</b><small>開啟網站及安全白名單Windows工具。</small></div>
+        <div className="capability"><b>OpenAI Realtime</b><small>備援語音與單一視窗動作橋接。</small></div>
+        <div className="capability"><b>桌面與網頁</b><small>網站在目前分頁開啟，Windows工具使用安全白名單。</small></div>
         <div className="capability"><b>安全權限</b><small>高風險外部操作仍需再次確認。</small></div>
       </div>
     </section>
