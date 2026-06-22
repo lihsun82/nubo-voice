@@ -10,6 +10,7 @@ import {
   notifyNuboVoicePhase,
   primeBrowserActions,
 } from "@/lib/browser-action-bridge";
+import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { nuboAgent } from "@/lib/nubo-agent";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -83,7 +84,7 @@ export function OpenAIVoiceConsole() {
   return (
     <section className="console voice-console" aria-live="polite">
       <div className="orb-wrap">
-        <div className={`orb ${state === "connected" ? "active" : ""}`} />
+        <NuboEnergyOrb />
       </div>
       <div className="status">
         <strong>{stateLabel[0]}</strong>
