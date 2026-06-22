@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./task-center.css";
 import "./integration-center.css";
+import "./youtube-player.css";
 
 export const metadata: Metadata = {
   title: "NUBO Voice",
