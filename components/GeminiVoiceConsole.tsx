@@ -2,118 +2,30 @@
 
 import { useRef, useState } from "react";
 import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
+import {
+  executeNuboBrowserTool,
+  geminiFunctionDeclarations,
+  geminiSystemInstruction,
+  type FunctionCall,
+} from "@/lib/browser-nubo-tools";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
-
-type FunctionCall = {
-  id?: string;
-  name?: string;
-  args?: Record<string, unknown>;
-};
-
-const systemInstruction = `
-你是 NUBO，Leo 的個人 AI 語音總管。一律使用自然、簡潔的繁體中文。
-你可以建立提醒、報告、研究與每日簡報任務，也能列出、立即執行、暫停或恢復任務。
-時區固定 Asia/Taipei。具體時間必須轉成含 +08:00 的 ISO 8601。
-使用者說現在就做時，先建立任務，再立即執行。
-寄信、公開發布、刪除、付款、改價、取消訂單及正式 PMS 操作不得自行完成。
-`;
-
-const functionDeclarations = [
-  {
-    name: "create_task",
-    description: "建立提醒、報告、研究、條件追蹤或每日簡報任務。",
-    parameters: {
-      type: "OBJECT",
-      properties: {
-        title: { type: "STRING" },
-        kind: { type: "STRING", enum: ["reminder", "report", "research", "brief"] },
-        instruction: { type: "STRING" },
-        condition: { type: "STRING", nullable: true },
-        scheduleType: { type: "STRING", enum: ["once", "hourly", "daily", "interval"] },
-        firstRunAt: { type: "STRING", nullable: true },
-        intervalMinutes: { type: "NUMBER", nullable: true },
-      },
-      required: ["title", "kind", "instruction", "scheduleType"],
-    },
-  },
-  {
-    name: "list_tasks",
-    description: "列出目前所有任務與下一次執行時間。",
-    parameters: { type: "OBJECT", properties: {} },
-  },
-  {
-    name: "task_action",
-    description: "立即執行、暫停或恢復指定任務。",
-    parameters: {
-      type: "OBJECT",
-      properties: {
-        id: { type: "STRING" },
-        action: { type: "STRING", enum: ["run", "pause", "resume"] },
-      },
-      required: ["id", "action"],
-    },
-  },
-];
 
 async function requestJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error ?? "NUBO 工具執行失敗");
+  if (!response.ok) throw new Error(payload.error ?? "NUBO工具執行失敗");
   return payload;
 }
 
 async function parseSocketMessage(data: unknown) {
   let text: string;
-
-  if (typeof data === "string") {
-    text = data;
-  } else if (data instanceof Blob) {
-    text = await data.text();
-  } else if (data instanceof ArrayBuffer) {
-    text = new TextDecoder().decode(data);
-  } else if (ArrayBuffer.isView(data)) {
-    text = new TextDecoder().decode(data);
-  } else {
-    throw new Error(`不支援的 WebSocket 訊息格式：${Object.prototype.toString.call(data)}`);
-  }
-
+  if (typeof data === "string") text = data;
+  else if (data instanceof Blob) text = await data.text();
+  else if (data instanceof ArrayBuffer) text = new TextDecoder().decode(data);
+  else if (ArrayBuffer.isView(data)) text = new TextDecoder().decode(data);
+  else throw new Error(`不支援的WebSocket訊息格式：${Object.prototype.toString.call(data)}`);
   return JSON.parse(text);
-}
-
-async function executeTool(call: FunctionCall) {
-  const name = call.name ?? "";
-  const args = call.args ?? {};
-  if (name === "list_tasks") return requestJson("/api/tasks", { cache: "no-store" });
-
-  if (name === "task_action") {
-    return requestJson("/api/tasks/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: args.id, action: args.action }),
-    });
-  }
-
-  if (name === "create_task") {
-    return requestJson("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: args.title,
-        kind: args.kind,
-        instruction: args.instruction,
-        condition: args.condition || undefined,
-        schedule: {
-          type: args.scheduleType,
-          runAt: args.firstRunAt || undefined,
-          intervalMinutes: args.intervalMinutes || undefined,
-          timezone: "Asia/Taipei",
-        },
-      }),
-    });
-  }
-
-  throw new Error(`不支援的工具：${name}`);
 }
 
 export function GeminiVoiceConsole() {
@@ -158,8 +70,8 @@ export function GeminiVoiceConsole() {
             setup: {
               model: `models/${tokenData.model}`,
               generationConfig: { responseModalities: ["AUDIO"] },
-              systemInstruction: { parts: [{ text: systemInstruction }] },
-              tools: [{ functionDeclarations }],
+              systemInstruction: { parts: [{ text: geminiSystemInstruction }] },
+              tools: [{ functionDeclarations: geminiFunctionDeclarations }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
             },
@@ -196,17 +108,21 @@ export function GeminiVoiceConsole() {
               }
             }
           }
+
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
-          if (typeof modelText === "string" && modelText.trim()) setTranscript(modelText.trim());
-          else if (typeof userText === "string" && userText.trim()) setTranscript(`你：${userText.trim()}`);
+          if (typeof modelText === "string" && modelText.trim()) {
+            setTranscript(modelText.trim());
+          } else if (typeof userText === "string" && userText.trim()) {
+            setTranscript(`你：${userText.trim()}`);
+          }
 
           const calls = message.toolCall?.functionCalls;
           if (Array.isArray(calls) && calls.length > 0) {
             const functionResponses = [];
             for (const call of calls as FunctionCall[]) {
               try {
-                const result = await executeTool(call);
+                const result = await executeNuboBrowserTool(call);
                 functionResponses.push({
                   id: call.id,
                   name: call.name,
@@ -226,14 +142,14 @@ export function GeminiVoiceConsole() {
           }
         } catch (cause) {
           console.error("Gemini Live message decode failed", cause, event.data);
-          setError("Gemini Live 訊息解析失敗，請更新程式後重新連線。");
+          setError("Gemini Live訊息或工具處理失敗，請查看PowerShell與瀏覽器主控台。");
           setState("error");
           socket.close();
         }
       };
 
       socket.onerror = () => {
-        setError("Gemini Live 連線發生錯誤，將可切換回 OpenAI 語音。");
+        setError("Gemini Live連線發生錯誤，可切換回OpenAI語音。");
         setState("error");
       };
 
@@ -241,21 +157,21 @@ export function GeminiVoiceConsole() {
         void microphoneRef.current?.stop();
         microphoneRef.current = null;
         if (!closingRef.current) {
-          setError("Gemini Live 連線已中斷，請重新啟動。");
+          setError("Gemini Live連線已中斷，請重新啟動。");
           setState("error");
         }
       };
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Gemini Live 啟動失敗");
+      setError(cause instanceof Error ? cause.message : "Gemini Live啟動失敗");
       setState("error");
     }
   };
 
   const stateLabel = {
-    idle: ["NUBO 待命", "Gemini Live 優先語音"],
-    connecting: ["正在連接 Gemini", "請允許麥克風權限"],
-    connected: ["NUBO 正在聆聽", "Gemini Live 已連線"],
-    error: ["Gemini 語音未連線", "可重新嘗試或切換 OpenAI"],
+    idle: ["NUBO待命", "Gemini Live語音與Actions工具"],
+    connecting: ["正在連接Gemini", "請允許麥克風權限"],
+    connected: ["NUBO正在聆聽", "研究、YouTube、Gmail與排程已啟用"],
+    error: ["Gemini語音未連線", "可重新嘗試或切換OpenAI"],
   }[state];
 
   return (
@@ -269,7 +185,7 @@ export function GeminiVoiceConsole() {
       </div>
       <div className="actions">
         <button className="primary" onClick={connect} disabled={state === "connecting" || state === "connected"}>
-          {state === "connecting" ? "連線中…" : "啟動 NUBO"}
+          {state === "connecting" ? "連線中…" : "啟動NUBO"}
         </button>
         <button className="secondary" onClick={() => void disconnect()} disabled={state === "idle"}>
           結束對話
@@ -278,9 +194,9 @@ export function GeminiVoiceConsole() {
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>Gemini Live</b><small>低延遲繁體中文語音與自然打斷。</small></div>
-        <div className="capability"><b>多引擎任務</b><small>Gemini、Ollama、Groq與OpenAI自動備援。</small></div>
-        <div className="capability"><b>安全權限</b><small>高風險外部操作仍需再次確認。</small></div>
+        <div className="capability"><b>研究Actions</b><small>自動搜尋、比較方案並提供解方。</small></div>
+        <div className="capability"><b>YouTube與Gmail</b><small>開音樂、讀信、草稿與確認寄送。</small></div>
+        <div className="capability"><b>排程工作流</b><small>定時研究、郵件摘要與白名單交付。</small></div>
       </div>
     </section>
   );
