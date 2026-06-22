@@ -6,15 +6,16 @@ type Props = {
   videoId: string;
   title: string;
   channelTitle: string;
+  origin: string;
 };
 
 export function YouTubeAutoplayPlayer({
   videoId,
   title,
   channelTitle,
+  origin,
 }: Props) {
   const src = useMemo(() => {
-    const origin = typeof window === "undefined" ? "" : window.location.origin;
     const params = new URLSearchParams({
       autoplay: "1",
       playsinline: "1",
@@ -24,7 +25,7 @@ export function YouTubeAutoplayPlayer({
       origin,
     });
     return `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${params.toString()}`;
-  }, [videoId]);
+  }, [origin, videoId]);
 
   return (
     <main className="youtube-player-shell">
