@@ -8,6 +8,7 @@ import {
   geminiSystemInstruction,
   type FunctionCall,
 } from "@/lib/browser-nubo-tools";
+import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 
@@ -138,6 +139,15 @@ export function GeminiVoiceConsole() {
           } else if (typeof userText === "string" && userText.trim()) {
             notifyNuboVoicePhase("thinking");
             setTranscript(`你：${userText.trim()}`);
+            void runLocalVoiceCommand(userText.trim())
+              .then((command) => {
+                if (command.handled) {
+                  setTranscript(`已執行本機音量指令：${userText.trim()}`);
+                }
+              })
+              .catch((cause) => {
+                setError(cause instanceof Error ? cause.message : "本機音量指令失敗");
+              });
           }
 
           const calls = message.toolCall?.functionCalls;
@@ -194,7 +204,7 @@ export function GeminiVoiceConsole() {
   const stateLabel = {
     idle: ["NUBO待命", "920粒子科技球與Gemini Live語音"],
     connecting: ["正在連接Gemini", "能量核心正在增強"],
-    connected: ["NUBO正在聆聽", "應用程式與系統控制已啟用"],
+    connected: ["NUBO正在聆聽", "應用程式與音量控制已啟用"],
     error: ["Gemini語音未連線", "球體已切換為錯誤狀態"],
   }[state];
 
@@ -218,8 +228,8 @@ export function GeminiVoiceConsole() {
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>應用程式控制</b><small>開啟LINE與Windows已安裝應用程式。</small></div>
-        <div className="capability"><b>系統控制</b><small>調整音量、靜音與內建螢幕亮度。</small></div>
+        <div className="capability"><b>應用程式控制</b><small>開啟LINE與固定白名單Windows應用程式。</small></div>
+        <div className="capability"><b>音量控制</b><small>語音設定、增加、降低、靜音與解除靜音。</small></div>
         <div className="capability"><b>研究與工作流</b><small>研究、郵件、任務與自動化。</small></div>
       </div>
     </section>
