@@ -1,8 +1,8 @@
 {
   "name": "nubo-voice",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "NUBO multi-engine voice agent and task center",
+  "description": "NUBO voice actions, Gmail, YouTube, research and task automation",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
