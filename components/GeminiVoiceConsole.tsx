@@ -12,6 +12,7 @@ import {
   geminiSystemInstruction,
   type FunctionCall,
 } from "@/lib/browser-nubo-tools";
+import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
@@ -204,7 +205,7 @@ export function GeminiVoiceConsole() {
   return (
     <section className="console voice-console" aria-live="polite">
       <div className="orb-wrap">
-        <div className={`orb ${state === "connected" ? "active" : ""}`} />
+        <NuboEnergyOrb />
       </div>
       <div className="status">
         <strong>{stateLabel[0]}</strong>
