@@ -1,8 +1,8 @@
 {
   "name": "nubo-voice",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
-  "description": "NUBO voice actions, Gmail, YouTube, research and task automation",
+  "description": "NUBO voice actions, Gmail, YouTube autoplay, research and task automation",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",

@@ -10,3 +10,4 @@ coverage/
 data/google-auth.json
 data/google-oauth-state.json
 data/pending-email-actions.json
+data/youtube-autoplay-profile/
