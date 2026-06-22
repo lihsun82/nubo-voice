@@ -33,6 +33,13 @@ function post(url: string, body: Record<string, unknown>) {
   });
 }
 
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
   window.dispatchEvent(
     new CustomEvent("nubo-voice-phase", { detail: { phase } }),
@@ -115,4 +122,50 @@ export async function openWebsiteInBrowser(target: string) {
 
 export async function openDesktopTool(app: string) {
   return post("/api/system/open-app", { app });
+}
+
+export function installNuboActionFetchBridge() {
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const rawUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    const url = new URL(rawUrl, window.location.origin);
+
+    if (
+      url.origin === window.location.origin &&
+      (url.pathname === "/api/youtube/open" ||
+        url.pathname === "/api/system/open-website")
+    ) {
+      try {
+        const body = init?.body ? JSON.parse(String(init.body)) : {};
+        const result =
+          url.pathname === "/api/youtube/open"
+            ? await playYouTubeInNubo(
+                String(body.query ?? ""),
+                body.service === "youtube" ? "youtube" : "youtube_music",
+              )
+            : await openWebsiteInBrowser(String(body.target ?? ""));
+        return jsonResponse(result);
+      } catch (error) {
+        return jsonResponse(
+          {
+            error:
+              error instanceof Error ? error.message : "NUBO瀏覽器動作失敗",
+          },
+          500,
+        );
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+
+  return () => {
+    window.fetch = originalFetch;
+  };
 }
