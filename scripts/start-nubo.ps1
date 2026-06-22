@@ -77,14 +77,26 @@ Get-CimInstance Win32_Process |
 
 Start-Sleep -Milliseconds 600
 
+$sessionPaths = @(
+  (Join-Path $profileDir "Default\Sessions"),
+  (Join-Path $profileDir "Default\Current Session"),
+  (Join-Path $profileDir "Default\Current Tabs"),
+  (Join-Path $profileDir "Default\Last Session"),
+  (Join-Path $profileDir "Default\Last Tabs")
+)
+
+foreach ($sessionPath in $sessionPaths) {
+  Remove-Item -Recurse -Force $sessionPath -ErrorAction SilentlyContinue
+}
+
 $browserArguments = @(
   "--user-data-dir=$profileDir",
   "--app=$appUrl",
-  "--autoplay-policy=no-user-gesture-required",
   "--no-first-run",
+  "--no-default-browser-check",
   "--disable-session-crashed-bubble",
-  "--disable-background-media-suspend"
+  "--disable-restore-session-state"
 )
 
 Start-Process -FilePath $browser -ArgumentList $browserArguments | Out-Null
-Write-Host "NUBO opened in one dedicated window with audible autoplay enabled."
+Write-Host "NUBO opened in one clean dedicated window."

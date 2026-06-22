@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   openDesktopTool,
   openWebsiteInBrowser,
-  playYouTubeInNubo,
   primeBrowserActions,
 } from "@/lib/browser-action-bridge";
 
@@ -22,30 +21,18 @@ type ProviderStatus = {
   providers: Array<{ name: string; configured: boolean; model: string }>;
 };
 
-type YouTubeStatus = {
-  configured: boolean;
-  autoplayMode: boolean;
-  playerUrl: string;
-};
-
 export function IntegrationCenter() {
   const [gmail, setGmail] = useState<GmailStatus | null>(null);
   const [providers, setProviders] = useState<ProviderStatus | null>(null);
-  const [youtube, setYouTube] = useState<YouTubeStatus | null>(null);
   const [message, setMessage] = useState("正在讀取整合狀態");
 
   const load = useCallback(async () => {
-    const [gmailResponse, providerResponse, youtubeResponse] = await Promise.all([
+    const [gmailResponse, providerResponse] = await Promise.all([
       fetch("/api/gmail/status", { cache: "no-store" }),
       fetch("/api/providers", { cache: "no-store" }),
-      fetch("/api/youtube/status", { cache: "no-store" }),
     ]);
-    const gmailData = await gmailResponse.json();
-    const providerData = await providerResponse.json();
-    const youtubeData = await youtubeResponse.json();
-    setGmail(gmailData);
-    setProviders(providerData);
-    setYouTube(youtubeData);
+    setGmail(await gmailResponse.json());
+    setProviders(await providerResponse.json());
     setMessage("整合狀態已更新");
   }, []);
 
@@ -65,25 +52,14 @@ export function IntegrationCenter() {
       "nubo-gmail-oauth",
       "width=620,height=760,noopener=no",
     );
-    if (!popup) setMessage("瀏覽器阻擋了OAuth視窗，請允許後再試一次");
-  };
-
-  const testYouTube = async () => {
-    try {
-      primeBrowserActions();
-      const result = await playYouTubeInNubo(
-        "relaxing hotel lobby music",
-        "youtube_music",
-      );
-      setMessage(result.message);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "YouTube測試失敗");
-    }
+    if (!popup) setMessage("瀏覽器阻擋了Gmail授權視窗，請允許後再試一次");
   };
 
   const testFacebook = async () => {
     try {
-      await openWebsiteInBrowser("facebook");
+      primeBrowserActions();
+      const result = await openWebsiteInBrowser("facebook");
+      setMessage(result.message);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "開啟Facebook失敗");
     }
@@ -134,36 +110,14 @@ export function IntegrationCenter() {
 
         <article className="integration-card">
           <div className="integration-card-top">
-            <strong>YouTube／YouTube Music</strong>
-            <span className={`badge ${youtube?.configured ? "active" : "paused"}`}>
-              {youtube?.configured ? "主頁單一播放器" : "待設定API Key"}
-            </span>
-          </div>
-          <p>音樂只在NUBO右下角播放器載入，不再開啟任何額外NUBO或YouTube視窗。</p>
-          <button
-            className="secondary"
-            onClick={() => void testYouTube()}
-            disabled={!youtube?.configured}
-          >
-            測試自動播放
-          </button>
-          {!youtube?.configured ? (
-            <small>請在.env.local設定YOUTUBE_API_KEY並重新啟動NUBO。</small>
-          ) : (
-            <small>要穩定有聲自動播放，請用scripts/start-nubo.ps1啟動專用單一視窗。</small>
-          )}
-        </article>
-
-        <article className="integration-card">
-          <div className="integration-card-top">
             <strong>網頁開啟</strong>
-            <span className="badge active">目前分頁</span>
+            <span className="badge active">新分頁</span>
           </div>
-          <p>Facebook、Gmail及指定網站會直接在目前分頁開啟，不再建立獨立動作視窗。</p>
+          <p>Facebook、Gmail及其他網站會在新的分頁開啟，NUBO主頁保持不動。</p>
           <button className="secondary" onClick={() => void testFacebook()}>
-            在目前分頁開啟Facebook
+            測試新分頁開啟Facebook
           </button>
-          <small>開啟後會離開NUBO頁面；使用瀏覽器返回即可回到NUBO。</small>
+          <small>啟動NUBO時會先準備一個可重複使用的網頁分頁。</small>
         </article>
 
         <article className="integration-card">
@@ -184,6 +138,14 @@ export function IntegrationCenter() {
           </div>
           <p>{providers ? providers.researchChain.join(" → ") : "載入中"}</p>
           <small>研究結果會附來源並存入NUBO收件匣。</small>
+        </article>
+
+        <article className="integration-card">
+          <div className="integration-card-top">
+            <strong>媒體播放</strong>
+            <span className="badge paused">已停用</span>
+          </div>
+          <p>自動播放及額外媒體視窗已移除，不會再隨NUBO一起開啟。</p>
         </article>
 
         <article className="integration-card">

@@ -8,13 +8,7 @@ export type NuboVoicePhase =
   | "speaking"
   | "error";
 
-export type YouTubePlayRequest = {
-  videoId: string;
-  title: string;
-  channelTitle: string;
-  query: string;
-  watchUrl: string;
-};
+let webTab: Window | null = null;
 
 async function requestJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
@@ -44,35 +38,24 @@ export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
   );
 }
 
-export function primeBrowserActions() {
-  notifyNuboVoicePhase("connecting");
-  window.dispatchEvent(new CustomEvent("nubo-media-prime"));
-  return true;
+function createWebTab() {
+  if (webTab && !webTab.closed) return true;
+
+  try {
+    webTab = window.open("/web-ready", "nubo-web-tab");
+    webTab?.blur();
+    window.focus();
+    return Boolean(webTab);
+  } catch {
+    webTab = null;
+    return false;
+  }
 }
 
-export async function playYouTubeInNubo(
-  query: string,
-  service: "youtube" | "youtube_music" = "youtube_music",
-) {
-  const result = (await post("/api/youtube/search", {
-    query,
-    service,
-  })) as YouTubePlayRequest;
-
-  window.dispatchEvent(
-    new CustomEvent<YouTubePlayRequest>("nubo-youtube-play", {
-      detail: result,
-    }),
-  );
-
-  return {
-    ok: true,
-    playback: "nubo_media_dock",
-    videoId: result.videoId,
-    title: result.title,
-    channelTitle: result.channelTitle,
-    message: `已在NUBO播放器播放：${result.title}`,
-  };
+export function primeBrowserActions() {
+  notifyNuboVoicePhase("connecting");
+  createWebTab();
+  return true;
 }
 
 export async function openWebsiteInBrowser(target: string) {
@@ -80,16 +63,24 @@ export async function openWebsiteInBrowser(target: string) {
     target,
   })) as { url: string };
 
-  window.setTimeout(() => {
-    window.location.assign(result.url);
-  }, 120);
+  if (!webTab || webTab.closed) {
+    const opened = createWebTab();
+    if (!opened || !webTab) {
+      throw new Error(
+        "瀏覽器阻擋新分頁。請允許NUBO開啟分頁，重新按一次啟動NUBO後再試。",
+      );
+    }
+  }
+
+  webTab.location.href = result.url;
+  webTab.focus();
 
   return {
     ok: true,
     opened: true,
-    mode: "same_tab",
+    mode: "new_tab",
     url: result.url,
-    message: `即將在目前分頁開啟：${result.url}`,
+    message: `已在新分頁開啟：${result.url}`,
   };
 }
 
@@ -116,13 +107,16 @@ export function installNuboActionFetchBridge() {
     ) {
       try {
         const body = init?.body ? JSON.parse(String(init.body)) : {};
-        const result =
-          url.pathname === "/api/youtube/open"
-            ? await playYouTubeInNubo(
-                String(body.query ?? ""),
-                body.service === "youtube" ? "youtube" : "youtube_music",
-              )
-            : await openWebsiteInBrowser(String(body.target ?? ""));
+
+        if (url.pathname === "/api/youtube/open") {
+          return jsonResponse({
+            ok: false,
+            disabled: true,
+            message: "YouTube自動播放已停用，不會開啟任何YouTube視窗。",
+          });
+        }
+
+        const result = await openWebsiteInBrowser(String(body.target ?? ""));
         return jsonResponse(result);
       } catch (error) {
         return jsonResponse(
