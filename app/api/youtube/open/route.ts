@@ -3,7 +3,11 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { searchYouTubeVideo } from "@/lib/youtube";
+import {
+  searchYouTubeVideo,
+  YouTubeApiError,
+  youtubeErrorSuggestion,
+} from "@/lib/youtube";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,7 +132,8 @@ export async function POST(request: Request) {
 
   try {
     const result = await searchYouTubeVideo(parsed.data.query);
-    const baseUrl = process.env.NUBO_PUBLIC_URL ?? "http://127.0.0.1:3000";
+    const requestOrigin = new URL(request.url).origin;
+    const baseUrl = process.env.NUBO_PUBLIC_URL?.trim() || requestOrigin;
     const playerUrl = new URL("/youtube-player", baseUrl);
     playerUrl.searchParams.set("videoId", result.videoId);
     playerUrl.searchParams.set("title", result.title);
@@ -147,8 +152,38 @@ export async function POST(request: Request) {
           : `無法自動開啟瀏覽器，請使用playerUrl播放：${result.title}`,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "YouTube播放失敗";
-    const status = message.includes("YOUTUBE_API_KEY") ? 503 : 502;
-    return NextResponse.json({ error: message }, { status });
+    if (error instanceof YouTubeApiError) {
+      const status =
+        error.reason === "missing_key" || error.reason === "api_not_enabled"
+          ? 503
+          : error.reason === "invalid_key" ||
+              error.reason === "key_restriction" ||
+              error.reason === "quota_exceeded"
+            ? 403
+            : error.reason === "no_results"
+              ? 404
+              : 502;
+
+      return NextResponse.json(
+        {
+          error: error.message,
+          reason: error.reason,
+          googleReason: error.googleReason,
+          suggestion: youtubeErrorSuggestion(error.reason),
+          diagnosticUrl: "/api/youtube/status",
+        },
+        { status },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "YouTube播放失敗",
+        reason: "unknown",
+        suggestion: youtubeErrorSuggestion("unknown"),
+        diagnosticUrl: "/api/youtube/status",
+      },
+      { status: 502 },
+    );
   }
 }
