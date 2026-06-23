@@ -124,6 +124,21 @@ function openDedicatedPlayer(url: string): {
   }
 }
 
+function resolvePlayerBaseUrl(request: Request) {
+  const requestOrigin = new URL(request.url).origin;
+  const configured = process.env.NUBO_PUBLIC_URL?.trim();
+
+  if (!configured) return requestOrigin;
+
+  try {
+    const configuredUrl = new URL(configured);
+    const isLocal = ["127.0.0.1", "localhost"].includes(configuredUrl.hostname);
+    return isLocal ? requestOrigin : configuredUrl.origin;
+  } catch {
+    return requestOrigin;
+  }
+}
+
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) {
@@ -132,9 +147,7 @@ export async function POST(request: Request) {
 
   try {
     const result = await searchYouTubeVideo(parsed.data.query);
-    const requestOrigin = new URL(request.url).origin;
-    const baseUrl = process.env.NUBO_PUBLIC_URL?.trim() || requestOrigin;
-    const playerUrl = new URL("/youtube-player", baseUrl);
+    const playerUrl = new URL("/youtube-player", resolvePlayerBaseUrl(request));
     playerUrl.searchParams.set("videoId", result.videoId);
     playerUrl.searchParams.set("title", result.title);
     playerUrl.searchParams.set("channel", result.channelTitle);
