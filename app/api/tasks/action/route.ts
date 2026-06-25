@@ -15,6 +15,8 @@ const schema = z.object({
   id: z.string().min(1),
 });
 
+const runningTaskIds = new Set<string>();
+
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) {
@@ -37,6 +39,15 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, task: updated });
   }
+
+  if (runningTaskIds.has(id)) {
+    return NextResponse.json(
+      { error: "此任務正在執行，已阻止重複觸發" },
+      { status: 409 },
+    );
+  }
+
+  runningTaskIds.add(id);
 
   const run: TaskRun = {
     id: crypto.randomUUID(),
@@ -80,5 +91,7 @@ export async function POST(request: Request) {
     await saveRun(run);
     await updateTask(id, { lastError: message, lastRunAt: run.finishedAt });
     return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    runningTaskIds.delete(id);
   }
 }
