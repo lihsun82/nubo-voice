@@ -10,6 +10,32 @@ import { addInboxItem } from "@/lib/inbox-store";
 import { generateResult } from "@/lib/report-generator";
 import type { NuboTask } from "@/lib/task-types";
 
+const activeEmailDeliveries = new Set<string>();
+const completedEmailDeliveries = new Map<string, number>();
+const EMAIL_DEDUPE_MS = 10 * 60 * 1000;
+
+function emailDeliveryKey(task: NuboTask, to: string, subject: string, output: string) {
+  return `${task.id}|${to.trim().toLowerCase()}|${subject.trim()}|${output.length}|${output.slice(0, 120)}`;
+}
+
+async function sendEmailOnce(task: NuboTask, to: string, subject: string, output: string) {
+  const key = emailDeliveryKey(task, to, subject, output);
+  const now = Date.now();
+  const lastSentAt = completedEmailDeliveries.get(key);
+
+  if (activeEmailDeliveries.has(key)) return false;
+  if (lastSentAt && now - lastSentAt < EMAIL_DEDUPE_MS) return false;
+
+  activeEmailDeliveries.add(key);
+  try {
+    await sendGmailMessage(to, subject, output);
+    completedEmailDeliveries.set(key, Date.now());
+    return true;
+  } finally {
+    activeEmailDeliveries.delete(key);
+  }
+}
+
 async function generateFromGmail(task: NuboTask): Promise<string> {
   if (task.source?.type !== "gmail") return generateResult(task);
   const summaries = await searchGmail(
@@ -66,12 +92,11 @@ export async function deliverTaskOutput(task: NuboTask, output: string) {
     note = `已建立Gmail草稿：${delivery.to}`;
   } else if (delivery.type === "gmail_send") {
     if (isEmailAutosendAllowed(delivery.to)) {
-      await sendGmailMessage(
-        delivery.to,
-        delivery.subject ?? task.title,
-        output,
-      );
-      note = `已自動寄送至白名單收件者：${delivery.to}`;
+      const subject = delivery.subject ?? task.title;
+      const sent = await sendEmailOnce(task, delivery.to, subject, output);
+      note = sent
+        ? `已自動寄送至白名單收件者：${delivery.to}`
+        : `已阻止重複郵件：${delivery.to}`;
     } else {
       await createGmailDraft(
         delivery.to,
