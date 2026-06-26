@@ -9,7 +9,10 @@ LINE_CHANNEL_SECRET=replace_with_channel_secret
 LINE_CHANNEL_ACCESS_TOKEN=replace_with_channel_access_token
 LINE_ALLOWED_USER_IDS=
 NUBO_INTERNAL_URL=http://127.0.0.1:3000
+NUBO_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 ```
+
+LINE voice control also requires `OPENAI_API_KEY` in `.env.local` for speech-to-text.
 
 Leave `LINE_ALLOWED_USER_IDS` empty for the first pairing test. Send any text to the LINE Official Account. NUBO will reply with your LINE user ID but will not execute commands. Then place that ID in `LINE_ALLOWED_USER_IDS` and restart NUBO.
 
@@ -30,8 +33,11 @@ Open:
 - `http://127.0.0.1:3000/api/line/status`
 
 A fully configured response has `ok: true` and `mode: authorized`.
+For voice control, `voiceTranscriptionConfigured` must also be `true`.
 
-## Supported commands
+## Supported text and voice commands
+
+You can type these commands or send them as a LINE voice message:
 
 - `播放 周杰倫 晴天`
 - `開啟LINE`
@@ -46,6 +52,8 @@ A fully configured response has `ok: true` and `mode: authorized`.
 - `列出任務`
 - `NUBO狀態`
 - `說明`
+
+Voice messages are limited to 3 minutes and 24 MB. NUBO downloads the LINE audio, transcribes it, shows the recognized text, and then applies the same safe command rules used for text messages.
 
 ## Security model
 

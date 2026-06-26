@@ -7,6 +7,7 @@ import {
   verifyLineSignature,
 } from "@/lib/line-messaging";
 import { executeLineRemoteText } from "@/lib/line-remote";
+import { transcribeLineAudio } from "@/lib/line-transcription";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ type LineWebhookEvent = {
     type?: string;
     id?: string;
     text?: string;
+    duration?: number;
   };
 };
 
@@ -70,6 +72,30 @@ async function replySafely(replyToken: string | undefined, text: string) {
   }
 }
 
+function isSupportedMessage(event: LineWebhookEvent) {
+  if (event.type !== "message") return false;
+  if (event.message?.type === "text") {
+    return typeof event.message.text === "string";
+  }
+  if (event.message?.type === "audio") {
+    return typeof event.message.id === "string";
+  }
+  return false;
+}
+
+async function executeTextCommand(
+  userId: string,
+  command: string,
+  requestOrigin: string,
+  prefix?: string,
+) {
+  const result = await executeLineRemoteText(command, requestOrigin);
+  await pushLineText(
+    userId,
+    prefix ? `${prefix}\n\n${result}` : result,
+  );
+}
+
 export async function POST(request: Request) {
   const rawBody = await request.text();
   const signature = request.headers.get("x-line-signature");
@@ -103,14 +129,7 @@ export async function POST(request: Request) {
 
   await Promise.all(
     events.map(async (event) => {
-      if (
-        event.type !== "message" ||
-        event.message?.type !== "text" ||
-        typeof event.message.text !== "string"
-      ) {
-        return;
-      }
-
+      if (!isSupportedMessage(event)) return;
       if (isDuplicateEvent(event.webhookEventId)) return;
 
       const userId = event.source?.userId;
@@ -144,7 +163,52 @@ export async function POST(request: Request) {
         return;
       }
 
-      const command = event.message.text.trim();
+      if (event.message?.type === "audio") {
+        const messageId = event.message.id;
+        const duration = event.message.duration ?? 0;
+        if (!messageId) return;
+
+        if (duration > 180_000) {
+          await replySafely(
+            event.replyToken,
+            "語音指令目前限制3分鐘內，請縮短後重新傳送。",
+          );
+          return;
+        }
+
+        await replySafely(
+          event.replyToken,
+          "NUBO已收到LINE語音，正在轉成文字並於家中電腦執行，完成後會回報。",
+        );
+
+        after(async () => {
+          try {
+            const transcription = await transcribeLineAudio(messageId);
+            const recognized = transcription.text;
+            await executeTextCommand(
+              userId,
+              recognized,
+              requestOrigin,
+              `語音辨識：${recognized}`,
+            );
+          } catch (error) {
+            console.error("LINE voice execution failed", error);
+            try {
+              await pushLineText(
+                userId,
+                `NUBO語音指令失敗：${error instanceof Error ? error.message : "未知錯誤"}`,
+              );
+            } catch (pushError) {
+              console.error("LINE voice failure notification failed", pushError);
+            }
+          }
+        });
+        return;
+      }
+
+      const command = event.message?.text?.trim();
+      if (!command) return;
+
       await replySafely(
         event.replyToken,
         `NUBO已收到遠端指令：${command.slice(0, 100)}\n正在家中電腦執行，完成後會回報。`,
@@ -152,8 +216,7 @@ export async function POST(request: Request) {
 
       after(async () => {
         try {
-          const result = await executeLineRemoteText(command, requestOrigin);
-          await pushLineText(userId, result);
+          await executeTextCommand(userId, command, requestOrigin);
         } catch (error) {
           console.error("LINE remote execution failed", error);
           try {
