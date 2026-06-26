@@ -1,7 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const LINE_API_BASE = "https://api.line.me";
+const LINE_DATA_API_BASE = "https://api-data.line.me";
 const LINE_TEXT_LIMIT = 4500;
+const LINE_CONTENT_LIMIT_BYTES = 24 * 1024 * 1024;
 
 function requireEnv(name: "LINE_CHANNEL_SECRET" | "LINE_CHANNEL_ACCESS_TOKEN") {
   const value = process.env[name]?.trim();
@@ -62,6 +64,54 @@ async function lineApiRequest(path: string, body: unknown) {
   }
 }
 
+export async function getLineMessageContent(messageId: string) {
+  const accessToken = requireEnv("LINE_CHANNEL_ACCESS_TOKEN");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    const response = await fetch(
+      `${LINE_DATA_API_BASE}/v2/bot/message/${encodeURIComponent(messageId)}/content`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+        cache: "no-store",
+      },
+    );
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => "");
+      throw new Error(
+        message || `LINE語音內容下載失敗：${response.status}`,
+      );
+    }
+
+    const contentLength = Number(response.headers.get("content-length") ?? 0);
+    if (contentLength > LINE_CONTENT_LIMIT_BYTES) {
+      throw new Error("LINE語音檔超過24MB，請縮短語音後再試。");
+    }
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength === 0) throw new Error("LINE語音檔內容為空");
+    if (bytes.byteLength > LINE_CONTENT_LIMIT_BYTES) {
+      throw new Error("LINE語音檔超過24MB，請縮短語音後再試。");
+    }
+
+    return {
+      bytes,
+      contentType: response.headers.get("content-type") || "audio/mp4",
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("下載LINE語音逾時，請稍後重試。");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function replyLineText(replyToken: string, text: string) {
   await lineApiRequest("/v2/bot/message/reply", {
     replyToken,
@@ -84,6 +134,9 @@ export function getLineRemoteConfigStatus() {
       process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim(),
     ),
     allowedUserCount: allowedUsers.length,
+    voiceTranscriptionConfigured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+    voiceTranscriptionModel:
+      process.env.NUBO_TRANSCRIBE_MODEL?.trim() || "gpt-4o-mini-transcribe",
     internalUrl:
       process.env.NUBO_INTERNAL_URL?.trim() || "依Webhook來源自動判斷",
   };
