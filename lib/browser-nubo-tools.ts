@@ -13,17 +13,19 @@ export const geminiSystemInstruction = `
 1. 使用者提出問題或要找解方時，主動呼叫research_now，不要只給一般性建議。
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
 3. 使用者要開啟Facebook、Google、Gmail、網站或網址時，呼叫open_website。
-4. 使用者要開啟計算機、記事本、小畫家、檔案總管、設定或時鐘時，呼叫open_desktop_app。
-5. 使用者問郵件時，先用gmail_search，再視需要用gmail_read；摘要時不得捏造內容。
-6. 使用者要寄信時，可以建立草稿。若要正式寄出，先呼叫gmail_prepare_send並覆誦收件者、主旨與內容摘要。只有下一句明確說確認寄出，才呼叫gmail_confirm_send。
-7. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
-8. 使用者要求排程結果寄信時設定deliveryType。gmail_send只有環境白名單允許才會自動寄出，否則建立草稿。
-9. 時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
-10. 使用者說現在就做時，建立任務後再呼叫task_action的run。
+4. 使用者要關閉Facebook、Gmail、YouTube、Chrome、Edge或瀏覽器視窗時，呼叫close_webpage。
+5. 使用者要開啟計算機、記事本、小畫家、檔案總管、設定或時鐘時，呼叫open_desktop_app。
+6. 使用者問郵件時，先用gmail_search，再視需要用gmail_read；摘要時不得捏造內容。
+7. 使用者要寄信時，可以建立草稿。若要正式寄出，先呼叫gmail_prepare_send並覆誦收件者、主旨與內容摘要。只有下一句明確說確認寄出，才呼叫gmail_confirm_send。
+8. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
+9. 使用者要求排程結果寄信時設定deliveryType。gmail_send只有環境白名單允許才會自動寄出，否則建立草稿。
+10. 時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
+11. 使用者說現在就做時，建立任務後再呼叫task_action的run。
 
 安全規則：
-- 研究、讀信、摘要、建立草稿、播放YouTube、開啟網頁與白名單Windows工具可直接執行。
+- 研究、讀信、摘要、建立草稿、播放YouTube、開啟網頁、關閉瀏覽器視窗與白名單Windows工具可直接執行。
 - open_website只允許HTTP與HTTPS；open_desktop_app只允許預先列出的Windows工具。
+- close_webpage只能關閉可見瀏覽器視窗，不能刪檔、不能關機、不能執行任意命令。
 - 正式寄信必須兩階段確認；排程自動寄送只允許環境白名單。
 - 付款、轉帳、刪除、改價、取消訂單、正式PMS操作不得自行執行。
 - 不得假裝完成尚未串接或失敗的操作。
@@ -97,6 +99,15 @@ export const geminiFunctionDeclarations = [
   {
     name: "open_website",
     description: "開啟Facebook、Google、Gmail、任意HTTP/HTTPS網址或搜尋關鍵字。",
+    parameters: {
+      type: "OBJECT",
+      properties: { target: { type: "STRING" } },
+      required: ["target"],
+    },
+  },
+  {
+    name: "close_webpage",
+    description: "關閉可見瀏覽器視窗，例如Facebook、Gmail、YouTube、Chrome、Edge或瀏覽器。",
     parameters: {
       type: "OBJECT",
       properties: { target: { type: "STRING" } },
@@ -200,6 +211,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "research_now") return post("/api/research/run", { question: args.question, title: args.title || undefined });
   if (name === "open_youtube") return post("/api/youtube/open", { query: args.query, service: args.service || "youtube_music" });
   if (name === "open_website") return post("/api/system/open-website", { target: args.target });
+  if (name === "close_webpage") return post("/api/system/browser-window", { action: "close", target: args.target || "browser" });
   if (name === "open_desktop_app") return post("/api/system/open-app", { app: args.app });
   if (name === "gmail_search") return post("/api/gmail/search", { query: args.query, maxResults: args.maxResults || 10 });
   if (name === "gmail_read") return post("/api/gmail/read", { id: args.id });
