@@ -1,5 +1,5 @@
+import { GeminiVoiceSessionGuard } from "@/components/GeminiVoiceSessionGuard";
 import { IntegrationCenter } from "@/components/IntegrationCenter";
-import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { TaskCenter } from "@/components/TaskCenter";
 
 export default function HomePage() {
@@ -10,7 +10,7 @@ export default function HomePage() {
         <h1>NUBO</h1>
         <p className="subtitle">560px紫藍能量核心、920粒子、LINE與音量語音控制</p>
       </section>
-      <NuboVoiceConsole />
+      <GeminiVoiceSessionGuard />
       <IntegrationCenter />
       <TaskCenter />
       <footer>
