@@ -10,6 +10,7 @@ import {
 } from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
+import { playTechSearchSound, speakNuboNotice } from "@/lib/nubo-feedback-audio";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -31,12 +32,19 @@ async function parseSocketMessage(data: unknown) {
   return JSON.parse(text);
 }
 
+function shouldAcknowledgeQuestion(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return false;
+  return /[?？嗎呢]|查|找|搜尋|幫我|怎麼|如何|為什麼|哪個|多少|是否|可以|解決|分析/.test(normalized);
+}
+
 export function GeminiVoiceConsole() {
   const socketRef = useRef<WebSocket | null>(null);
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
   const phaseTimerRef = useRef<number | null>(null);
+  const lastUserTextRef = useRef("");
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -54,6 +62,15 @@ export function GeminiVoiceConsole() {
     phaseTimerRef.current = window.setTimeout(() => {
       notifyNuboVoicePhase("listening");
     }, 1500);
+  };
+
+  const acknowledgeQuestion = (text: string) => {
+    const trimmed = text.trim();
+    if (!shouldAcknowledgeQuestion(trimmed)) return;
+    if (lastUserTextRef.current === trimmed) return;
+    lastUserTextRef.current = trimmed;
+    speakNuboNotice("請稍等！");
+    setTranscript(`請稍等！我正在處理：${trimmed}`);
   };
 
   const disconnect = async () => {
@@ -137,16 +154,18 @@ export function GeminiVoiceConsole() {
           if (typeof modelText === "string" && modelText.trim()) {
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
+            const trimmedUserText = userText.trim();
             notifyNuboVoicePhase("thinking");
-            setTranscript(`你：${userText.trim()}`);
-            void runLocalVoiceCommand(userText.trim())
+            acknowledgeQuestion(trimmedUserText);
+            setTranscript((current) => current || `你：${trimmedUserText}`);
+            void runLocalVoiceCommand(trimmedUserText)
               .then((command) => {
                 if (command.handled) {
-                  setTranscript(`已執行本機音量指令：${userText.trim()}`);
+                  setTranscript(`已執行本機指令：${trimmedUserText}`);
                 }
               })
               .catch((cause) => {
-                setError(cause instanceof Error ? cause.message : "本機音量指令失敗");
+                setError(cause instanceof Error ? cause.message : "本機指令失敗");
               });
           }
 
@@ -156,6 +175,10 @@ export function GeminiVoiceConsole() {
             const functionResponses = [];
             for (const call of calls as FunctionCall[]) {
               try {
+                if (call.name === "research_now") {
+                  speakNuboNotice("請稍等！");
+                  playTechSearchSound(2400);
+                }
                 const result = await executeNuboBrowserTool(call);
                 functionResponses.push({
                   id: call.id,
@@ -204,7 +227,7 @@ export function GeminiVoiceConsole() {
   const stateLabel = {
     idle: ["NUBO待命", "920粒子科技球與Gemini Live語音"],
     connecting: ["正在連接Gemini", "能量核心正在增強"],
-    connected: ["NUBO正在聆聽", "應用程式與音量控制已啟用"],
+    connected: ["NUBO正在聆聽", "應用程式、網頁、Gmail與搜尋音效已啟用"],
     error: ["Gemini語音未連線", "球體已切換為錯誤狀態"],
   }[state];
 
@@ -229,8 +252,8 @@ export function GeminiVoiceConsole() {
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
         <div className="capability"><b>應用程式控制</b><small>開啟LINE與固定白名單Windows應用程式。</small></div>
-        <div className="capability"><b>音量控制</b><small>語音設定、增加、降低、靜音與解除靜音。</small></div>
-        <div className="capability"><b>研究與工作流</b><small>研究、郵件、任務與自動化。</small></div>
+        <div className="capability"><b>NUBO喚醒</b><small>呼叫nubo時會把NUBO網頁帶回桌面。</small></div>
+        <div className="capability"><b>研究與Gmail</b><small>查找資料有請稍等提示與科技搜尋音效。</small></div>
       </div>
     </section>
   );
