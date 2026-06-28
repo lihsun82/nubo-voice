@@ -215,7 +215,7 @@ export function GeminiVoiceConsole() {
                 playbackRef.current?.interrupt();
                 if ("speechSynthesis" in window) window.speechSynthesis.cancel();
                 await disconnect();
-                setTranscript("NUBO已退下，停止收音與播放。再次使用請說 ha nubo 或按啟動NUBO。");
+                setTranscript("NUBO已退下，停止收音與播放。再次使用請按啟動NUBO。");
                 return;
               }
               setTranscript(`已執行本機指令：${trimmedUserText}`);
