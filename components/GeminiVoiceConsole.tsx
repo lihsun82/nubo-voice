@@ -159,8 +159,9 @@ export function GeminiVoiceConsole() {
           const message = await parseSocketMessage(event.data);
 
           const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
-          if (sessionUpdate?.resumable && typeof sessionUpdate.newHandle === "string") {
-            sessionHandleRef.current = sessionUpdate.newHandle;
+          const newHandle = sessionUpdate?.newHandle ?? sessionUpdate?.new_handle;
+          if (sessionUpdate?.resumable && typeof newHandle === "string") {
+            sessionHandleRef.current = newHandle;
           }
 
           const goAway = message.goAway ?? message.go_away;
