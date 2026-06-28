@@ -50,11 +50,33 @@ function isWakePhrase(text: string) {
   );
 }
 
+function isStandbyPhrase(text: string) {
+  return (
+    text === "安靜" ||
+    text === "閉嘴" ||
+    text === "退下" ||
+    text === "先安靜" ||
+    text === "nubo安靜" ||
+    text === "nubo閉嘴" ||
+    text === "nubo退下" ||
+    text.includes("請你安靜") ||
+    text.includes("你先安靜") ||
+    text.includes("先退下") ||
+    text.includes("停止收音") ||
+    text.includes("停止說話") ||
+    text.includes("不要講話")
+  );
+}
+
 export async function runLocalVoiceCommand(text: string) {
   const normalized = text.replace(/\s+/g, "").toLowerCase();
 
   if (isWakePhrase(normalized)) {
     return { handled: true, type: "nubo", result: await postJson("/api/system/show-nubo") };
+  }
+
+  if (isStandbyPhrase(normalized)) {
+    return { handled: true, type: "standby", result: { message: "NUBO已退下" } };
   }
 
   if (normalized.includes("解除靜音") || normalized.includes("取消靜音")) {
