@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { controlTapoSmartPlug, isTapoSmartPlugConfigured } from "@/lib/tapo-smart-plug";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,12 +41,32 @@ export async function POST(request: Request) {
   }
 
   const { action, room, device } = parsed.data;
+
+  if (isTapoSmartPlugConfigured()) {
+    try {
+      const result = await controlTapoSmartPlug(action);
+      return NextResponse.json({ ...result, room, device });
+    } catch (cause) {
+      return NextResponse.json(
+        {
+          error: cause instanceof Error ? `Tapo P100控制失敗：${cause.message}` : "Tapo P100控制失敗",
+          provider: "tapo",
+          action,
+          room,
+          device,
+        },
+        { status: 502 },
+      );
+    }
+  }
+
   const homeAssistantUrl = getHomeAssistantUrl(action);
   const url = getWebhookUrl(action) || homeAssistantUrl;
   if (!url) {
     return NextResponse.json(
       {
-        error: "尚未設定智慧插座/智慧燈控制網址。可設定 NUBO_LIGHT_ON_URL / NUBO_LIGHT_OFF_URL，或設定 NUBO_HOME_ASSISTANT_URL + NUBO_HOME_ASSISTANT_ENTITY_ID。",
+        error:
+          "尚未設定智慧插座/智慧燈控制方式。Tapo P100可設定 NUBO_TAPO_EMAIL / NUBO_TAPO_PASSWORD / NUBO_TAPO_DEVICE_IP；或設定 NUBO_LIGHT_ON_URL / NUBO_LIGHT_OFF_URL；或設定 NUBO_HOME_ASSISTANT_URL + NUBO_HOME_ASSISTANT_ENTITY_ID。",
       },
       { status: 503 },
     );
@@ -74,5 +95,5 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, action, room, device });
+  return NextResponse.json({ ok: true, provider: homeAssistantUrl ? "home-assistant" : "webhook", action, room, device });
 }
