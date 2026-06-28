@@ -47,18 +47,11 @@ export class MicrophonePcmStream {
   private mute: GainNode | null = null;
 
   async start(onAudio: (base64: string) => void) {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    this.context = new AudioContext({ latencyHint: "interactive" });
+    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.context = new AudioContext();
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
-    this.processor = this.context.createScriptProcessor(2048, 1, 1);
+    this.processor = this.context.createScriptProcessor(4096, 1, 1);
     this.mute = this.context.createGain();
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
@@ -91,7 +84,7 @@ export class PcmPlaybackQueue {
   private sources = new Set<AudioBufferSourceNode>();
 
   private async ensureContext() {
-    if (!this.context) this.context = new AudioContext({ latencyHint: "interactive" });
+    if (!this.context) this.context = new AudioContext();
     if (this.context.state === "suspended") await this.context.resume();
     return this.context;
   }
@@ -109,12 +102,7 @@ export class PcmPlaybackQueue {
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(context.destination);
-
-    const current = context.currentTime;
-    if (this.nextStart < current || this.nextStart > current + 0.35) {
-      this.nextStart = current + 0.02;
-    }
-    const startAt = Math.max(current + 0.01, this.nextStart);
+    const startAt = Math.max(context.currentTime, this.nextStart);
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
     this.sources.add(source);
