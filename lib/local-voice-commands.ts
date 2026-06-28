@@ -17,8 +17,35 @@ async function postSetting(url: string, action: string, value = 10) {
   return result;
 }
 
+async function postJson(url: string, body: Record<string, unknown> = {}) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "操作失敗");
+  return result;
+}
+
+function isWakePhrase(text: string) {
+  return (
+    text === "nubo" ||
+    text === "努寶" ||
+    text.includes("叫nubo出來") ||
+    text.includes("喚醒nubo") ||
+    text.includes("打開nubo") ||
+    text.includes("nubo出來") ||
+    text.includes("nubo跳出來")
+  );
+}
+
 export async function runLocalVoiceCommand(text: string) {
   const normalized = text.replace(/\s+/g, "").toLowerCase();
+
+  if (isWakePhrase(normalized)) {
+    return { handled: true, type: "nubo", result: await postJson("/api/system/show-nubo") };
+  }
 
   if (normalized.includes("解除靜音") || normalized.includes("取消靜音")) {
     return { handled: true, type: "audio", result: await postSetting("/api/device/audio", "unmute") };
