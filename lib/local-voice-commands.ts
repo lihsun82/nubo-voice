@@ -31,12 +31,22 @@ async function postJson(url: string, body: Record<string, unknown> = {}) {
 function isWakePhrase(text: string) {
   return (
     text === "nubo" ||
+    text === "hanubo" ||
+    text === "heynubo" ||
+    text === "ha努寶" ||
+    text === "hey努寶" ||
+    text === "哈nubo" ||
+    text === "嘿nubo" ||
     text === "努寶" ||
+    text === "哈努寶" ||
+    text === "嘿努寶" ||
     text.includes("叫nubo出來") ||
     text.includes("喚醒nubo") ||
     text.includes("打開nubo") ||
     text.includes("nubo出來") ||
-    text.includes("nubo跳出來")
+    text.includes("nubo跳出來") ||
+    text.includes("hanubo出來") ||
+    text.includes("hanubo跳出來")
   );
 }
 
