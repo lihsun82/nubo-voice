@@ -18,11 +18,19 @@ function getWebhookUrl(action: LightAction) {
   return process.env.NUBO_LIGHT_TOGGLE_URL;
 }
 
+function getHomeAssistantDomain(entityId: string) {
+  const domain = entityId.split(".")[0];
+  if (domain === "switch" || domain === "light") return domain;
+  return process.env.NUBO_HOME_ASSISTANT_DOMAIN || "switch";
+}
+
 function getHomeAssistantUrl(action: LightAction) {
   const baseUrl = process.env.NUBO_HOME_ASSISTANT_URL?.replace(/\/+$/, "");
-  if (!baseUrl || !process.env.NUBO_HOME_ASSISTANT_ENTITY_ID) return "";
+  const entityId = process.env.NUBO_HOME_ASSISTANT_ENTITY_ID;
+  if (!baseUrl || !entityId) return "";
+  const domain = getHomeAssistantDomain(entityId);
   const service = action === "on" ? "turn_on" : action === "off" ? "turn_off" : "toggle";
-  return `${baseUrl}/api/services/light/${service}`;
+  return `${baseUrl}/api/services/${domain}/${service}`;
 }
 
 export async function POST(request: Request) {
@@ -37,7 +45,7 @@ export async function POST(request: Request) {
   if (!url) {
     return NextResponse.json(
       {
-        error: "尚未設定智慧燈控制網址。可設定 NUBO_LIGHT_ON_URL / NUBO_LIGHT_OFF_URL，或設定 NUBO_HOME_ASSISTANT_URL + NUBO_HOME_ASSISTANT_ENTITY_ID。",
+        error: "尚未設定智慧插座/智慧燈控制網址。可設定 NUBO_LIGHT_ON_URL / NUBO_LIGHT_OFF_URL，或設定 NUBO_HOME_ASSISTANT_URL + NUBO_HOME_ASSISTANT_ENTITY_ID。",
       },
       { status: 503 },
     );
@@ -61,7 +69,7 @@ export async function POST(request: Request) {
   const text = await response.text().catch(() => "");
   if (!response.ok) {
     return NextResponse.json(
-      { error: `智慧燈控制失敗：${response.status}`, detail: text.slice(0, 500) },
+      { error: `智慧插座/智慧燈控制失敗：${response.status}`, detail: text.slice(0, 500) },
       { status: 502 },
     );
   }
