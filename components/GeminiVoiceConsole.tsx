@@ -209,18 +209,22 @@ export function GeminiVoiceConsole() {
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
             const trimmedUserText = userText.trim();
+            const command = await runLocalVoiceCommand(trimmedUserText);
+            if (command.handled) {
+              if (command.type === "standby") {
+                playbackRef.current?.interrupt();
+                if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+                await disconnect();
+                setTranscript("NUBO已退下，停止收音與播放。再次使用請說 ha nubo 或按啟動NUBO。");
+                return;
+              }
+              setTranscript(`已執行本機指令：${trimmedUserText}`);
+              return;
+            }
+
             notifyNuboVoicePhase("thinking");
             acknowledgeQuestion(trimmedUserText);
             setTranscript((current) => current || `你：${trimmedUserText}`);
-            void runLocalVoiceCommand(trimmedUserText)
-              .then((command) => {
-                if (command.handled) {
-                  setTranscript(`已執行本機指令：${trimmedUserText}`);
-                }
-              })
-              .catch((cause) => {
-                setError(cause instanceof Error ? cause.message : "本機指令失敗");
-              });
           }
 
           const calls = message.toolCall?.functionCalls;
