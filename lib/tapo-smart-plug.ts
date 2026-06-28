@@ -20,6 +20,23 @@ function getRequiredEnv(name: string) {
   return value;
 }
 
+function getTapoPassword() {
+  const encoded = process.env.NUBO_TAPO_PASSWORD_B64?.trim();
+  if (encoded) {
+    try {
+      const decoded = Buffer.from(encoded, "base64").toString("utf8");
+      if (!decoded) throw new Error("base64解碼後為空");
+      return decoded;
+    } catch {
+      throw new Error("NUBO_TAPO_PASSWORD_B64格式錯誤，請重新產生Base64密碼");
+    }
+  }
+
+  const value = process.env.NUBO_TAPO_PASSWORD;
+  if (!value) throw new Error("缺少環境變數：NUBO_TAPO_PASSWORD 或 NUBO_TAPO_PASSWORD_B64");
+  return value;
+}
+
 function withTimeout<T>(task: Promise<T>, timeoutMs = DEFAULT_TIMEOUT_MS) {
   return Promise.race([
     task,
@@ -59,14 +76,14 @@ function readPowerState(info: TapoDeviceInfo) {
 export function isTapoSmartPlugConfigured() {
   return Boolean(
     process.env.NUBO_TAPO_EMAIL?.trim() &&
-      process.env.NUBO_TAPO_PASSWORD?.trim() &&
+      (process.env.NUBO_TAPO_PASSWORD?.length || process.env.NUBO_TAPO_PASSWORD_B64?.trim()) &&
       process.env.NUBO_TAPO_DEVICE_IP?.trim(),
   );
 }
 
 export async function controlTapoSmartPlug(action: TapoAction) {
   const email = getRequiredEnv("NUBO_TAPO_EMAIL");
-  const password = getRequiredEnv("NUBO_TAPO_PASSWORD");
+  const password = getTapoPassword();
   const ip = getRequiredEnv("NUBO_TAPO_DEVICE_IP");
   const timeoutMs = Number(process.env.NUBO_TAPO_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
 
