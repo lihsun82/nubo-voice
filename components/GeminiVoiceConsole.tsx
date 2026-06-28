@@ -44,6 +44,9 @@ export function GeminiVoiceConsole() {
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
   const phaseTimerRef = useRef<number | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const sessionHandleRef = useRef<string | null>(null);
   const lastUserTextRef = useRef("");
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
@@ -55,6 +58,12 @@ export function GeminiVoiceConsole() {
     else if (state === "connected") notifyNuboVoicePhase("listening");
     else notifyNuboVoicePhase("error");
   }, [state]);
+
+  const clearReconnectTimer = () => {
+    if (!reconnectTimerRef.current) return;
+    window.clearTimeout(reconnectTimerRef.current);
+    reconnectTimerRef.current = null;
+  };
 
   const markSpeaking = () => {
     notifyNuboVoicePhase("speaking");
@@ -73,8 +82,31 @@ export function GeminiVoiceConsole() {
     setTranscript(`請稍等！我正在處理：${trimmed}`);
   };
 
+  const scheduleReconnect = (reason = "Gemini Live連線已中斷") => {
+    if (closingRef.current || reconnectTimerRef.current) return;
+    const attempt = reconnectAttemptsRef.current + 1;
+    reconnectAttemptsRef.current = attempt;
+
+    if (attempt > 5) {
+      setError(`${reason}，已嘗試自動重連5次仍失敗。請重新啟動NUBO或檢查網路/API額度。`);
+      setState("error");
+      return;
+    }
+
+    const delayMs = Math.min(8000, 1000 * 2 ** Math.max(0, attempt - 1));
+    setError("");
+    setState("connecting");
+    setTranscript(`${reason}，NUBO正在自動續接，第${attempt}次重連…`);
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      void connect(true);
+    }, delayMs);
+  };
+
   const disconnect = async () => {
     closingRef.current = true;
+    clearReconnectTimer();
+    reconnectAttemptsRef.current = 0;
     socketRef.current?.close();
     socketRef.current = null;
     await microphoneRef.current?.stop();
@@ -85,9 +117,14 @@ export function GeminiVoiceConsole() {
     setError("");
   };
 
-  const connect = async () => {
+  const connect = async (isReconnect = false) => {
+    clearReconnectTimer();
     setError("");
-    setTranscript("");
+    if (!isReconnect) {
+      sessionHandleRef.current = null;
+      reconnectAttemptsRef.current = 0;
+      setTranscript("");
+    }
     setState("connecting");
     closingRef.current = false;
 
@@ -110,6 +147,8 @@ export function GeminiVoiceConsole() {
               tools: [{ functionDeclarations: geminiFunctionDeclarations }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
+              contextWindowCompression: { slidingWindow: {} },
+              sessionResumption: sessionHandleRef.current ? { handle: sessionHandleRef.current } : {},
             },
           }),
         );
@@ -118,7 +157,21 @@ export function GeminiVoiceConsole() {
       socket.onmessage = async (event) => {
         try {
           const message = await parseSocketMessage(event.data);
+
+          const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
+          if (sessionUpdate?.resumable && typeof sessionUpdate.newHandle === "string") {
+            sessionHandleRef.current = sessionUpdate.newHandle;
+          }
+
+          const goAway = message.goAway ?? message.go_away;
+          if (goAway && !closingRef.current) {
+            setTranscript("Gemini即將重置連線，NUBO正在自動續接…");
+            socket.close(1000, "Gemini GoAway reconnect");
+            return;
+          }
+
           if (message.setupComplete) {
+            reconnectAttemptsRef.current = 0;
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
             await microphone.start((data) => {
@@ -199,28 +252,33 @@ export function GeminiVoiceConsole() {
           }
         } catch (cause) {
           console.error("Gemini Live message decode failed", cause, event.data);
-          setError("Gemini Live訊息或工具處理失敗，請查看PowerShell與瀏覽器主控台。");
-          setState("error");
-          socket.close();
+          setError("Gemini Live訊息或工具處理失敗，NUBO將嘗試自動重連。");
+          socket.close(1011, "Gemini message handling failed");
         }
       };
 
       socket.onerror = () => {
-        setError("Gemini Live連線發生錯誤，可切換回OpenAI語音。");
-        setState("error");
+        setTranscript("Gemini Live連線異常，NUBO準備自動重連…");
       };
 
       socket.onclose = () => {
         void microphoneRef.current?.stop();
+        void playbackRef.current?.close();
         microphoneRef.current = null;
+        playbackRef.current = null;
+        socketRef.current = null;
         if (!closingRef.current) {
-          setError("Gemini Live連線已中斷，請重新啟動。");
-          setState("error");
+          scheduleReconnect("Gemini Live連線被重置");
         }
       };
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Gemini Live啟動失敗");
-      setState("error");
+      const message = cause instanceof Error ? cause.message : "Gemini Live啟動失敗";
+      if (isReconnect && !closingRef.current) {
+        scheduleReconnect(message);
+      } else {
+        setError(message);
+        setState("error");
+      }
     }
   };
 
@@ -241,7 +299,7 @@ export function GeminiVoiceConsole() {
         <span>{stateLabel[1]}</span>
       </div>
       <div className="actions">
-        <button className="primary" onClick={connect} disabled={state === "connecting" || state === "connected"}>
+        <button className="primary" onClick={() => void connect()} disabled={state === "connecting" || state === "connected"}>
           {state === "connecting" ? "連線中…" : "啟動NUBO"}
         </button>
         <button className="secondary" onClick={() => void disconnect()} disabled={state === "idle"}>
