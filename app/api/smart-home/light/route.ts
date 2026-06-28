@@ -4,16 +4,25 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type LightAction = "on" | "off" | "toggle";
+
 const schema = z.object({
   action: z.enum(["on", "off", "toggle"]),
   room: z.string().max(80).optional(),
   device: z.string().max(80).optional(),
 });
 
-function getWebhookUrl(action: "on" | "off" | "toggle") {
+function getWebhookUrl(action: LightAction) {
   if (action === "on") return process.env.NUBO_LIGHT_ON_URL;
   if (action === "off") return process.env.NUBO_LIGHT_OFF_URL;
   return process.env.NUBO_LIGHT_TOGGLE_URL;
+}
+
+function getHomeAssistantUrl(action: LightAction) {
+  const baseUrl = process.env.NUBO_HOME_ASSISTANT_URL?.replace(/\/+$/, "");
+  if (!baseUrl || !process.env.NUBO_HOME_ASSISTANT_ENTITY_ID) return "";
+  const service = action === "on" ? "turn_on" : action === "off" ? "turn_off" : "toggle";
+  return `${baseUrl}/api/services/light/${service}`;
 }
 
 export async function POST(request: Request) {
@@ -23,25 +32,29 @@ export async function POST(request: Request) {
   }
 
   const { action, room, device } = parsed.data;
-  const url = getWebhookUrl(action);
+  const homeAssistantUrl = getHomeAssistantUrl(action);
+  const url = getWebhookUrl(action) || homeAssistantUrl;
   if (!url) {
     return NextResponse.json(
       {
-        error: `尚未設定 ${action === "on" ? "NUBO_LIGHT_ON_URL" : action === "off" ? "NUBO_LIGHT_OFF_URL" : "NUBO_LIGHT_TOGGLE_URL"}`,
+        error: "尚未設定智慧燈控制網址。可設定 NUBO_LIGHT_ON_URL / NUBO_LIGHT_OFF_URL，或設定 NUBO_HOME_ASSISTANT_URL + NUBO_HOME_ASSISTANT_ENTITY_ID。",
       },
       { status: 503 },
     );
   }
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.NUBO_SMART_HOME_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.NUBO_SMART_HOME_TOKEN}`;
-  }
+  const token = process.env.NUBO_HOME_ASSISTANT_TOKEN || process.env.NUBO_SMART_HOME_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const body = homeAssistantUrl
+    ? { entity_id: process.env.NUBO_HOME_ASSISTANT_ENTITY_ID }
+    : { action, room, device, source: "nubo" };
 
   const response = await fetch(url, {
     method: process.env.NUBO_LIGHT_METHOD ?? "POST",
     headers,
-    body: JSON.stringify({ action, room, device, source: "nubo" }),
+    body: JSON.stringify(body),
     cache: "no-store",
   });
 
