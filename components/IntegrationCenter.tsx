@@ -125,6 +125,19 @@ export function IntegrationCenter() {
     }
   };
 
+  const testSmartPlug = async (action: "on" | "off" | "toggle") => {
+    try {
+      const result = await postAction("/api/smart-home/light", {
+        action,
+        device: "Tapo P100",
+      });
+      const stateText = typeof result.afterOn === "boolean" ? `，目前狀態：${result.afterOn ? "開" : "關"}` : "";
+      setMessage(`Tapo P100已執行：${action}${stateText}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Tapo P100測試失敗");
+    }
+  };
+
   return (
     <section className="integration-center">
       <div className="integration-heading">
@@ -213,6 +226,21 @@ export function IntegrationCenter() {
           <button className="secondary" onClick={() => void testCalculator()}>
             測試開啟計算機
           </button>
+        </article>
+
+        <article className="integration-card">
+          <div className="integration-card-top">
+            <strong>Tapo P100智慧插座</strong>
+            <span className="badge active">本機直控</span>
+          </div>
+          <p>設定Tapo帳號與插座IP後，可用語音說「開燈」、「關燈」或按鈕測試。</p>
+          <button className="secondary" onClick={() => void testSmartPlug("on")}>
+            測試開燈
+          </button>
+          <button className="secondary" onClick={() => void testSmartPlug("off")}>
+            測試關燈
+          </button>
+          <small>需在.env.local設定NUBO_TAPO_EMAIL、NUBO_TAPO_PASSWORD、NUBO_TAPO_DEVICE_IP。</small>
         </article>
 
         <article className="integration-card">
