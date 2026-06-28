@@ -73,6 +73,19 @@ export function IntegrationCenter() {
     if (!popup) setMessage("瀏覽器阻擋了OAuth視窗，請允許彈出式視窗後再試一次");
   };
 
+  const createSelfDraft = async () => {
+    try {
+      const result = await postAction("/api/gmail/draft", {
+        to: "me",
+        subject: "NUBO Gmail測試草稿",
+        body: "這是NUBO建立的測試草稿，用來確認『我的Google信箱』收件者解析正常。",
+      });
+      setMessage(`已建立寄給${result.to ?? "你的Google信箱"}的Gmail測試草稿`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Gmail測試草稿失敗");
+    }
+  };
+
   const testYouTube = async () => {
     try {
       const result = await postAction("/api/youtube/open", {
@@ -91,6 +104,15 @@ export function IntegrationCenter() {
       setMessage(`已開啟：${result.url}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "開啟Facebook失敗");
+    }
+  };
+
+  const testNuboWake = async () => {
+    try {
+      const result = await postAction("/api/system/show-nubo", {});
+      setMessage(result.message ?? "已喚出NUBO網頁");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "喚出NUBO網頁失敗");
     }
   };
 
@@ -126,11 +148,14 @@ export function IntegrationCenter() {
           </div>
           <p>
             {gmail?.connected
-              ? `帳號：${gmail.email ?? "Google帳號"}`
+              ? `帳號：${gmail.email ?? "Google帳號"}；可用「我的Google信箱」或 me 當收件者。`
               : "搜尋、讀信、摘要、草稿與兩階段確認寄送。"}
           </p>
           <button className="secondary" onClick={connectGmail} disabled={!gmail?.configured}>
             {gmail?.connected ? "重新授權Gmail" : "連接Gmail"}
+          </button>
+          <button className="secondary" onClick={() => void createSelfDraft()} disabled={!gmail?.connected}>
+            測試寄給我的Google信箱
           </button>
           {!gmail?.configured ? (
             <small>請先在.env.local設定GOOGLE_CLIENT_ID與GOOGLE_CLIENT_SECRET。</small>
@@ -170,9 +195,12 @@ export function IntegrationCenter() {
             <strong>網頁開啟</strong>
             <span className="badge active">Windows可用</span>
           </div>
-          <p>可開啟Facebook、Google、Gmail、Maps、Calendar、指定網址或搜尋關鍵字。</p>
+          <p>可開啟Facebook、Instagram、Google、Gmail、Maps、Calendar、NUBO、指定網址或搜尋關鍵字。</p>
           <button className="secondary" onClick={() => void testFacebook()}>
             測試開啟Facebook
+          </button>
+          <button className="secondary" onClick={() => void testNuboWake()}>
+            測試喚出NUBO
           </button>
         </article>
 
