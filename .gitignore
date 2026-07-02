@@ -19,3 +19,6 @@ data/nubo-app-profile/
 logs/
 *.log
 tsconfig.tsbuildinfo
+
+data/nubo-owner-line-user.json
+data/inbox.json
