@@ -1,0 +1,26 @@
+
+> nubo-voice@0.5.1 dev
+> next dev -H 127.0.0.1
+
+▲ Next.js 16.2.9 (Turbopack)
+- Local:         http://127.0.0.1:3000
+- Network:       http://127.0.0.1:3000
+- Environments: .env.local
+✓ Ready in 495ms
+
+ GET / 200 in 548ms (next.js: 231ms, application-code: 317ms)
+ GET /api/youtube/status 200 in 169ms (next.js: 160ms, application-code: 8ms)
+ GET /api/gmail/status 200 in 240ms (next.js: 118ms, application-code: 122ms)
+ GET /api/providers 200 in 260ms (next.js: 72ms, application-code: 188ms)
+ GET /api/providers 200 in 261ms (next.js: 127ms, application-code: 133ms)
+ GET /api/tasks 200 in 263ms (next.js: 227ms, application-code: 36ms)
+ GET /api/gemini-token 200 in 894ms (next.js: 53ms, application-code: 842ms)
+ POST /api/system/open-website 200 in 166ms (next.js: 94ms, application-code: 72ms)
+ GET /api/tasks 200 in 13ms (next.js: 4ms, application-code: 9ms)
+ GET /api/tasks 200 in 23ms (next.js: 4ms, application-code: 19ms)
+ GET /api/tasks 200 in 16ms (next.js: 5ms, application-code: 12ms)
+ POST /api/system/open-website 200 in 36ms (next.js: 3ms, application-code: 32ms)
+ GET /api/tasks 200 in 22ms (next.js: 4ms, application-code: 18ms)
+ POST /api/system/open-website 200 in 38ms (next.js: 5ms, application-code: 34ms)
+ GET /api/tasks 200 in 24ms (next.js: 6ms, application-code: 18ms)
+[?25h

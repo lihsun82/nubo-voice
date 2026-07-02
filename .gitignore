@@ -11,3 +11,11 @@ data/google-auth.json
 data/google-oauth-state.json
 data/pending-email-actions.json
 data/youtube-autoplay-profile/
+
+# Local browser profile / secrets
+data/nubo-app-profile/
+.env.local
+.env.local.*
+logs/
+*.log
+tsconfig.tsbuildinfo

@@ -1,0 +1,451 @@
+{
+  "logs": [
+    {
+      "id": "log_1782917325780",
+      "time": "2026/7/1 22:48:45",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782917322059",
+      "time": "2026/7/1 22:48:42",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782917294300",
+      "time": "2026/7/1 22:48:14",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782917041861",
+      "time": "2026/7/1 22:44:01",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782917017902",
+      "time": "2026/7/1 22:43:37",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782915519544",
+      "time": "2026/7/1 22:18:39",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782915517868",
+      "time": "2026/7/1 22:18:37",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782915473534",
+      "time": "2026/7/1 22:17:53",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782915369542",
+      "time": "2026/7/1 22:16:09",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782915321719",
+      "time": "2026/7/1 22:15:21",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782915309339",
+      "time": "2026/7/1 22:15:09",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782914980048",
+      "time": "2026/7/1 22:09:40",
+      "source": "Voice Core",
+      "action": "查看任務",
+      "status": "success",
+      "detail": "收到語音文字：「查看任務」，判斷意圖：tasks/open"
+    },
+    {
+      "id": "log_1782914976802",
+      "time": "2026/7/1 22:09:36",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782914973212",
+      "time": "2026/7/1 22:09:33",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782914958910",
+      "time": "2026/7/1 22:09:18",
+      "source": "Voice Core",
+      "action": "查看任務",
+      "status": "success",
+      "detail": "收到語音文字：「查看任務」，判斷意圖：tasks/open"
+    },
+    {
+      "id": "log_1782821354194",
+      "time": "2026/6/30 20:09:14",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782821353718",
+      "time": "2026/6/30 20:09:13",
+      "source": "Voice Core",
+      "action": "開啟投射燈",
+      "status": "success",
+      "detail": "收到語音文字：「打開投射燈」，判斷意圖：smart_home/on"
+    },
+    {
+      "id": "log_1782821335974",
+      "time": "2026/6/30 20:08:55",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782821328393",
+      "time": "2026/6/30 20:08:48",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782821322246",
+      "time": "2026/6/30 20:08:42",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782821271399",
+      "time": "2026/6/30 20:07:51",
+      "source": "Voice Core",
+      "action": "未知指令",
+      "status": "warning",
+      "detail": "收到語音文字：「?????」，判斷意圖：unknown/unknown"
+    },
+    {
+      "id": "log_1782821264689",
+      "time": "2026/6/30 20:07:44",
+      "source": "Voice Core",
+      "action": "未知指令",
+      "status": "warning",
+      "detail": "收到語音文字：「?????」，判斷意圖：unknown/unknown"
+    },
+    {
+      "id": "log_1782820986065",
+      "time": "2026/6/30 20:03:06",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820980130",
+      "time": "2026/6/30 20:03:00",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820957529",
+      "time": "2026/6/30 20:02:37",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820925850",
+      "time": "2026/6/30 20:02:05",
+      "source": "Test",
+      "action": "V12 Live Dashboard",
+      "status": "success",
+      "detail": "Dashboard ?????? Activity Log"
+    },
+    {
+      "id": "log_1782820490659",
+      "time": "2026/6/30 19:54:50",
+      "source": "Smart Home",
+      "action": "投射燈關閉指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_off。回應：Congratulations! You've fired the tapo_p100_off event"
+    },
+    {
+      "id": "log_1782820465562",
+      "time": "2026/6/30 19:54:25",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820396145",
+      "time": "2026/6/30 19:53:16",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820392291",
+      "time": "2026/6/30 19:53:12",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820343737",
+      "time": "2026/6/30 19:52:23",
+      "source": "Smart Home",
+      "action": "投射燈開啟指令",
+      "status": "success",
+      "detail": "已送出 IFTTT Webhook：tapo_p100_on。回應：Congratulations! You've fired the tapo_p100_on event"
+    },
+    {
+      "id": "log_1782820326256",
+      "time": "2026/6/30 19:52:06",
+      "source": "Test",
+      "action": "V12 log test",
+      "status": "success",
+      "detail": "??????"
+    }
+  ],
+  "notifications": [
+    {
+      "id": "noti_1782917325784",
+      "time": "2026/7/1 22:48:45",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782917322063",
+      "time": "2026/7/1 22:48:42",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782917294322",
+      "time": "2026/7/1 22:48:14",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782917041863",
+      "time": "2026/7/1 22:44:01",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782917017913",
+      "time": "2026/7/1 22:43:37",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915519548",
+      "time": "2026/7/1 22:18:39",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915517871",
+      "time": "2026/7/1 22:18:37",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915473562",
+      "time": "2026/7/1 22:17:53",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915369545",
+      "time": "2026/7/1 22:16:09",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915321722",
+      "time": "2026/7/1 22:15:21",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782915309355",
+      "time": "2026/7/1 22:15:09",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782914976806",
+      "time": "2026/7/1 22:09:36",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782914973220",
+      "time": "2026/7/1 22:09:33",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782821354199",
+      "time": "2026/6/30 20:09:14",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782821335978",
+      "time": "2026/6/30 20:08:55",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782821328398",
+      "time": "2026/6/30 20:08:48",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782821322250",
+      "time": "2026/6/30 20:08:42",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782821271402",
+      "time": "2026/6/30 20:07:51",
+      "level": "warning",
+      "title": "無法判斷語音指令",
+      "message": "NUBO 尚未支援：「?????」。"
+    },
+    {
+      "id": "noti_1782821264711",
+      "time": "2026/6/30 20:07:44",
+      "level": "warning",
+      "title": "無法判斷語音指令",
+      "message": "NUBO 尚未支援：「?????」。"
+    },
+    {
+      "id": "noti_1782820986070",
+      "time": "2026/6/30 20:03:06",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820980137",
+      "time": "2026/6/30 20:03:00",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820957533",
+      "time": "2026/6/30 20:02:37",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820490667",
+      "time": "2026/6/30 19:54:50",
+      "level": "success",
+      "title": "已送出關燈指令",
+      "message": "NUBO 已觸發 tapo_p100_off。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820465565",
+      "time": "2026/6/30 19:54:25",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820396149",
+      "time": "2026/6/30 19:53:16",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820392295",
+      "time": "2026/6/30 19:53:12",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    },
+    {
+      "id": "noti_1782820343741",
+      "time": "2026/6/30 19:52:23",
+      "level": "success",
+      "title": "已送出開燈指令",
+      "message": "NUBO 已觸發 tapo_p100_on。注意：IFTTT fired 不等於已確認裝置實際狀態。"
+    }
+  ]
+}

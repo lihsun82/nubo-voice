@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   executeNuboBrowserTool as executeBaseTool,
@@ -43,7 +43,6 @@ export const geminiSystemInstruction = `${baseInstruction}
 NUBO喚醒補充：使用者呼叫nubo、叫nubo出來或要求NUBO網頁跳出來時，呼叫show_nubo。
 裝置設定補充：使用者要求設定音量、靜音、解除靜音、增加或降低音量、設定螢幕亮度、增加或降低亮度時，呼叫device_setting。
 LINE與Windows應用程式只能使用固定白名單；不得執行任意程式路徑或命令。
-等待提示禁用：你正在思考、查找資料、執行工具或跑流程時，不得用語音說「請稍等」「等一下」「我正在處理」「我正在查找」等等待提示。只需要在完成後直接回答。
 `;
 
 export const geminiFunctionDeclarations = [
@@ -81,4 +80,3 @@ export const geminiFunctionDeclarations = [
     },
   },
 ];
-
