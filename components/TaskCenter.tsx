@@ -9,12 +9,46 @@ type TaskPayload = {
   inbox: NuboNotice[];
 };
 
+type OrchestratorPlan = {
+  id: string;
+  title: string;
+  summary: string;
+  taskKind: string;
+  agents: string[];
+  steps: Array<{
+    id: string;
+    agent: string;
+    action: string;
+    expectedOutput: string;
+  }>;
+  acceptanceCriteria: string[];
+  guardrails: string[];
+  blockedActions: string[];
+  riskLevel: "L1" | "L2" | "L3" | "L4";
+  riskReason: string;
+  canAutoCreateTask: boolean;
+  confidence: number;
+};
+
+type OrchestratorResponse = {
+  ok: boolean;
+  plan: OrchestratorPlan;
+  task: NuboTask | null;
+  blocked?: boolean;
+  reason?: string;
+  error?: string;
+};
+
 const emptyPayload: TaskPayload = { tasks: [], runs: [], inbox: [] };
 
 export function TaskCenter() {
   const [data, setData] = useState<TaskPayload>(emptyPayload);
   const [status, setStatus] = useState("載入任務中");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [orchestratorText, setOrchestratorText] = useState("");
+  const [orchestratorPlan, setOrchestratorPlan] = useState<OrchestratorPlan | null>(null);
+  const [orchestratorStatus, setOrchestratorStatus] = useState("輸入任務，NUBO 會先拆解、分級、列出驗收條件。");
+  const [orchestratorBusy, setOrchestratorBusy] = useState(false);
   const activeIds = useRef(new Set<string>());
   const seenInbox = useRef(new Set<string>());
 
@@ -53,6 +87,41 @@ export function TaskCenter() {
       }
     },
     [load],
+  );
+
+  const orchestrate = useCallback(
+    async (createTask: boolean) => {
+      const instruction = orchestratorText.trim();
+      if (!instruction) {
+        setOrchestratorStatus("請先輸入任務內容");
+        return;
+      }
+
+      setOrchestratorBusy(true);
+      try {
+        const response = await fetch("/api/orchestrator", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ instruction, createTask }),
+        });
+        const result = (await response.json()) as OrchestratorResponse;
+        if (!response.ok) throw new Error(result.error ?? "任務指揮中心失敗");
+        setOrchestratorPlan(result.plan);
+        if (result.blocked) {
+          setOrchestratorStatus(result.reason ?? "此任務需要人工確認後才能建立");
+        } else if (result.task) {
+          setOrchestratorStatus("已建立一次性任務，會交付到 NUBO 收件匣");
+          await load();
+        } else {
+          setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務");
+        }
+      } catch (error) {
+        setOrchestratorStatus(error instanceof Error ? error.message : "任務指揮中心失敗");
+      } finally {
+        setOrchestratorBusy(false);
+      }
+    },
+    [load, orchestratorText],
   );
 
   const checkDue = useCallback(async () => {
@@ -110,6 +179,69 @@ export function TaskCenter() {
         <button className="secondary" onClick={enableBrowserNotice}>
           啟用桌面通知
         </button>
+      </div>
+
+      <div className="orchestrator-panel task-panel">
+        <div className="task-card-top">
+          <div>
+            <div className="eyebrow">TASK ORCHESTRATOR V1</div>
+            <h3>任務指揮中心</h3>
+          </div>
+          <span className="badge active">Phase 1</span>
+        </div>
+        <p className="empty">第一階段只使用內部代理人與既有工具；L3/L4 高風險任務只產生計畫，不會自動執行。</p>
+        <textarea
+          className="orchestrator-input"
+          value={orchestratorText}
+          onChange={(event) => setOrchestratorText(event.target.value)}
+          placeholder="例如：幫我整理明天旅館市場雷達，產出重點摘要與 PDF/HTML 檔案需求，成功後放到收件匣。"
+          rows={4}
+        />
+        <div className="task-actions">
+          <button onClick={() => void orchestrate(false)} disabled={orchestratorBusy}>
+            先拆解任務
+          </button>
+          <button
+            onClick={() => void orchestrate(true)}
+            disabled={orchestratorBusy || Boolean(orchestratorPlan && !orchestratorPlan.canAutoCreateTask)}
+          >
+            建立一次性任務
+          </button>
+        </div>
+        <small>{orchestratorStatus}</small>
+
+        {orchestratorPlan ? (
+          <article className="task-card orchestrator-result">
+            <div className="task-card-top">
+              <strong>{orchestratorPlan.title}</strong>
+              <span className={`badge ${orchestratorPlan.riskLevel.toLowerCase()}`}>{orchestratorPlan.riskLevel}</span>
+            </div>
+            <p>{orchestratorPlan.summary}</p>
+            <small>代理人：{orchestratorPlan.agents.join("、")}｜信心：{Math.round(orchestratorPlan.confidence * 100)}%</small>
+            <ol>
+              {orchestratorPlan.steps.map((step) => (
+                <li key={step.id}>
+                  <strong>{step.agent}</strong>：{step.action}
+                </li>
+              ))}
+            </ol>
+            <details>
+              <summary>驗收與保護規則</summary>
+              <b>驗收條件</b>
+              <ul>
+                {orchestratorPlan.acceptanceCriteria.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <b>禁止動作</b>
+              <ul>
+                {orchestratorPlan.blockedActions.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </details>
+          </article>
+        ) : null}
       </div>
 
       <div className="task-grid">
