@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 const handoffSchema = z.object({
   agentId: z.string().min(1),
   agentName: z.string().min(1),
-  kind: z.string().min(1),
-  status: z.string().min(1),
+  kind: z.enum(["mcp", "a2a", "api", "internal_adapter"]),
+  status: z.enum(["available", "needs_config", "planned", "disabled"]),
   matchedCapabilities: z.array(z.string()).default([]),
   reason: z.string().min(1),
   requiresApproval: z.boolean(),
