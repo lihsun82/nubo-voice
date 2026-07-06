@@ -39,6 +39,21 @@ type AgentApproval = {
   expiresAt: string;
 };
 
+type AgentExecution = {
+  id: string;
+  approvalId: string;
+  agentId: string;
+  agentName: string;
+  mode: "live" | "dry_run";
+  status: "success" | "blocked" | "failed";
+  taskTitle: string;
+  riskLevel: RiskLevel;
+  output: string;
+  artifactIds: string[];
+  blockedReason: string | null;
+  createdAt: string;
+};
+
 type OrchestratorPlan = {
   id: string;
   title: string;
@@ -75,10 +90,13 @@ const emptyPayload: TaskPayload = { tasks: [], runs: [], inbox: [] };
 export function TaskCenter() {
   const [data, setData] = useState<TaskPayload>(emptyPayload);
   const [approvals, setApprovals] = useState<AgentApproval[]>([]);
+  const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [status, setStatus] = useState("載入任務中");
   const [approvalStatus, setApprovalStatus] = useState("授權中心待命");
+  const [executionStatus, setExecutionStatus] = useState("執行中心待命");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
+  const [executionBusyId, setExecutionBusyId] = useState<string | null>(null);
   const [orchestratorText, setOrchestratorText] = useState("");
   const [orchestratorPlan, setOrchestratorPlan] = useState<OrchestratorPlan | null>(null);
   const [orchestratorStatus, setOrchestratorStatus] = useState("輸入任務，NUBO 會先拆解、分級、列出驗收條件。");
@@ -92,6 +110,14 @@ export function TaskCenter() {
     const payload = (await response.json()) as { approvals: AgentApproval[] };
     setApprovals(payload.approvals);
     return payload.approvals;
+  }, []);
+
+  const loadExecutions = useCallback(async () => {
+    const response = await fetch("/api/agent-executions", { cache: "no-store" });
+    if (!response.ok) throw new Error("無法讀取執行中心");
+    const payload = (await response.json()) as { executions: AgentExecution[] };
+    setExecutions(payload.executions);
+    return payload.executions;
   }, []);
 
   const load = useCallback(async () => {
@@ -188,6 +214,29 @@ export function TaskCenter() {
     [loadApprovals],
   );
 
+  const executeApproval = useCallback(
+    async (approval: AgentApproval) => {
+      setExecutionBusyId(approval.id);
+      try {
+        const response = await fetch("/api/agent-executions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approvalId: approval.id }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "代理人執行失敗");
+        const execution = result.execution as AgentExecution;
+        setExecutionStatus(`已執行：${execution.agentName}（${execution.mode} / ${execution.status}）`);
+        await Promise.all([loadExecutions(), load()]);
+      } catch (error) {
+        setExecutionStatus(error instanceof Error ? error.message : "代理人執行失敗");
+      } finally {
+        setExecutionBusyId(null);
+      }
+    },
+    [load, loadExecutions],
+  );
+
   const orchestrate = useCallback(
     async (createTask: boolean) => {
       const instruction = orchestratorText.trim();
@@ -209,10 +258,10 @@ export function TaskCenter() {
         if (result.blocked) {
           setOrchestratorStatus(result.reason ?? "此任務需要人工確認後才能建立");
         } else if (result.task) {
-          setOrchestratorStatus("已建立一次性任務；第四階段會保留外部代理人授權與審核紀錄。");
+          setOrchestratorStatus("已建立一次性任務；第五階段可讓 approved 代理人進入受控執行。");
           await load();
         } else {
-          setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務或建立外部代理人授權請求");
+          setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務、授權請求或執行已核准代理人");
         }
       } catch (error) {
         setOrchestratorStatus(error instanceof Error ? error.message : "任務指揮中心失敗");
@@ -255,9 +304,10 @@ export function TaskCenter() {
   useEffect(() => {
     void checkDue();
     void loadApprovals().catch(() => setApprovalStatus("授權中心載入失敗"));
+    void loadExecutions().catch(() => setExecutionStatus("執行中心載入失敗"));
     const timer = window.setInterval(() => void checkDue(), 30_000);
     return () => window.clearInterval(timer);
-  }, [checkDue, loadApprovals]);
+  }, [checkDue, loadApprovals, loadExecutions]);
 
   const enableBrowserNotice = async () => {
     if (!("Notification" in window)) {
@@ -270,6 +320,7 @@ export function TaskCenter() {
 
   const handoffs = orchestratorPlan?.externalHandoffs ?? [];
   const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
+  const approvedApprovals = approvals.filter((approval) => approval.status === "approved");
 
   return (
     <section className="task-center">
@@ -287,12 +338,12 @@ export function TaskCenter() {
       <div className="orchestrator-panel task-panel">
         <div className="task-card-top">
           <div>
-            <div className="eyebrow">TASK ORCHESTRATOR V4</div>
+            <div className="eyebrow">TASK ORCHESTRATOR V5</div>
             <h3>任務指揮中心</h3>
           </div>
-          <span className="badge active">Phase 4</span>
+          <span className="badge active">Phase 5</span>
         </div>
-        <p className="empty">第四階段啟用授權與稽核層：外部代理人候選可建立授權請求，所有核准/拒絕都會寫入本機 audit log。</p>
+        <p className="empty">第五階段啟用已核准代理人受控執行：approved 請求可建立 execution record；只有低風險 available Adapter 會 live，其餘 dry-run。</p>
         <textarea
           className="orchestrator-input"
           value={orchestratorText}
@@ -408,6 +459,41 @@ export function TaskCenter() {
                   </button>
                 </div>
               ) : null}
+              {approval.status === "approved" ? (
+                <button
+                  onClick={() => void executeApproval(approval)}
+                  disabled={executionBusyId === approval.id}
+                >
+                  執行核准代理人
+                </button>
+              ) : null}
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="task-panel approval-panel">
+        <div className="task-card-top">
+          <div>
+            <div className="eyebrow">AGENT EXECUTION CENTER</div>
+            <h3>代理人執行中心</h3>
+          </div>
+          <span className="badge active">{approvedApprovals.length} approved</span>
+        </div>
+        <p className="empty">{executionStatus}</p>
+        {executions.length === 0 ? (
+          <p className="empty">尚無代理人執行紀錄。</p>
+        ) : (
+          executions.slice(0, 8).map((execution) => (
+            <article className="approval-card" key={execution.id}>
+              <div className="task-card-top">
+                <strong>{execution.agentName}</strong>
+                <span className={`badge ${execution.status}`}>{execution.status}</span>
+              </div>
+              <p>{execution.taskTitle}</p>
+              <small>模式：{execution.mode}｜風險：{execution.riskLevel}｜時間：{new Date(execution.createdAt).toLocaleString("zh-TW")}</small>
+              {execution.blockedReason ? <small>阻止原因：{execution.blockedReason}</small> : null}
+              {execution.artifactIds.length > 0 ? <small>檔案數：{execution.artifactIds.length}</small> : null}
             </article>
           ))
         )}
