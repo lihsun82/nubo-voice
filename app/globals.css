@@ -229,17 +229,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   background: linear-gradient(135deg, var(--accent-2), var(--accent));
 }
 
-.badge.l3, .badge.l4, .badge.rejected, .badge.expired {
+.badge.l3, .badge.l4, .badge.rejected, .badge.expired, .badge.blocked, .badge.failed {
   color: #ffd6d1;
   border-color: rgba(255, 172, 163, .45);
 }
 
-.badge.approved {
+.badge.approved, .badge.success, .badge.live {
   color: #d7ffe5;
   border-color: rgba(146, 255, 191, .45);
 }
 
-.badge.pending {
+.badge.pending, .badge.dry_run {
   color: #fff0bd;
   border-color: rgba(245, 194, 107, .45);
 }
