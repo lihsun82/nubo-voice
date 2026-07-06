@@ -45,6 +45,8 @@ function makeVirtualTask(approval: AgentApprovalRequest): NuboTask {
     updatedAt: new Date().toISOString(),
     nextRunAt: null,
     lastRunAt: null,
+    lastResult: null,
+    lastError: null,
   };
 }
 
