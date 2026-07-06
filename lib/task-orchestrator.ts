@@ -1,3 +1,8 @@
+import {
+  formatExternalHandoffSection,
+  recommendExternalAgentHandoffs,
+  type ExternalAgentHandoff,
+} from "@/lib/external-agent-gateway";
 import type { CreateTaskInput, TaskKind } from "@/lib/task-types";
 
 export type AgentRole =
@@ -25,6 +30,7 @@ export type OrchestratorPlan = {
   summary: string;
   taskKind: TaskKind;
   agents: AgentRole[];
+  externalHandoffs: ExternalAgentHandoff[];
   steps: OrchestratorStep[];
   acceptanceCriteria: string[];
   guardrails: string[];
@@ -213,7 +219,7 @@ function buildSteps(input: OrchestratorInput, agents: AgentRole[]): Orchestrator
   return steps;
 }
 
-function buildAcceptanceCriteria(input: OrchestratorInput, agents: AgentRole[]) {
+function buildAcceptanceCriteria(agents: AgentRole[], handoffs: ExternalAgentHandoff[]) {
   const criteria = [
     "成果必須直接回應使用者原始任務，不只描述流程",
     "若使用資料或外部資訊，必須標示來源或明確說明資訊不足",
@@ -222,16 +228,20 @@ function buildAcceptanceCriteria(input: OrchestratorInput, agents: AgentRole[]) 
   if (agents.includes("report")) criteria.push("若任務要求檔案，必須列出檔案格式、內容範圍與產出狀態");
   if (agents.includes("mail")) criteria.push("正式寄信前必須符合白名單或人工確認規則");
   if (agents.includes("coding")) criteria.push("程式變更必須列出受影響檔案與測試方式，不得碰觸保護範圍");
+  if (handoffs.length > 0) criteria.push("外部代理人只可使用白名單候選；需要授權者只能產生建議，不得直接執行");
   return criteria;
 }
 
-function buildGuardrails(riskLevel: RiskLevel) {
+function buildGuardrails(riskLevel: RiskLevel, handoffs: ExternalAgentHandoff[]) {
   const guardrails = [
-    "第一階段不啟用外部代理人自動搜尋，只使用 NUBO 內部代理人與既有工具",
+    "第三階段啟用外部代理人閘道，但只允許白名單與 Adapter 候選，不開放未知外部代理人自動取得權限",
     "最多委派 3 層；連續失敗 2 次即停止並回報",
     "所有高風險動作必須先產生計畫與驗收條件，不得直接執行",
     `LINE 控制穩定版保護：${PROTECTED_LINE_SCOPES.join("、")} 預設禁止修改`,
   ];
+  if (handoffs.some((handoff) => handoff.requiresApproval)) {
+    guardrails.push("本任務有外部代理人候選需要人工確認；NUBO 只能提出 handoff 建議與授權範圍");
+  }
   if (riskLevel === "L3" || riskLevel === "L4") {
     guardrails.push("本任務風險層級需人工確認後才能進入實際修改、寄送、部署或高權限操作");
   }
@@ -256,35 +266,40 @@ export function createOrchestratorPlan(input: OrchestratorInput): OrchestratorPl
   const agents = inferAgents(instruction.toLowerCase());
   const { riskLevel, riskReason } = inferRisk(instruction.toLowerCase());
   const taskKind = inferTaskKind(instruction.toLowerCase());
+  const externalHandoffs = recommendExternalAgentHandoffs(instruction, agents, riskLevel);
   const canAutoCreateTask = riskLevel === "L1" || riskLevel === "L2";
 
   return {
     id: crypto.randomUUID(),
     title,
-    summary: `NUBO 將任務拆成 ${agents.length} 個內部代理角色與 ${agents.length + 1} 個驗收節點；第一階段只做受控工具型 Agent，不啟用外部代理人自動搜尋。`,
+    summary: `NUBO 將任務拆成 ${agents.length} 個內部代理角色、${externalHandoffs.length} 個外部代理候選與 ${agents.length + 1} 個驗收節點；第三階段只允許白名單 handoff，不啟用未知代理人自動授權。`,
     taskKind,
     agents,
+    externalHandoffs,
     steps: buildSteps(input, agents),
-    acceptanceCriteria: buildAcceptanceCriteria(input, agents),
-    guardrails: buildGuardrails(riskLevel),
+    acceptanceCriteria: buildAcceptanceCriteria(agents, externalHandoffs),
+    guardrails: buildGuardrails(riskLevel, externalHandoffs),
     blockedActions: buildBlockedActions(riskLevel),
     riskLevel,
     riskReason,
     canAutoCreateTask,
-    confidence: canAutoCreateTask ? 0.82 : 0.68,
+    confidence: canAutoCreateTask ? 0.84 : 0.7,
     createdAt: new Date().toISOString(),
   };
 }
 
 export function buildTaskInputFromPlan(plan: OrchestratorPlan): CreateTaskInput {
   const instruction = [
-    "你是 NUBO 任務指揮中心第一階段執行器。請依照下列計畫交付成果。",
+    "你是 NUBO 任務指揮中心第三階段執行器。請依照下列計畫交付成果。",
     "",
     `任務：${plan.title}`,
     `風險等級：${plan.riskLevel}（${plan.riskReason}）`,
     "",
-    "代理人步驟：",
+    "內部代理人步驟：",
     ...plan.steps.map((step) => `${step.id}. [${step.agent}] ${step.action} → ${step.expectedOutput}`),
+    "",
+    "外部代理人候選：",
+    formatExternalHandoffSection(plan.externalHandoffs),
     "",
     "驗收條件：",
     ...plan.acceptanceCriteria.map((item, index) => `${index + 1}. ${item}`),
@@ -295,7 +310,7 @@ export function buildTaskInputFromPlan(plan: OrchestratorPlan): CreateTaskInput 
     "禁止動作：",
     ...plan.blockedActions.map((item, index) => `${index + 1}. ${item}`),
     "",
-    "請直接產出可用成果；若無法完成，請列出缺少的 3 個關鍵變數與下一步。",
+    "請直接產出可用成果；若需要外部代理人但尚未授權，請只列出代理人建議、授權範圍、3 個關鍵變數與下一步，不得宣稱已執行。",
   ].join("\n");
 
   return {
