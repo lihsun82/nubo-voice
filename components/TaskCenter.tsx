@@ -9,12 +9,25 @@ type TaskPayload = {
   inbox: NuboNotice[];
 };
 
+type ExternalHandoff = {
+  agentId: string;
+  agentName: string;
+  kind: string;
+  status: string;
+  matchedCapabilities: string[];
+  reason: string;
+  requiresApproval: boolean;
+  allowedOutputs: string[];
+  forbiddenActions: string[];
+};
+
 type OrchestratorPlan = {
   id: string;
   title: string;
   summary: string;
   taskKind: string;
   agents: string[];
+  externalHandoffs?: ExternalHandoff[];
   steps: Array<{
     id: string;
     agent: string;
@@ -110,7 +123,7 @@ export function TaskCenter() {
         if (result.blocked) {
           setOrchestratorStatus(result.reason ?? "此任務需要人工確認後才能建立");
         } else if (result.task) {
-          setOrchestratorStatus("已建立一次性任務；第二階段會依代理人步驟執行，必要時產生檔案下載連結。");
+          setOrchestratorStatus("已建立一次性任務；第三階段會依內部代理人執行，並列出外部代理人候選與檔案連結。");
           await load();
         } else {
           setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務");
@@ -168,6 +181,8 @@ export function TaskCenter() {
     setStatus(permission === "granted" ? "桌面通知已啟用" : "桌面通知未獲允許");
   };
 
+  const handoffs = orchestratorPlan?.externalHandoffs ?? [];
+
   return (
     <section className="task-center">
       <div className="task-heading">
@@ -184,12 +199,12 @@ export function TaskCenter() {
       <div className="orchestrator-panel task-panel">
         <div className="task-card-top">
           <div>
-            <div className="eyebrow">TASK ORCHESTRATOR V2</div>
+            <div className="eyebrow">TASK ORCHESTRATOR V3</div>
             <h3>任務指揮中心</h3>
           </div>
-          <span className="badge active">Phase 2</span>
+          <span className="badge active">Phase 3</span>
         </div>
-        <p className="empty">第二階段啟用固定內部代理人池，會依 Planner / Research / Data / Report / Mail / Coding / QA / Device 步驟逐步產出；L3/L4 仍只產生計畫，不會自動執行。</p>
+        <p className="empty">第三階段啟用外部代理人閘道：NUBO 會推薦白名單 Agent / Adapter 候選，但需要授權的項目只產生計畫，不會自動取得權限。</p>
         <textarea
           className="orchestrator-input"
           value={orchestratorText}
@@ -217,7 +232,7 @@ export function TaskCenter() {
               <span className={`badge ${orchestratorPlan.riskLevel.toLowerCase()}`}>{orchestratorPlan.riskLevel}</span>
             </div>
             <p>{orchestratorPlan.summary}</p>
-            <small>代理人：{orchestratorPlan.agents.join("、")}｜信心：{Math.round(orchestratorPlan.confidence * 100)}%</small>
+            <small>內部代理人：{orchestratorPlan.agents.join("、")}｜外部候選：{handoffs.length}｜信心：{Math.round(orchestratorPlan.confidence * 100)}%</small>
             <ol>
               {orchestratorPlan.steps.map((step) => (
                 <li key={step.id}>
@@ -225,6 +240,21 @@ export function TaskCenter() {
                 </li>
               ))}
             </ol>
+            {handoffs.length > 0 ? (
+              <details open>
+                <summary>外部代理人候選</summary>
+                <div className="handoff-grid">
+                  {handoffs.map((handoff) => (
+                    <article className="handoff-card" key={handoff.agentId}>
+                      <strong>{handoff.agentName}</strong>
+                      <small>{handoff.kind}｜{handoff.status}｜{handoff.requiresApproval ? "需人工確認" : "可在低風險範圍使用"}</small>
+                      <p>{handoff.reason}</p>
+                      <small>可輸出：{handoff.allowedOutputs.join("、")}</small>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ) : null}
             <details>
               <summary>驗收與保護規則</summary>
               <b>驗收條件</b>
