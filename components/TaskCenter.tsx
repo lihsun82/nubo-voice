@@ -110,7 +110,7 @@ export function TaskCenter() {
         if (result.blocked) {
           setOrchestratorStatus(result.reason ?? "此任務需要人工確認後才能建立");
         } else if (result.task) {
-          setOrchestratorStatus("已建立一次性任務，會交付到 NUBO 收件匣");
+          setOrchestratorStatus("已建立一次性任務；第二階段會依代理人步驟執行，必要時產生檔案下載連結。");
           await load();
         } else {
           setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務");
@@ -184,12 +184,12 @@ export function TaskCenter() {
       <div className="orchestrator-panel task-panel">
         <div className="task-card-top">
           <div>
-            <div className="eyebrow">TASK ORCHESTRATOR V1</div>
+            <div className="eyebrow">TASK ORCHESTRATOR V2</div>
             <h3>任務指揮中心</h3>
           </div>
-          <span className="badge active">Phase 1</span>
+          <span className="badge active">Phase 2</span>
         </div>
-        <p className="empty">第一階段只使用內部代理人與既有工具；L3/L4 高風險任務只產生計畫，不會自動執行。</p>
+        <p className="empty">第二階段啟用固定內部代理人池，會依 Planner / Research / Data / Report / Mail / Coding / QA / Device 步驟逐步產出；L3/L4 仍只產生計畫，不會自動執行。</p>
         <textarea
           className="orchestrator-input"
           value={orchestratorText}

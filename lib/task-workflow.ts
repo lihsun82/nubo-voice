@@ -1,3 +1,4 @@
+import { artifactLinks, createArtifacts } from "@/lib/artifact-store";
 import { generateWithFallback } from "@/lib/ai-engine";
 import {
   createGmailDraft,
@@ -7,6 +8,7 @@ import {
   sendGmailMessage,
 } from "@/lib/gmail";
 import { addInboxItem } from "@/lib/inbox-store";
+import { executeInternalAgentPlan } from "@/lib/internal-agents";
 import { generateResult } from "@/lib/report-generator";
 import type { NuboTask } from "@/lib/task-types";
 
@@ -16,6 +18,20 @@ const EMAIL_DEDUPE_MS = 10 * 60 * 1000;
 
 function emailDeliveryKey(task: NuboTask, to: string, subject: string, output: string) {
   return `${task.id}|${to.trim().toLowerCase()}|${subject.trim()}|${output.length}|${output.slice(0, 120)}`;
+}
+
+function shouldCreateArtifacts(task: NuboTask, output: string) {
+  const text = `${task.title}\n${task.instruction}\n${output}`.toLowerCase();
+  return (
+    task.kind === "report" ||
+    text.includes("pdf") ||
+    text.includes("html") ||
+    text.includes("word") ||
+    text.includes("excel") ||
+    text.includes("附件") ||
+    text.includes("檔案") ||
+    text.includes("artifact")
+  );
 }
 
 async function sendEmailOnce(task: NuboTask, to: string, subject: string, output: string) {
@@ -76,24 +92,35 @@ async function generateFromGmail(task: NuboTask): Promise<string> {
 export async function generateTaskOutput(task: NuboTask): Promise<string> {
   if (task.kind === "reminder") return task.instruction;
   if (task.source?.type === "gmail") return generateFromGmail(task);
+
+  const agentOutput = await executeInternalAgentPlan(task);
+  if (agentOutput) return agentOutput;
+
   return generateResult(task);
 }
 
 export async function deliverTaskOutput(task: NuboTask, output: string) {
   const delivery = task.delivery ?? { type: "inbox" as const };
+  const artifacts = shouldCreateArtifacts(task, output)
+    ? await createArtifacts(task, output)
+    : [];
+  const links = artifactLinks(artifacts);
+  const outputWithArtifacts = links
+    ? `${output}\n\n---\n檔案下載：\n${links}`
+    : output;
   let note = "已送至NUBO收件匣";
 
   if (delivery.type === "gmail_draft") {
     await createGmailDraft(
       delivery.to,
       delivery.subject ?? task.title,
-      output,
+      outputWithArtifacts,
     );
     note = `已建立Gmail草稿：${delivery.to}`;
   } else if (delivery.type === "gmail_send") {
     if (isEmailAutosendAllowed(delivery.to)) {
       const subject = delivery.subject ?? task.title;
-      const sent = await sendEmailOnce(task, delivery.to, subject, output);
+      const sent = await sendEmailOnce(task, delivery.to, subject, outputWithArtifacts);
       note = sent
         ? `已自動寄送至白名單收件者：${delivery.to}`
         : `已阻止重複郵件：${delivery.to}`;
@@ -101,7 +128,7 @@ export async function deliverTaskOutput(task: NuboTask, output: string) {
       await createGmailDraft(
         delivery.to,
         delivery.subject ?? task.title,
-        output,
+        outputWithArtifacts,
       );
       note = `未符合自動寄送白名單，已改建Gmail草稿：${delivery.to}`;
     }
@@ -110,7 +137,7 @@ export async function deliverTaskOutput(task: NuboTask, output: string) {
   const notice = await addInboxItem(
     task.id,
     task.title,
-    `${output}\n\n---\n交付結果：${note}`,
+    `${outputWithArtifacts}\n\n---\n交付結果：${note}`,
   );
   return { note, notice };
 }
