@@ -156,11 +156,11 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
-.integration-card, .task-card, .task-panel, .inbox-card, .run-history {
+.integration-card, .task-card, .task-panel, .inbox-card, .run-history, .approval-card, .handoff-card {
   overflow: hidden;
 }
 
-.orchestrator-panel {
+.orchestrator-panel, .approval-panel {
   display: grid;
   gap: 14px;
   border: 1px solid rgba(245, 194, 107, .22);
@@ -197,14 +197,51 @@ button:disabled { opacity: .45; cursor: not-allowed; }
   line-height: 1.65;
 }
 
+.handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.handoff-card, .approval-card {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255, 255, 255, .03);
+}
+
+.handoff-card p, .approval-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.handoff-card small, .approval-card small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .badge.l1, .badge.l2 {
   color: #101217;
   background: linear-gradient(135deg, var(--accent-2), var(--accent));
 }
 
-.badge.l3, .badge.l4 {
+.badge.l3, .badge.l4, .badge.rejected, .badge.expired {
   color: #ffd6d1;
   border-color: rgba(255, 172, 163, .45);
+}
+
+.badge.approved {
+  color: #d7ffe5;
+  border-color: rgba(146, 255, 191, .45);
+}
+
+.badge.pending {
+  color: #fff0bd;
+  border-color: rgba(245, 194, 107, .45);
 }
 
 .run-row {

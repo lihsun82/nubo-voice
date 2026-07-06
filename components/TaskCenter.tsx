@@ -9,6 +9,8 @@ type TaskPayload = {
   inbox: NuboNotice[];
 };
 
+type RiskLevel = "L1" | "L2" | "L3" | "L4";
+
 type ExternalHandoff = {
   agentId: string;
   agentName: string;
@@ -17,8 +19,24 @@ type ExternalHandoff = {
   matchedCapabilities: string[];
   reason: string;
   requiresApproval: boolean;
+  riskLevel: RiskLevel;
   allowedOutputs: string[];
   forbiddenActions: string[];
+};
+
+type AgentApproval = {
+  id: string;
+  taskTitle: string;
+  instruction: string;
+  riskLevel: RiskLevel;
+  handoff: ExternalHandoff;
+  requestedScope: string[];
+  approvalNote: string | null;
+  status: "pending" | "approved" | "rejected" | "expired";
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
+  expiresAt: string;
 };
 
 type OrchestratorPlan = {
@@ -37,7 +55,7 @@ type OrchestratorPlan = {
   acceptanceCriteria: string[];
   guardrails: string[];
   blockedActions: string[];
-  riskLevel: "L1" | "L2" | "L3" | "L4";
+  riskLevel: RiskLevel;
   riskReason: string;
   canAutoCreateTask: boolean;
   confidence: number;
@@ -56,14 +74,25 @@ const emptyPayload: TaskPayload = { tasks: [], runs: [], inbox: [] };
 
 export function TaskCenter() {
   const [data, setData] = useState<TaskPayload>(emptyPayload);
+  const [approvals, setApprovals] = useState<AgentApproval[]>([]);
   const [status, setStatus] = useState("載入任務中");
+  const [approvalStatus, setApprovalStatus] = useState("授權中心待命");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [approvalBusyId, setApprovalBusyId] = useState<string | null>(null);
   const [orchestratorText, setOrchestratorText] = useState("");
   const [orchestratorPlan, setOrchestratorPlan] = useState<OrchestratorPlan | null>(null);
   const [orchestratorStatus, setOrchestratorStatus] = useState("輸入任務，NUBO 會先拆解、分級、列出驗收條件。");
   const [orchestratorBusy, setOrchestratorBusy] = useState(false);
   const activeIds = useRef(new Set<string>());
   const seenInbox = useRef(new Set<string>());
+
+  const loadApprovals = useCallback(async () => {
+    const response = await fetch("/api/agent-approvals", { cache: "no-store" });
+    if (!response.ok) throw new Error("無法讀取授權中心");
+    const payload = (await response.json()) as { approvals: AgentApproval[] };
+    setApprovals(payload.approvals);
+    return payload.approvals;
+  }, []);
 
   const load = useCallback(async () => {
     const response = await fetch("/api/tasks", { cache: "no-store" });
@@ -102,6 +131,63 @@ export function TaskCenter() {
     [load],
   );
 
+  const createApproval = useCallback(
+    async (handoff: ExternalHandoff) => {
+      if (!orchestratorPlan) return;
+      setApprovalBusyId(handoff.agentId);
+      try {
+        const response = await fetch("/api/agent-approvals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            taskTitle: orchestratorPlan.title,
+            instruction: orchestratorText || orchestratorPlan.summary,
+            riskLevel: orchestratorPlan.riskLevel,
+            handoff,
+            requestedScope: handoff.allowedOutputs,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "建立授權請求失敗");
+        setApprovalStatus(`已建立授權請求：${handoff.agentName}`);
+        await loadApprovals();
+      } catch (error) {
+        setApprovalStatus(error instanceof Error ? error.message : "建立授權請求失敗");
+      } finally {
+        setApprovalBusyId(null);
+      }
+    },
+    [loadApprovals, orchestratorPlan, orchestratorText],
+  );
+
+  const decideApproval = useCallback(
+    async (approval: AgentApproval, decision: "approved" | "rejected") => {
+      setApprovalBusyId(approval.id);
+      try {
+        const response = await fetch(`/api/agent-approvals/${approval.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            decision,
+            approvalNote:
+              decision === "approved"
+                ? "使用者於 NUBO 前台核准此代理人授權範圍。"
+                : "使用者於 NUBO 前台拒絕此代理人授權範圍。",
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "更新授權請求失敗");
+        setApprovalStatus(decision === "approved" ? "已核准授權請求" : "已拒絕授權請求");
+        await loadApprovals();
+      } catch (error) {
+        setApprovalStatus(error instanceof Error ? error.message : "更新授權請求失敗");
+      } finally {
+        setApprovalBusyId(null);
+      }
+    },
+    [loadApprovals],
+  );
+
   const orchestrate = useCallback(
     async (createTask: boolean) => {
       const instruction = orchestratorText.trim();
@@ -123,10 +209,10 @@ export function TaskCenter() {
         if (result.blocked) {
           setOrchestratorStatus(result.reason ?? "此任務需要人工確認後才能建立");
         } else if (result.task) {
-          setOrchestratorStatus("已建立一次性任務；第三階段會依內部代理人執行，並列出外部代理人候選與檔案連結。");
+          setOrchestratorStatus("已建立一次性任務；第四階段會保留外部代理人授權與審核紀錄。");
           await load();
         } else {
-          setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務");
+          setOrchestratorStatus("已完成任務拆解，確認後可建立一次性任務或建立外部代理人授權請求");
         }
       } catch (error) {
         setOrchestratorStatus(error instanceof Error ? error.message : "任務指揮中心失敗");
@@ -168,9 +254,10 @@ export function TaskCenter() {
 
   useEffect(() => {
     void checkDue();
+    void loadApprovals().catch(() => setApprovalStatus("授權中心載入失敗"));
     const timer = window.setInterval(() => void checkDue(), 30_000);
     return () => window.clearInterval(timer);
-  }, [checkDue]);
+  }, [checkDue, loadApprovals]);
 
   const enableBrowserNotice = async () => {
     if (!("Notification" in window)) {
@@ -182,6 +269,7 @@ export function TaskCenter() {
   };
 
   const handoffs = orchestratorPlan?.externalHandoffs ?? [];
+  const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
 
   return (
     <section className="task-center">
@@ -199,12 +287,12 @@ export function TaskCenter() {
       <div className="orchestrator-panel task-panel">
         <div className="task-card-top">
           <div>
-            <div className="eyebrow">TASK ORCHESTRATOR V3</div>
+            <div className="eyebrow">TASK ORCHESTRATOR V4</div>
             <h3>任務指揮中心</h3>
           </div>
-          <span className="badge active">Phase 3</span>
+          <span className="badge active">Phase 4</span>
         </div>
-        <p className="empty">第三階段啟用外部代理人閘道：NUBO 會推薦白名單 Agent / Adapter 候選，但需要授權的項目只產生計畫，不會自動取得權限。</p>
+        <p className="empty">第四階段啟用授權與稽核層：外部代理人候選可建立授權請求，所有核准/拒絕都會寫入本機 audit log。</p>
         <textarea
           className="orchestrator-input"
           value={orchestratorText}
@@ -242,7 +330,7 @@ export function TaskCenter() {
             </ol>
             {handoffs.length > 0 ? (
               <details open>
-                <summary>外部代理人候選</summary>
+                <summary>外部代理人候選與授權</summary>
                 <div className="handoff-grid">
                   {handoffs.map((handoff) => (
                     <article className="handoff-card" key={handoff.agentId}>
@@ -250,6 +338,14 @@ export function TaskCenter() {
                       <small>{handoff.kind}｜{handoff.status}｜{handoff.requiresApproval ? "需人工確認" : "可在低風險範圍使用"}</small>
                       <p>{handoff.reason}</p>
                       <small>可輸出：{handoff.allowedOutputs.join("、")}</small>
+                      <small>禁止：{handoff.forbiddenActions.join("、")}</small>
+                      <button
+                        className="secondary"
+                        onClick={() => void createApproval(handoff)}
+                        disabled={approvalBusyId === handoff.agentId}
+                      >
+                        建立授權請求
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -272,6 +368,49 @@ export function TaskCenter() {
             </details>
           </article>
         ) : null}
+      </div>
+
+      <div className="task-panel approval-panel">
+        <div className="task-card-top">
+          <div>
+            <div className="eyebrow">AGENT APPROVAL CENTER</div>
+            <h3>外部代理人授權中心</h3>
+          </div>
+          <span className="badge active">{pendingApprovals.length} pending</span>
+        </div>
+        <p className="empty">{approvalStatus}</p>
+        {approvals.length === 0 ? (
+          <p className="empty">尚無授權請求。</p>
+        ) : (
+          approvals.slice(0, 8).map((approval) => (
+            <article className="approval-card" key={approval.id}>
+              <div className="task-card-top">
+                <strong>{approval.handoff.agentName}</strong>
+                <span className={`badge ${approval.status}`}>{approval.status}</span>
+              </div>
+              <p>{approval.taskTitle}</p>
+              <small>風險：{approval.riskLevel}｜到期：{new Date(approval.expiresAt).toLocaleString("zh-TW")}</small>
+              <small>範圍：{approval.requestedScope.join("、")}</small>
+              {approval.status === "pending" ? (
+                <div className="task-actions">
+                  <button
+                    onClick={() => void decideApproval(approval, "approved")}
+                    disabled={approvalBusyId === approval.id}
+                  >
+                    核准
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => void decideApproval(approval, "rejected")}
+                    disabled={approvalBusyId === approval.id}
+                  >
+                    拒絕
+                  </button>
+                </div>
+              ) : null}
+            </article>
+          ))
+        )}
       </div>
 
       <div className="task-grid">
