@@ -1,0 +1,192 @@
+html {
+  min-height: -webkit-fill-available;
+}
+
+body {
+  min-height: 100svh;
+  min-height: -webkit-fill-available;
+  overscroll-behavior-y: contain;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+summary,
+a {
+  touch-action: manipulation;
+}
+
+button {
+  min-height: 44px;
+}
+
+.shell {
+  min-height: 100svh;
+  padding-left: max(0px, env(safe-area-inset-left));
+  padding-right: max(0px, env(safe-area-inset-right));
+  padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 18px));
+}
+
+.pwa-install {
+  position: fixed;
+  z-index: 1000;
+  left: 50%;
+  bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px));
+  width: min(620px, calc(100% - 24px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  background: rgba(10, 13, 20, 0.94);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(22px);
+}
+
+.pwa-install > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.pwa-install strong {
+  font-size: 15px;
+}
+
+.pwa-install span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pwa-install-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.pwa-install .primary,
+.pwa-install .secondary {
+  min-height: 40px;
+  padding: 9px 15px;
+  font-size: 13px;
+}
+
+@media (display-mode: standalone) {
+  .shell {
+    padding-top: max(28px, calc(env(safe-area-inset-top) + 18px));
+  }
+}
+
+@media (max-width: 680px) {
+  body {
+    background:
+      radial-gradient(circle at 50% 8%, rgba(111, 91, 255, 0.2), transparent 30%),
+      radial-gradient(circle at 20% 80%, rgba(94, 133, 255, 0.1), transparent 28%),
+      var(--bg);
+  }
+
+  .shell {
+    width: 100%;
+    padding-top: max(24px, calc(env(safe-area-inset-top) + 14px));
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+    gap: 16px;
+  }
+
+  .hero {
+    padding: 0 8px;
+  }
+
+  .hero h1 {
+    font-size: clamp(58px, 22vw, 84px);
+  }
+
+  .subtitle {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+
+  .provider-switcher,
+  .console,
+  .integration-card,
+  .task-card,
+  .task-panel,
+  .inbox-card,
+  .run-history {
+    border-radius: 22px;
+  }
+
+  .provider-switcher {
+    padding: 15px;
+  }
+
+  .provider-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .provider-buttons button {
+    width: 100%;
+  }
+
+  .console {
+    padding: 15px;
+  }
+
+  .orb-wrap {
+    min-height: min(58vw, 250px);
+  }
+
+  .status {
+    min-height: 48px;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .actions > button,
+  .task-actions > button {
+    width: 100%;
+    min-height: 48px;
+  }
+
+  .voice-transcript {
+    max-height: 34svh;
+    padding: 12px;
+    text-align: left;
+  }
+
+  .capabilities {
+    margin-top: 18px;
+    padding-top: 16px;
+  }
+
+  .pwa-install {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .pwa-install-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 390px) {
+  .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-buttons {
+    grid-template-columns: 1fr;
+  }
+}
