@@ -1,6 +1,8 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
+import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
+import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
 import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
 import {
   executeNuboBrowserTool,
@@ -37,6 +39,20 @@ function shouldAcknowledgeQuestion(text: string) {
   return /[?？嗎呢]|查|找|搜尋|幫我|怎麼|如何|為什麼|哪個|多少|是否|可以|解決|分析/.test(normalized);
 }
 
+const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
+
+const NUBO_WAKE_WORDS = ["嗨nubo", "嗨 nubo", "ha nubo", "nubo", "兄弟", "有人嗎"];
+const NUBO_SILENCE_WORDS = ["閉嘴", "安靜", "退下", "不要講話", "先不要說話", "不要說話", "停止說話", "停", "stop"];
+
+function normalizeVoiceCommandText(text: string) {
+  return text.toLowerCase().replace(/\s+/g, "");
+}
+
+function includesVoiceCommand(text: string, words: string[]) {
+  const normalized = normalizeVoiceCommandText(text);
+  return words.some((word) => normalized.includes(normalizeVoiceCommandText(word)));
+}
+
 export function GeminiVoiceConsole() {
   const socketRef = useRef<WebSocket | null>(null);
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
@@ -47,9 +63,87 @@ export function GeminiVoiceConsole() {
   const reconnectAttemptsRef = useRef(0);
   const sessionHandleRef = useRef<string | null>(null);
   const lastUserTextRef = useRef("");
+  const silentUntilWakeRef = useRef(false);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+
+  const stopNuboOutput = () => {
+    playbackRef.current?.interrupt();
+    window.speechSynthesis?.cancel();
+
+    document.querySelectorAll<HTMLAudioElement>("audio").forEach((audio) => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+
+    if (phaseTimerRef.current) {
+      window.clearTimeout(phaseTimerRef.current);
+      phaseTimerRef.current = null;
+    }
+
+    notifyNuboVoicePhase(state === "connected" ? "listening" : "idle");
+  };
+
+  const enterSilentUntilWake = () => {
+    silentUntilWakeRef.current = true;
+    window.localStorage.setItem(NUBO_SILENT_STORAGE_KEY, "true");
+    stopNuboOutput();
+    setTranscript("NUBO已安靜。請說 nubo、嗨 nubo、ha nubo、兄弟或有人嗎重新喚醒。");
+  };
+
+  const exitSilentUntilWake = () => {
+    silentUntilWakeRef.current = false;
+    window.localStorage.removeItem(NUBO_SILENT_STORAGE_KEY);
+    setTranscript("NUBO已重新喚醒。");
+    notifyNuboVoicePhase("listening");
+  };
+
+
+  useEffect(() => {
+    silentUntilWakeRef.current = window.localStorage.getItem(NUBO_SILENT_STORAGE_KEY) === "true";
+  }, []);
+
+  useEffect(() => {
+    void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
+      // Token prewarm is optional. NUBO can still request a token when connecting.
+    });
+  }, []);
+
+  useEffect(() => {
+    const stopBackgroundNameListener = startNuboBackgroundNameListener();
+
+    const handleBackgroundTranscript = (event: Event) => {
+      const customEvent = event as CustomEvent<{ transcript?: string }>;
+      const text = customEvent.detail?.transcript?.trim();
+
+      if (text) {
+        if (includesVoiceCommand(text, NUBO_SILENCE_WORDS)) {
+          enterSilentUntilWake();
+          return;
+        }
+
+        if (silentUntilWakeRef.current) {
+          if (includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+            exitSilentUntilWake();
+          } else {
+            stopNuboOutput();
+            setTranscript("NUBO靜音待命中。請先說 nubo、兄弟或有人嗎 重新喚醒。");
+          }
+          return;
+        }
+
+        setTranscript(`背景聽到：${text}`);
+      }
+    };
+
+    window.addEventListener("nubo-background-name-transcript", handleBackgroundTranscript);
+
+    return () => {
+      window.removeEventListener("nubo-background-name-transcript", handleBackgroundTranscript);
+      stopBackgroundNameListener();
+    };
+  }, []);
 
   useEffect(() => {
     if (state === "idle") notifyNuboVoicePhase("idle");
@@ -191,7 +285,7 @@ export function GeminiVoiceConsole() {
             notifyNuboVoicePhase("listening");
           }
           const parts = serverContent?.modelTurn?.parts;
-          if (Array.isArray(parts)) {
+          if (!silentUntilWakeRef.current && Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
                 markSpeaking();
@@ -206,11 +300,20 @@ export function GeminiVoiceConsole() {
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
             const trimmedUserText = userText.trim();
-            notifyNuboVoicePhase("thinking");
-            acknowledgeQuestion(trimmedUserText);
-            setTranscript((current) => current || `你：${trimmedUserText}`);
-            void runLocalVoiceCommand(trimmedUserText)
-              .then((command) => {
+
+            if (isNuboNameAlertText(trimmedUserText)) {
+              setTranscript(`背景聽到：${trimmedUserText}`);
+              void sendTranscriptToNameAlert(trimmedUserText);
+              notifyNuboVoicePhase("idle");
+              return;
+            }
+notifyNuboVoicePhase("thinking");
+
+void sendTranscriptToNameAlert(trimmedUserText);
+
+acknowledgeQuestion(trimmedUserText);
+setTranscript((current) => current || `你：${trimmedUserText}`);
+void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                 if (command.handled) {
                   setTranscript(`已執行本機指令：${trimmedUserText}`);
                 }
@@ -312,4 +415,10 @@ export function GeminiVoiceConsole() {
     </section>
   );
 }
+
+
+
+
+
+
 

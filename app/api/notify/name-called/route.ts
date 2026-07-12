@@ -3,6 +3,7 @@ import {
   buildNameCalledMessage,
   pushLineTextMessage,
 } from "@/lib/line-push-notify";
+import { sendLineSharedNotification } from "@/lib/line-shared-notify";
 
 export const runtime = "nodejs";
 
@@ -86,6 +87,17 @@ export async function POST(req: NextRequest) {
 
     const message = buildNameCalledMessage(matchedKeyword, transcript);
     await pushLineTextMessage(message);
+
+    try {
+      await sendLineSharedNotification({
+        mode: "multicast",
+        title: "NUBO 被呼叫",
+        text: message,
+        source: "name-called",
+      });
+    } catch (sharedNotifyError) {
+      console.warn("[notify/name-called] shared notify skipped", sharedNotifyError);
+    }
 
     return NextResponse.json({
       ok: true,
