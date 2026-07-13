@@ -37,7 +37,10 @@ export const geminiSystemInstruction = `
 10. 使用者要寄信時，可以建立草稿。若要正式寄出，先呼叫gmail_prepare_send並覆誦收件者、主旨與內容摘要。只有下一句明確說確認寄出，才呼叫gmail_confirm_send。
 11. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
 12. 使用者要求排程結果寄信時設定deliveryType。gmail_send只有環境白名單允許才會自動寄出，否則建立草稿。
-13. 時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
+13. 預設時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
+13A. NUBO_TIME_SOURCE_V1：使用者詢問現在幾點、目前時間、今天日期、今天幾號、星期幾，必須先呼叫get_current_time，禁止依模型記憶或猜測回答。
+13B. 使用者提到今天、明天、後天、今晚、幾分鐘後、幾小時後、下星期或任何相對日期與排程時，也要先呼叫get_current_time，再計算實際日期時間。
+13C. 未指定地區時使用Asia/Taipei；指定其他國家或城市時，傳入正確IANA時區，例如東京Asia/Tokyo、紐約America/New_York、倫敦Europe/London。
 14. 使用者說現在就做時，建立任務後再呼叫task_action的run。
 
 安全規則：
@@ -88,6 +91,28 @@ export const geminiFunctionDeclarations = [
         action: { type: "STRING", enum: ["run", "pause", "resume"] },
       },
       required: ["id", "action"],
+    },
+  },
+  {
+    name: "get_current_time",
+    description:
+      "取得精確的目前日期、時間與星期。詢問現在幾點、今天日期、星期幾或處理相對日期與排程時必須使用；未指定地區時使用Asia/Taipei。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        timezone: {
+          type: "STRING",
+          nullable: true,
+          description:
+            "IANA時區，例如Asia/Taipei、Asia/Tokyo、America/New_York或Europe/London。",
+        },
+        location: {
+          type: "STRING",
+          nullable: true,
+          description:
+            "使用者詢問的城市或地區名稱。",
+        },
+      },
     },
   },
   {
@@ -282,6 +307,93 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "list_tasks") return requestJson("/api/tasks", { cache: "no-store" });
   if (name === "gmail_status") return requestJson("/api/gmail/status", { cache: "no-store" });
   if (name === "task_action") return post("/api/tasks/action", { id: args.id, action: args.action });
+  if (name === "get_current_time") {
+    const requestedTimezone =
+      String(
+        args.timezone ??
+        "Asia/Taipei",
+      ).trim() || "Asia/Taipei";
+
+    const location =
+      String(args.location ?? "").trim();
+
+    const now = new Date();
+
+    const formatterOptions:
+      Intl.DateTimeFormatOptions = {
+        timeZone: requestedTimezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        weekday: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+      };
+
+    let timezone =
+      requestedTimezone;
+
+    let formatter:
+      Intl.DateTimeFormat;
+
+    let fallbackApplied = false;
+
+    try {
+      formatter =
+        new Intl.DateTimeFormat(
+          "zh-TW",
+          formatterOptions,
+        );
+    } catch {
+      timezone = "Asia/Taipei";
+      fallbackApplied = true;
+
+      formatter =
+        new Intl.DateTimeFormat(
+          "zh-TW",
+          {
+            ...formatterOptions,
+            timeZone: timezone,
+          },
+        );
+    }
+
+    const formattedParts =
+      formatter.formatToParts(now);
+
+    const readPart = (type: string) =>
+      formattedParts.find(
+        (part) => part.type === type,
+      )?.value ?? "";
+
+    return {
+      ok: true,
+      source:
+        "browser-device-clock",
+      location:
+        location || undefined,
+      requestedTimezone,
+      timezone,
+      fallbackApplied,
+      isoUtc: now.toISOString(),
+      unixMs: now.getTime(),
+      localTime:
+        formatter.format(now),
+      year: readPart("year"),
+      month: readPart("month"),
+      day: readPart("day"),
+      weekday:
+        readPart("weekday"),
+      hour: readPart("hour"),
+      minute:
+        readPart("minute"),
+      second:
+        readPart("second"),
+    };
+  }
+
   if (name === "get_weather") {
     return post("/api/weather", {
       location: args.location || undefined,
