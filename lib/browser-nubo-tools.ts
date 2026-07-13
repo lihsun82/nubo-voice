@@ -14,6 +14,181 @@ function normalizeTarget(value: unknown) {
   return raw;
 }
 
+
+const mobileWebsiteAliases:
+  Record<string, string> = {
+    fb: "https://www.facebook.com/",
+    facebook:
+      "https://www.facebook.com/",
+    臉書:
+      "https://www.facebook.com/",
+    ig:
+      "https://www.instagram.com/",
+    instagram:
+      "https://www.instagram.com/",
+    google:
+      "https://www.google.com/",
+    gmail:
+      "https://mail.google.com/",
+    youtube:
+      "https://www.youtube.com/",
+    maps:
+      "https://www.google.com/maps/",
+    googlemaps:
+      "https://www.google.com/maps/",
+    地圖:
+      "https://www.google.com/maps/",
+  };
+
+function isMobileWebClient() {
+  if (
+    typeof window === "undefined" ||
+    typeof navigator === "undefined"
+  ) {
+    return false;
+  }
+
+  const userAgent =
+    navigator.userAgent || "";
+
+  const mobileUserAgent =
+    /Android|iPhone|iPad|iPod|Mobile/i
+      .test(userAgent);
+
+  const mobilePointer =
+    window
+      .matchMedia(
+        "(pointer: coarse) and (max-width: 1024px)",
+      )
+      .matches;
+
+  return (
+    mobileUserAgent ||
+    mobilePointer
+  );
+}
+
+function resolveClientWebsite(
+  target: string,
+) {
+  const raw = target.trim();
+
+  const key = raw
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  if (
+    [
+      "nubo",
+      "nubovoice",
+      "努寶",
+    ].includes(key)
+  ) {
+    return window.location.origin;
+  }
+
+  const alias =
+    mobileWebsiteAliases[key];
+
+  if (alias) {
+    return alias;
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    const url = new URL(raw);
+
+    if (
+      !["http:", "https:"]
+        .includes(url.protocol)
+    ) {
+      throw new Error(
+        "只允許開啟HTTP或HTTPS網址",
+      );
+    }
+
+    return url.toString();
+  }
+
+  if (
+    /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i
+      .test(raw)
+  ) {
+    return new URL(
+      "https://" + raw,
+    ).toString();
+  }
+
+  return (
+    "https://www.google.com/search?q=" +
+    encodeURIComponent(raw)
+  );
+}
+
+function openClientUrl(url: string) {
+  if (typeof window === "undefined") {
+    throw new Error(
+      "目前不是瀏覽器環境",
+    );
+  }
+
+  /*
+   * 語音工具呼叫可能被瀏覽器視為
+   * 非使用者點擊事件。
+   * 先嘗試重用同一外部分頁；
+   * 被阻擋時直接在目前頁面開啟。
+   */
+  try {
+    const opened =
+      window.open(
+        url,
+        "nubo_external",
+      );
+
+    if (opened) {
+      try {
+        opened.opener = null;
+        opened.focus();
+      } catch {
+        // 跨網域時忽略視窗控制錯誤。
+      }
+
+      return {
+        opened: true,
+        url,
+        mode: "new-tab",
+      };
+    }
+  } catch {
+    // 改用目前頁面。
+  }
+
+  window.location.assign(url);
+
+  return {
+    opened: true,
+    url,
+    mode: "same-tab",
+  };
+}
+
+function buildMapsSearchUrl(
+  query: string,
+  location?: string,
+) {
+  const searchText = [
+    query.trim(),
+    location?.trim() ?? "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    "https://www.google.com/maps/search/" +
+    "?api=1&query=" +
+    encodeURIComponent(searchText)
+  );
+}
+
 export const geminiSystemInstruction = `
 你是NUBO，Leo的個人AI語音總管。一律使用自然、簡潔的繁體中文。
 
@@ -26,6 +201,11 @@ export const geminiSystemInstruction = `
 1B. 使用者要求規劃旅行、機票或日本行程，但缺少出發地、目的地、出發與回程日期、人數或預算時，先用一句話一次問齊，不得立即呼叫research_now或travel_plan。
 1C. 旅遊條件齊全後才呼叫travel_plan。
 1D. 只有使用者明確要求深入研究、最新比較、查證、多來源分析，或問題確實需要即時外部資料時，才呼叫research_now。
+1E. NUBO_MOBILE_PLACES_V1：使用者詢問附近、周邊、這附近、住家附近的飲料店、因料店、餐廳、咖啡廳、早餐店、便利商店、藥局、停車場、加油站或其他店家時，立即呼叫search_nearby，不得呼叫research_now。
+1E-1. 只傳入店家類型或搜尋條件，例如「飲料店」「評價好的餐廳」「營業中的咖啡廳」。使用者有指定城市或行政區時才填location。
+1E-2. 使用者只說附近、周邊、這裡或我住的周邊時，不得自行改成台南；location保持空白，讓Google Maps使用手機目前位置。
+1E-3. search_nearby會直接開啟Google Maps；工具完成後只需簡短說已開啟，不要再重複深度搜尋。
+3A. 手機版要求開啟Facebook、FB、臉書、Instagram、IG、Google、Gmail、地圖或網址時，必須呼叫open_website；手機端會直接開啟官方網頁或對應App，不得回答無法開啟。
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
 3. 使用者要開啟Facebook、Instagram、Google、Gmail、網站或網址時，呼叫open_website。
 4. 使用者呼叫「nubo」、要求NUBO出來、跳出來或回到桌面時，呼叫show_nubo。
@@ -113,6 +293,28 @@ export const geminiFunctionDeclarations = [
             "使用者詢問的城市或地區名稱。",
         },
       },
+    },
+  },
+  {
+    name: "search_nearby",
+    description:
+      "極速搜尋手機目前位置附近的餐廳、飲料店、咖啡廳、商店、藥局、停車場或其他地點，並直接開啟Google Maps。附近搜尋不得改用research_now。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        query: {
+          type: "STRING",
+          description:
+            "要搜尋的店家類型或條件，例如飲料店、評價好的餐廳、營業中的咖啡廳。",
+        },
+        location: {
+          type: "STRING",
+          nullable: true,
+          description:
+            "使用者明確指定的城市、行政區或地點；詢問目前附近時留空。",
+        },
+      },
+      required: ["query"],
     },
   },
   {
@@ -394,6 +596,43 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     };
   }
 
+  if (name === "search_nearby") {
+    const query =
+      String(args.query ?? "").trim();
+
+    const location =
+      String(
+        args.location ?? "",
+      ).trim();
+
+    if (!query) {
+      throw new Error(
+        "缺少附近搜尋項目",
+      );
+    }
+
+    const url =
+      buildMapsSearchUrl(
+        query,
+        location || undefined,
+      );
+
+    if (isMobileWebClient()) {
+      return {
+        ...openClientUrl(url),
+        provider: "Google Maps",
+        query,
+        location:
+          location || "目前位置",
+      };
+    }
+
+    return post(
+      "/api/system/open-website",
+      { target: url },
+    );
+  }
+
   if (name === "get_weather") {
     return post("/api/weather", {
       location: args.location || undefined,
@@ -413,7 +652,28 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   }
   if (name === "research_now") return post("/api/research/run", { question: args.question, title: args.title || undefined });
   if (name === "open_youtube") return post("/api/youtube/open", { query: args.query, service: args.service || "youtube_music" });
-  if (name === "open_website") return post("/api/system/open-website", { target: normalizeTarget(args.target) });
+  if (name === "open_website") {
+    const target =
+      String(
+        normalizeTarget(args.target),
+      ).trim();
+
+    if (isMobileWebClient()) {
+      const url =
+        resolveClientWebsite(target);
+
+      return {
+        ...openClientUrl(url),
+        target,
+        mobile: true,
+      };
+    }
+
+    return post(
+      "/api/system/open-website",
+      { target },
+    );
+  }
   if (name === "show_nubo") return post("/api/system/show-nubo", {});
   if (name === "close_webpage") return post("/api/system/browser-window", { action: "close", target: normalizeTarget(args.target || "browser") });
   if (name === "open_desktop_app") return post("/api/system/open-app", { app: args.app });
