@@ -1,4 +1,4 @@
-﻿type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 type SpeechRecognitionResultLike = {
   isFinal: boolean;
@@ -211,6 +211,22 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
 
 export function startNuboBackgroundNameListener(): () => void {
   if (typeof window === "undefined") return () => {};
+
+  const userAgent = window.navigator.userAgent;
+  const isIpadOs =
+    /Macintosh/i.test(userAgent) &&
+    window.navigator.maxTouchPoints > 1;
+
+  const isMobileBrowser =
+    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+    isIpadOs;
+
+  if (isMobileBrowser) {
+    console.log(
+      "[name-alert/background] disabled on mobile to avoid recognition restart chime",
+    );
+    return () => {};
+  }
 
   if (window.__nuboBackgroundNameListenerStop) {
     console.log("[name-alert/background] listener already running");

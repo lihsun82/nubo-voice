@@ -1,4 +1,5 @@
 import { YouTubeAutoplayPlayer } from "@/components/YouTubeAutoplayPlayer";
+import { headers } from "next/headers";
 
 type SearchParams = Promise<{
   videoId?: string | string[];
@@ -19,7 +20,26 @@ export default async function YouTubePlayerPage({
   const videoId = value(params.videoId);
   const title = value(params.title) || "NUBO YouTube Player";
   const channelTitle = value(params.channel);
-  const origin = process.env.NUBO_PUBLIC_URL ?? "http://127.0.0.1:3000";
+  const requestHeaders = await headers();
+  const host = (
+    requestHeaders.get("x-forwarded-host") ??
+    requestHeaders.get("host") ??
+    "127.0.0.1:3000"
+  )
+    .split(",")[0]
+    .trim();
+
+  const proto = (
+    requestHeaders.get("x-forwarded-proto") ??
+    (host.startsWith("127.0.0.1") ||
+    host.startsWith("localhost")
+      ? "http"
+      : "https")
+  )
+    .split(",")[0]
+    .trim();
+
+  const origin = `${proto}://${host}`;
 
   if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
     return (

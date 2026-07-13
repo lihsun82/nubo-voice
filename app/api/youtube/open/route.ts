@@ -124,19 +124,50 @@ function openDedicatedPlayer(url: string): {
   }
 }
 
+// NUBO forwarded public player origin
 function resolvePlayerBaseUrl(request: Request) {
-  const requestOrigin = new URL(request.url).origin;
-  const configured = process.env.NUBO_PUBLIC_URL?.trim();
+  const requestUrl = new URL(request.url);
 
-  if (!configured) return requestOrigin;
+  const forwardedHost = (
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    ""
+  )
+    .split(",")[0]
+    .trim();
 
-  try {
-    const configuredUrl = new URL(configured);
-    const isLocal = ["127.0.0.1", "localhost"].includes(configuredUrl.hostname);
-    return isLocal ? requestOrigin : configuredUrl.origin;
-  } catch {
-    return requestOrigin;
+  const forwardedProto = (
+    request.headers.get("x-forwarded-proto") ??
+    ""
+  )
+    .split(",")[0]
+    .trim();
+
+  if (forwardedHost) {
+    const isLocal =
+      forwardedHost.startsWith("127.0.0.1") ||
+      forwardedHost.startsWith("localhost");
+
+    const protocol =
+      forwardedProto ||
+      (isLocal ? "http" : "https");
+
+    return `${protocol}://${forwardedHost}`;
   }
+
+  const configured =
+    process.env.NUBO_PUBLIC_URL?.trim();
+
+  if (configured) {
+    try {
+      const configuredUrl = new URL(configured);
+      return configuredUrl.origin;
+    } catch {
+      // 使用實際請求來源
+    }
+  }
+
+  return requestUrl.origin;
 }
 
 export async function POST(request: Request) {

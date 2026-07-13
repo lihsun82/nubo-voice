@@ -190,3 +190,42 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Hide mobile YouTube action on desktop */
+.mobile-youtube-action {
+  display: none;
+}
+
+/* NUBO mobile orb center fix 20260713 */
+@media (max-width: 680px) {
+  .orb-wrap {
+    width: 100%;
+    min-height: 0;
+    padding: 8px 0 16px;
+    overflow: visible;
+  }
+
+  .nubo-energy-orb {
+    width: min(86vw, 390px);
+    height: min(86vw, 390px);
+    max-width: 100%;
+    margin-inline: auto;
+    transform: none;
+  }
+
+  .nubo-energy-orb canvas {
+    display: block;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100%;
+  }
+
+  .mobile-youtube-action {
+    display: block;
+    width: 100%;
+    margin: 14px auto 0;
+    text-align: center;
+    text-decoration: none;
+  }
+}

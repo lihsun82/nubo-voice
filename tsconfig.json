@@ -17,5 +17,12 @@
     "paths": { "@/*": ["./*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "local-backups",
+    "**/*.backup.ts",
+    "**/*.backup.tsx",
+    "**/*.backup.js",
+    "**/*.backup.jsx"
+  ]
 }

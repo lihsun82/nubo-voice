@@ -67,6 +67,10 @@ export function GeminiVoiceConsole() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [mobileYoutube, setMobileYoutube] = useState<{
+    playerUrl: string;
+    title: string;
+  } | null>(null);
 
   const stopNuboOutput = () => {
     playbackRef.current?.interrupt();
@@ -332,6 +336,31 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                 if (call.name === "research_now") {
                 }
                 const result = await executeNuboBrowserTool(call);
+
+                if (
+                  call.name === "open_youtube" &&
+                  result &&
+                  typeof result === "object" &&
+                  "playerUrl" in result
+                ) {
+                  const youtubeResult = result as {
+                    playerUrl?: unknown;
+                    title?: unknown;
+                  };
+
+                  if (typeof youtubeResult.playerUrl === "string") {
+                    setMobileYoutube({
+                      playerUrl: youtubeResult.playerUrl,
+                      title:
+                        typeof youtubeResult.title === "string"
+                          ? youtubeResult.title
+                          : "YouTube",
+                    });
+
+                    setTranscript("已找到影片，請按下方按鈕在手機播放。");
+                  }
+                }
+
                 functionResponses.push({
                   id: call.id,
                   name: call.name,
@@ -405,6 +434,18 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           結束對話
         </button>
       </div>
+      {mobileYoutube ? (
+        <a
+          className="primary mobile-youtube-action"
+          href={mobileYoutube.playerUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => setMobileYoutube(null)}
+        >
+          {"\u5728\u624b\u6a5f\u64ad\u653e\uff1a"}
+          {mobileYoutube.title}
+        </a>
+      ) : null}
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">

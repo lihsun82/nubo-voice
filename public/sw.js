@@ -1,4 +1,4 @@
-const CACHE_NAME = "nubo-static-v1";
+﻿const CACHE_NAME = "nubo-static-v2";
 const STATIC_ASSETS = ["/nubo-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -15,7 +15,11 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+        Promise.all(
+          keys
+            .filter((key) => key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
       )
       .then(() => self.clients.claim()),
   );
@@ -26,32 +30,26 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) return;
 
-  const isStaticAsset =
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname === "/nubo-icon.svg" ||
-    request.destination === "style" ||
-    request.destination === "script" ||
-    request.destination === "font" ||
-    request.destination === "image";
-
-  if (!isStaticAsset) return;
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname !== "/nubo-icon.svg"
+  ) {
+    return;
+  }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const network = fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(() => cached);
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          void caches.open(CACHE_NAME).then((cache) => {
+            void cache.put(request, copy);
+          });
+        }
 
-      return cached || network;
-    }),
+        return response;
+      })
+      .catch(() => caches.match(request)),
   );
 });

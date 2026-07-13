@@ -30,7 +30,7 @@ export function PwaInstallPrompt() {
     setIsIos(ios && !standalone);
     setIsDismissed(window.sessionStorage.getItem("nubo-pwa-install-dismissed") === "1");
 
-    if ("serviceWorker" in navigator && window.isSecureContext) {
+    if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator && window.isSecureContext) {
       void navigator.serviceWorker.register("/sw.js").catch((cause) => {
         console.warn("NUBO service worker registration failed", cause);
       });
