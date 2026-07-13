@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start -H 127.0.0.1",
+    "start": "node scripts/start-next.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
