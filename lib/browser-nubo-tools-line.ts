@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   executeNuboBrowserTool as executeBaseTool,
@@ -38,7 +38,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 }
 
 export const geminiSystemInstruction = `${baseInstruction}
-桌面應用程式補充：使用者要求開啟LINE或賴時，呼叫open_desktop_app，app參數使用line。
+桌面應用程式補充：Windows桌面版要求開啟LINE或賴時，呼叫open_desktop_app，app參數使用line；使用者明確說手機版、手機或App時，呼叫open_mobile_app，app參數使用line。
 桌面關閉補充：使用者要求關閉LINE、賴、計算機、記事本、小畫家、Chrome、Edge或Firefox時，呼叫close_desktop_app。
 NUBO喚醒補充：使用者呼叫nubo、叫nubo出來或要求NUBO網頁跳出來時，呼叫show_nubo。
 裝置設定補充：使用者要求設定音量、靜音、解除靜音、增加或降低音量、設定螢幕亮度、增加或降低亮度時，呼叫device_setting。

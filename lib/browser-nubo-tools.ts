@@ -189,6 +189,293 @@ function buildMapsSearchUrl(
   );
 }
 
+
+const NUBO_MOBILE_APP_TOOLS_V1 = true;
+
+function isNuboMobileBrowser() {
+  if (
+    typeof window === "undefined" ||
+    typeof navigator === "undefined"
+  ) {
+    return false;
+  }
+
+  const userAgent =
+    navigator.userAgent || "";
+
+  const mobileUserAgent =
+    /Android|iPhone|iPad|iPod|Mobile/i
+      .test(userAgent);
+
+  const coarsePointer =
+    window
+      .matchMedia(
+        "(pointer: coarse) and (max-width: 1100px)",
+      )
+      .matches;
+
+  return (
+    mobileUserAgent ||
+    coarsePointer
+  );
+}
+
+function normalizeMobileAppName(
+  value: unknown,
+) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+}
+
+function sanitizePhoneNumber(
+  value: unknown,
+) {
+  const raw =
+    String(value ?? "").trim();
+
+  if (!raw) {
+    return "";
+  }
+
+  if (
+    !/^[+\d\s()\-]{3,30}$/.test(raw)
+  ) {
+    throw new Error(
+      "電話號碼格式不正確",
+    );
+  }
+
+  return raw.replace(
+    /[\s()\-]/g,
+    "",
+  );
+}
+
+function resolveNuboMobileApp(
+  appValue: unknown,
+  queryValue?: unknown,
+  valueValue?: unknown,
+) {
+  if (typeof window === "undefined") {
+    throw new Error(
+      "目前不是瀏覽器環境",
+    );
+  }
+
+  const app =
+    normalizeMobileAppName(
+      appValue,
+    );
+
+  const query =
+    String(queryValue ?? "").trim();
+
+  const value =
+    String(valueValue ?? "").trim();
+
+  if (
+    ["line", "賴"].includes(app)
+  ) {
+    return {
+      url:
+        "https://line.me/R/nv/chat",
+      label: "LINE",
+    };
+  }
+
+  if (
+    [
+      "youtube",
+      "yt",
+      "油管",
+    ].includes(app)
+  ) {
+    return {
+      url: query
+        ? "https://www.youtube.com/results?search_query=" +
+          encodeURIComponent(query)
+        : "https://www.youtube.com/",
+      label: "YouTube",
+    };
+  }
+
+  if (
+    [
+      "youtubemusic",
+      "ytmusic",
+      "youtube音樂",
+    ].includes(app)
+  ) {
+    return {
+      url: query
+        ? "https://music.youtube.com/search?q=" +
+          encodeURIComponent(query)
+        : "https://music.youtube.com/",
+      label: "YouTube Music",
+    };
+  }
+
+  if (
+    [
+      "facebook",
+      "fb",
+      "臉書",
+    ].includes(app)
+  ) {
+    return {
+      url:
+        "https://www.facebook.com/",
+      label: "Facebook",
+    };
+  }
+
+  if (
+    [
+      "instagram",
+      "ig",
+    ].includes(app)
+  ) {
+    return {
+      url:
+        "https://www.instagram.com/",
+      label: "Instagram",
+    };
+  }
+
+  if (
+    [
+      "maps",
+      "googlemaps",
+      "地圖",
+      "google地圖",
+    ].includes(app)
+  ) {
+    return {
+      url: query
+        ? "https://www.google.com/maps/search/?api=1&query=" +
+          encodeURIComponent(query)
+        : "https://www.google.com/maps/",
+      label: "Google Maps",
+    };
+  }
+
+  if (
+    [
+      "gmail",
+      "googlemail",
+    ].includes(app)
+  ) {
+    return {
+      url:
+        "https://mail.google.com/",
+      label: "Gmail",
+    };
+  }
+
+  if (
+    [
+      "google",
+      "browser",
+      "chrome",
+      "瀏覽器",
+    ].includes(app)
+  ) {
+    return {
+      url: query
+        ? "https://www.google.com/search?q=" +
+          encodeURIComponent(query)
+        : "https://www.google.com/",
+      label: "Google",
+    };
+  }
+
+  if (
+    [
+      "calculator",
+      "calc",
+      "計算機",
+      "計算器",
+    ].includes(app)
+  ) {
+    return {
+      url:
+        window.location.origin +
+        "/mobile-tools/calculator",
+      label: "NUBO 計算機",
+    };
+  }
+
+  if (
+    [
+      "phone",
+      "dialer",
+      "電話",
+      "撥號",
+    ].includes(app)
+  ) {
+    const phoneNumber =
+      sanitizePhoneNumber(value);
+
+    return {
+      url: phoneNumber
+        ? "tel:" + phoneNumber
+        : "tel:",
+      label: "電話",
+    };
+  }
+
+  if (
+    [
+      "sms",
+      "message",
+      "簡訊",
+      "訊息",
+    ].includes(app)
+  ) {
+    const phoneNumber =
+      sanitizePhoneNumber(value);
+
+    return {
+      url: phoneNumber
+        ? "sms:" + phoneNumber
+        : "sms:",
+      label: "簡訊",
+    };
+  }
+
+  if (
+    [
+      "email",
+      "mail",
+      "電子郵件",
+    ].includes(app)
+  ) {
+    if (
+      value &&
+      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/
+        .test(value)
+    ) {
+      throw new Error(
+        "Email格式不正確",
+      );
+    }
+
+    return {
+      url: value
+        ? "mailto:" +
+          encodeURIComponent(value)
+        : "mailto:",
+      label: "Email",
+    };
+  }
+
+  throw new Error(
+    "目前手機版可開啟：LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊與Email。其他App必須另外提供官方App Link或URL Scheme。",
+  );
+}
+
 export const geminiSystemInstruction = `
 你是NUBO，Leo的個人AI語音總管。一律使用自然、簡潔的繁體中文。
 
@@ -207,7 +494,14 @@ export const geminiSystemInstruction = `
 1E-3. search_nearby會直接開啟Google Maps；工具完成後只需簡短說已開啟，不要再重複深度搜尋。
 3A. 手機版要求開啟Facebook、FB、臉書、Instagram、IG、Google、Gmail、地圖或網址時，必須呼叫open_website；手機端會直接開啟官方網頁或對應App，不得回答無法開啟。
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
+2A. 手機版要求播放歌曲、音樂或YouTube影片時仍呼叫open_youtube；工具會直接開啟YouTube或YouTube Music App／網頁。不得改用research_now。
+2B. 手機瀏覽器可能限制第一次有聲自動播放；遇到限制時仍需提供可直接點擊的播放連結，不得說已播放成功。
 3. 使用者要開啟Facebook、Instagram、Google、Gmail、網站或網址時，呼叫open_website。
+3A. 手機版要求開啟LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、計算機、電話、簡訊或Email時，呼叫open_mobile_app。
+3B. 開啟手機計算機時，open_mobile_app的app使用calculator。
+3C. 開啟LINE App時，open_mobile_app的app使用line。
+3D. 使用者要求撥號、簡訊或Email時，只能開啟對應介面，不得宣稱已完成通話、寄信或傳送簡訊。
+3E. 不得聲稱可以任意啟動所有已安裝App；只有已支援官方App Link、Universal Link或安全白名單的App才能開啟。
 4. 使用者呼叫「nubo」、要求NUBO出來、跳出來或回到桌面時，呼叫show_nubo。
 5. 使用者要關閉Facebook、Instagram、Gmail、YouTube、Chrome、Edge或瀏覽器視窗時，呼叫close_webpage。
 6. 使用者要開啟計算機、記事本、小畫家、檔案總管、設定或時鐘時，呼叫open_desktop_app。
@@ -369,6 +663,34 @@ export const geminiFunctionDeclarations = [
         title: { type: "STRING", nullable: true },
       },
       required: ["question"],
+    },
+  },
+  {
+    name: "open_mobile_app",
+    description:
+      "開啟手機安全白名單App或工具：LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        app: {
+          type: "STRING",
+          description:
+            "要開啟的App或工具名稱。",
+        },
+        query: {
+          type: "STRING",
+          nullable: true,
+          description:
+            "YouTube歌曲、Google搜尋或地圖搜尋內容。",
+        },
+        value: {
+          type: "STRING",
+          nullable: true,
+          description:
+            "電話號碼、簡訊號碼或Email地址。",
+        },
+      },
+      required: ["app"],
     },
   },
   {
@@ -651,7 +973,73 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     });
   }
   if (name === "research_now") return post("/api/research/run", { question: args.question, title: args.title || undefined });
-  if (name === "open_youtube") return post("/api/youtube/open", { query: args.query, service: args.service || "youtube_music" });
+  if (name === "open_mobile_app") {
+    const destination =
+      resolveNuboMobileApp(
+        args.app,
+        args.query,
+        args.value,
+      );
+
+    return {
+      ok: true,
+      mobileUrl:
+        destination.url,
+      mobileLabel:
+        destination.label,
+      autoOpen: true,
+      supported: true,
+    };
+  }
+
+  if (name === "open_youtube") {
+    const service =
+      args.service === "youtube"
+        ? "youtube"
+        : "youtube_music";
+
+    const result =
+      await post(
+        "/api/youtube/open",
+        {
+          query: args.query,
+          service,
+        },
+      );
+
+    if (
+      isNuboMobileBrowser() &&
+      result &&
+      typeof result === "object" &&
+      "videoId" in result &&
+      typeof result.videoId === "string"
+    ) {
+      const videoId =
+        encodeURIComponent(
+          result.videoId,
+        );
+
+      const mobileUrl =
+        service === "youtube_music"
+          ? "https://music.youtube.com/watch?v=" +
+            videoId
+          : "https://www.youtube.com/watch?v=" +
+            videoId +
+            "&autoplay=1";
+
+      return {
+        ...result,
+        mobileUrl,
+        mobileLabel:
+          service === "youtube_music"
+            ? "YouTube Music"
+            : "YouTube",
+        autoOpen: true,
+      };
+    }
+
+    return result;
+  }
   if (name === "open_website") {
     const target =
       String(

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
@@ -366,27 +366,94 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                 }
                 const result = await executeNuboBrowserTool(call);
 
-                if (
-                  call.name === "open_youtube" &&
+                // NUBO_MOBILE_APP_AUTO_OPEN_V1
+                const mobileAction =
                   result &&
-                  typeof result === "object" &&
+                  typeof result === "object"
+                    ? (
+                        result as {
+                          mobileUrl?: unknown;
+                          mobileLabel?: unknown;
+                          autoOpen?: unknown;
+                          playerUrl?: unknown;
+                          title?: unknown;
+                        }
+                      )
+                    : null;
+
+                if (
+                  mobileAction &&
+                  typeof mobileAction.mobileUrl ===
+                    "string"
+                ) {
+                  const targetUrl =
+                    mobileAction.mobileUrl;
+
+                  const label =
+                    typeof mobileAction.mobileLabel ===
+                    "string"
+                      ? mobileAction.mobileLabel
+                      : call.name ===
+                          "open_youtube"
+                        ? "YouTube"
+                        : "手機工具";
+
+                  setMobileYoutube({
+                    playerUrl: targetUrl,
+                    title: label,
+                  });
+
+                  setTranscript(
+                    `正在開啟${label}…`,
+                  );
+
+                  if (
+                    mobileAction.autoOpen !==
+                    false
+                  ) {
+                    window.setTimeout(() => {
+                      try {
+                        window.location.assign(
+                          targetUrl,
+                        );
+                      } catch {
+                        setTranscript(
+                          `請按下方按鈕開啟${label}。`,
+                        );
+                      }
+                    }, 250);
+                  }
+                } else if (
+                  call.name ===
+                    "open_youtube" &&
+                  result &&
+                  typeof result ===
+                    "object" &&
                   "playerUrl" in result
                 ) {
-                  const youtubeResult = result as {
-                    playerUrl?: unknown;
-                    title?: unknown;
-                  };
+                  const youtubeResult =
+                    result as {
+                      playerUrl?: unknown;
+                      title?: unknown;
+                    };
 
-                  if (typeof youtubeResult.playerUrl === "string") {
+                  if (
+                    typeof youtubeResult.playerUrl ===
+                    "string"
+                  ) {
                     setMobileYoutube({
-                      playerUrl: youtubeResult.playerUrl,
+                      playerUrl:
+                        youtubeResult.playerUrl,
                       title:
-                        typeof youtubeResult.title === "string"
+                        typeof youtubeResult.title ===
+                        "string"
                           ? youtubeResult.title
                           : "YouTube",
                     });
 
-                    setTranscript("已找到影片，請按下方按鈕在手機播放。");
+                    setTranscript(
+                      "已找到影片，請按下方按鈕在手機播放。",
+                    );
                   }
                 }
 
@@ -471,7 +538,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           rel="noreferrer"
           onClick={() => setMobileYoutube(null)}
         >
-          {"\u5728\u624b\u6a5f\u64ad\u653e\uff1a"}
+          {"開啟："}
           {mobileYoutube.title}
         </a>
       ) : null}
