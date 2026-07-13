@@ -333,7 +333,7 @@ async function resolveWithNominatim(
     "format",
     "jsonv2",
   );
-  url.searchParams.set("limit", "1");
+  url.searchParams.set("limit", "8");
   url.searchParams.set(
     "addressdetails",
     "1",
@@ -359,6 +359,10 @@ async function resolveWithNominatim(
       display_name: string;
       lat: string;
       lon: string;
+      category?: string;
+      class?: string;
+      type?: string;
+      importance?: number;
       address?: Record<string, string>;
     }>
   >(url.toString(), {
@@ -368,7 +372,67 @@ async function resolveWithNominatim(
       "zh-TW,zh;q=0.9,en;q=0.6",
   });
 
-  const result = results[0];
+  const administrativeBoundary =
+    results.find((candidate) => {
+      const category =
+        candidate.category ??
+        candidate.class ??
+        "";
+
+      return (
+        category === "boundary" &&
+        candidate.type === "administrative"
+      );
+    });
+
+  const administrativePlace =
+    results.find((candidate) => {
+      const category =
+        candidate.category ??
+        candidate.class ??
+        "";
+
+      return (
+        (
+          category === "place" ||
+          category === "boundary"
+        ) &&
+        [
+          "city",
+          "city_district",
+          "suburb",
+          "borough",
+          "town",
+          "village",
+          "municipality",
+          "administrative",
+        ].includes(candidate.type ?? "")
+      );
+    });
+
+  const nonPoiResult =
+    results.find((candidate) => {
+      const category =
+        candidate.category ??
+        candidate.class ??
+        "";
+
+      return ![
+        "amenity",
+        "building",
+        "office",
+        "shop",
+        "tourism",
+        "leisure",
+        "craft",
+      ].includes(category);
+    });
+
+  const result =
+    administrativeBoundary ??
+    administrativePlace ??
+    nonPoiResult ??
+    results[0];
 
   if (!result) {
     return null;
