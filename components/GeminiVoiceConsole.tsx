@@ -63,6 +63,7 @@ export function GeminiVoiceConsole() {
   const reconnectAttemptsRef = useRef(0);
   const sessionHandleRef = useRef<string | null>(null);
   const lastUserTextRef = useRef("");
+  const travelPrefetchTextRef = useRef("");
   const silentUntilWakeRef = useRef(false);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
@@ -304,6 +305,34 @@ export function GeminiVoiceConsole() {
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
             const trimmedUserText = userText.trim();
+
+            // NUBO_TRAVEL_BACKGROUND_PREFETCH
+            if (
+              /(日本|東京|大阪|京都|沖繩|北海道|機票|航班|旅遊|旅行|行程)/.test(
+                trimmedUserText,
+              ) &&
+              travelPrefetchTextRef.current !==
+                trimmedUserText
+            ) {
+              travelPrefetchTextRef.current =
+                trimmedUserText;
+
+              void fetch(
+                "/api/travel/prefetch",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type":
+                      "application/json",
+                  },
+                  body: JSON.stringify({
+                    query: trimmedUserText,
+                  }),
+                },
+              ).catch(() => {
+                // 背景預抓失敗不阻塞即時對話。
+              });
+            }
 
             if (isNuboNameAlertText(trimmedUserText)) {
               setTranscript(`背景聽到：${trimmedUserText}`);

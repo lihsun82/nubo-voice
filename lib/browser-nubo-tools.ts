@@ -18,7 +18,11 @@ export const geminiSystemInstruction = `
 你是NUBO，Leo的個人AI語音總管。一律使用自然、簡潔的繁體中文。
 
 工作原則：
-1. 使用者提出問題或要找解方時，先簡短說「請稍等！」，再主動呼叫research_now，不要只給一般性建議。
+1. NUBO_FAST_ROUTER_V1：一般聊天、常識、簡單建議與一般問題直接回答；不得因為只是問問題就呼叫research_now，也不得說「請稍等」。
+1A. 使用者詢問天氣、溫度、降雨或明後天天氣時，呼叫get_weather。沒有指定地點時使用台南。
+1B. 使用者要求規劃旅行、機票或日本行程，但缺少出發地、目的地、出發與回程日期、人數或預算時，先用一句話一次問齊，不得立即呼叫research_now或travel_plan。
+1C. 旅遊條件齊全後才呼叫travel_plan。
+1D. 只有使用者明確要求深入研究、最新比較、查證、多來源分析，或問題確實需要即時外部資料時，才呼叫research_now。
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
 3. 使用者要開啟Facebook、Instagram、Google、Gmail、網站或網址時，呼叫open_website。
 4. 使用者呼叫「nubo」、要求NUBO出來、跳出來或回到桌面時，呼叫show_nubo。
@@ -81,6 +85,48 @@ export const geminiFunctionDeclarations = [
         action: { type: "STRING", enum: ["run", "pause", "resume"] },
       },
       required: ["id", "action"],
+    },
+  },
+  {
+    name: "get_weather",
+    description:
+      "快速查詢指定地點目前、今天與明天天氣；未指定地點時使用台南。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        location: {
+          type: "STRING",
+          nullable: true,
+        },
+      },
+    },
+  },
+  {
+    name: "travel_plan",
+    description:
+      "在出發地、目的地、去回日期、人數與預算都已確認後，產生高CP值機票與完整行程。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        origin: { type: "STRING" },
+        destination: { type: "STRING" },
+        departureDate: { type: "STRING" },
+        returnDate: { type: "STRING" },
+        travelers: { type: "NUMBER" },
+        budget: { type: "STRING" },
+        preferences: {
+          type: "STRING",
+          nullable: true,
+        },
+      },
+      required: [
+        "origin",
+        "destination",
+        "departureDate",
+        "returnDate",
+        "travelers",
+        "budget",
+      ],
     },
   },
   {
@@ -233,6 +279,23 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "list_tasks") return requestJson("/api/tasks", { cache: "no-store" });
   if (name === "gmail_status") return requestJson("/api/gmail/status", { cache: "no-store" });
   if (name === "task_action") return post("/api/tasks/action", { id: args.id, action: args.action });
+  if (name === "get_weather") {
+    return post("/api/weather", {
+      location: args.location || undefined,
+    });
+  }
+
+  if (name === "travel_plan") {
+    return post("/api/travel/plan", {
+      origin: args.origin,
+      destination: args.destination,
+      departureDate: args.departureDate,
+      returnDate: args.returnDate,
+      travelers: args.travelers,
+      budget: args.budget,
+      preferences: args.preferences || undefined,
+    });
+  }
   if (name === "research_now") return post("/api/research/run", { question: args.question, title: args.title || undefined });
   if (name === "open_youtube") return post("/api/youtube/open", { query: args.query, service: args.service || "youtube_music" });
   if (name === "open_website") return post("/api/system/open-website", { target: normalizeTarget(args.target) });
