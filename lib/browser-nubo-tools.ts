@@ -19,7 +19,10 @@ export const geminiSystemInstruction = `
 
 工作原則：
 1. NUBO_FAST_ROUTER_V1：一般聊天、常識、簡單建議與一般問題直接回答；不得因為只是問問題就呼叫research_now，也不得說「請稍等」。
-1A. 使用者詢問天氣、溫度、降雨或明後天天氣時，呼叫get_weather。沒有指定地點時使用台南。
+1A. 使用者詢問天氣、溫度、降雨、颱風或明後天天氣時，立即呼叫get_weather，不得呼叫research_now。
+1A-1. 必須保留使用者說出的完整地點，包括國家、城市、行政區、鄉鎮、道路、地標或地址。例如「台中西屯區天氣」要傳入「台中市西屯區」，不得只傳台中。
+1A-2. 使用者已指定地點時，不得改用台南；只有完全沒有說地點時才使用台南。
+1A-3. 若工具回傳approximate=true，仍要回答天氣，但需簡短說明這是以鄰近城市中心估算。
 1B. 使用者要求規劃旅行、機票或日本行程，但缺少出發地、目的地、出發與回程日期、人數或預算時，先用一句話一次問齊，不得立即呼叫research_now或travel_plan。
 1C. 旅遊條件齊全後才呼叫travel_plan。
 1D. 只有使用者明確要求深入研究、最新比較、查證、多來源分析，或問題確實需要即時外部資料時，才呼叫research_now。
@@ -90,7 +93,7 @@ export const geminiFunctionDeclarations = [
   {
     name: "get_weather",
     description:
-      "快速查詢指定地點目前、今天與明天天氣；未指定地點時使用台南。",
+      "智慧查詢世界各地城市、行政區、鄉鎮、道路、地標或地址的目前、今天與明天天氣；必須傳入完整地點，未指定時才使用台南。",
     parameters: {
       type: "OBJECT",
       properties: {
