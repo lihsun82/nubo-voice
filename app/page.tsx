@@ -6,9 +6,9 @@ export default function HomePage() {
   return (
     <main className="shell">
       <section className="hero">
-        <div className="eyebrow">PERSONAL AI OPERATING SYSTEM</div>
+        <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
         <h1>NUBO</h1>
-        <p className="subtitle">560px紫藍能量核心、920粒子、LINE與音量語音控制</p>
+        <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
       <NuboVoiceConsole />
       <IntegrationCenter />

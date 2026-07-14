@@ -217,10 +217,19 @@ export function IntegrationCenter() {
 
         <article className="integration-card">
           <div className="integration-card-top">
-            <strong>AI研究引擎</strong>
+            <strong>智慧研究核心</strong>
             <span className="badge active">自動備援</span>
           </div>
-          <p>{providers ? providers.researchChain.join(" → ") : "載入中"}</p>
+          <p>
+            {providers
+              ? `已啟用 ${
+                  providers.providers.filter(
+                    (item) =>
+                      item.configured,
+                  ).length
+                } 組智慧核心，系統會自動選擇與備援。`
+              : "載入中"}
+          </p>
           <small>研究結果會附來源並存入NUBO收件匣。</small>
         </article>
 

@@ -183,3 +183,23 @@ footer { display: flex; justify-content: space-between; gap: 16px; color: var(--
   .shell { width: min(100% - 14px, 960px); }
   .primary, .secondary { padding: 10px 16px; }
 }
+
+
+/* NUBO_UI_WHITELABEL_V1 */
+.run-history > summary {
+  cursor: pointer;
+  user-select: none;
+  padding: 12px 2px;
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.run-history > summary:hover {
+  color: var(--text);
+}
+
+.run-history[open] > summary {
+  margin-bottom: 10px;
+  border-bottom:
+    1px solid var(--line);
+}

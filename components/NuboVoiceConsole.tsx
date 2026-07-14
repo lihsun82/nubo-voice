@@ -24,7 +24,7 @@ async function loadProviderData(signal: AbortSignal): Promise<ProviderData> {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "無法讀取AI引擎設定");
+        throw new Error(payload.error ?? "無法讀取NUBO核心設定");
       }
       return payload;
     } catch (cause) {
@@ -60,7 +60,7 @@ export function NuboVoiceConsole() {
             ? cause.message === "Failed to fetch"
               ? "NUBO後端尚未完成啟動，請稍候後重新整理。"
               : cause.message
-            : "引擎設定錯誤",
+            : "核心設定錯誤",
         );
       });
 
@@ -77,18 +77,18 @@ export function NuboVoiceConsole() {
     <>
       <div className="provider-switcher">
         <div>
-          <span className="provider-label">語音引擎</span>
-          <strong>{selected === "gemini" ? "Gemini Live" : selected === "openai" ? "OpenAI Realtime" : "尚未設定"}</strong>
+          <span className="provider-label">NUBO 核心</span>
+          <strong>{selected === "none" ? "尚未就緒" : selected === data.voiceProvider ? "主要語音核心" : "備援語音核心"}</strong>
         </div>
         <div className="provider-buttons">
           <button className={selected === "gemini" ? "selected" : ""} disabled={!geminiReady} onClick={() => setSelected("gemini")}>
-            Gemini優先
+            主要核心
           </button>
           <button className={selected === "openai" ? "selected" : ""} disabled={!openaiReady} onClick={() => setSelected("openai")}>
-            OpenAI備援
+            備援核心
           </button>
         </div>
-        <small>工作鏈：{data.workChain.join(" → ")}</small>
+        <small>多重語音核心與自動備援已啟用</small>
       </div>
       {selected === "gemini" ? (
         <GeminiVoiceConsole />
@@ -96,7 +96,7 @@ export function NuboVoiceConsole() {
         <OpenAIVoiceConsole />
       ) : (
         <section className="console">
-          <div className="error">請先設定GEMINI_API_KEY，或保留OPENAI_API_KEY作為語音備援。</div>
+          <div className="error">語音服務尚未完成設定，請聯絡系統管理員。</div>
         </section>
       )}
     </>

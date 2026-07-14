@@ -15,6 +15,8 @@ export function TaskCenter() {
   const [data, setData] = useState<TaskPayload>(emptyPayload);
   const [status, setStatus] = useState("載入任務中");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] =
+    useState(false);
   const activeIds = useRef(new Set<string>());
   const seenInbox = useRef(new Set<string>());
 
@@ -90,6 +92,21 @@ export function TaskCenter() {
     return () => window.clearInterval(timer);
   }, [checkDue]);
 
+  // NUBO_RUN_HISTORY_AUTO_COLLAPSE
+  useEffect(() => {
+    if (!historyOpen) {
+      return;
+    }
+
+    const timer =
+      window.setTimeout(() => {
+        setHistoryOpen(false);
+      }, 12_000);
+
+    return () =>
+      window.clearTimeout(timer);
+  }, [historyOpen]);
+
   const enableBrowserNotice = async () => {
     if (!("Notification" in window)) {
       setStatus("這個瀏覽器不支援桌面通知");
@@ -162,15 +179,51 @@ export function TaskCenter() {
         </div>
       </div>
 
-      <details className="run-history">
-        <summary>最近執行紀錄</summary>
-        {data.runs.map((run) => (
-          <div key={run.id} className="run-row">
-            <span>{run.status}</span>
-            <span>{new Date(run.startedAt).toLocaleString("zh-TW")}</span>
-            <span>{run.error ?? run.output?.slice(0, 100) ?? "處理中"}</span>
-          </div>
-        ))}
+      <details
+        className="run-history"
+        open={historyOpen}
+        onToggle={(event) =>
+          setHistoryOpen(
+            event.currentTarget.open,
+          )
+        }
+      >
+        <summary>
+          最近執行紀錄
+          （{data.runs.length}）
+        </summary>
+
+        {historyOpen
+          ? data.runs
+              .slice(0, 10)
+              .map((run) => (
+                <div
+                  key={run.id}
+                  className="run-row"
+                >
+                  <span>
+                    {run.status}
+                  </span>
+
+                  <span>
+                    {new Date(
+                      run.startedAt,
+                    ).toLocaleString(
+                      "zh-TW",
+                    )}
+                  </span>
+
+                  <span>
+                    {run.error ??
+                      run.output?.slice(
+                        0,
+                        100,
+                      ) ??
+                      "處理中"}
+                  </span>
+                </div>
+              ))
+          : null}
       </details>
     </section>
   );

@@ -179,7 +179,7 @@ export function GeminiVoiceConsole() {
     setTranscript(`正在處理：${trimmed}`);
   };
 
-  const scheduleReconnect = (reason = "Gemini Live連線已中斷") => {
+  const scheduleReconnect = (reason = "即時語音連線已中斷") => {
     if (closingRef.current || reconnectTimerRef.current) return;
     const attempt = reconnectAttemptsRef.current + 1;
     reconnectAttemptsRef.current = attempt;
@@ -262,8 +262,8 @@ export function GeminiVoiceConsole() {
 
           const goAway = message.goAway ?? message.go_away;
           if (goAway && !closingRef.current) {
-            setTranscript("Gemini即將重置連線，NUBO正在自動續接…");
-            socket.close(1000, "Gemini GoAway reconnect");
+            setTranscript("語音核心即將更新連線，NUBO正在自動續接…");
+            socket.close(1000, "NUBO voice reconnect");
             return;
           }
 
@@ -475,14 +475,14 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
             socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
           }
         } catch (cause) {
-          console.error("Gemini Live message decode failed", cause, event.data);
-          setError("Gemini Live訊息或工具處理失敗，NUBO將嘗試自動重連。");
-          socket.close(1011, "Gemini message handling failed");
+          console.error("NUBO voice message decode failed", cause, event.data);
+          setError("即時語音訊息或工具處理失敗，NUBO將嘗試自動重連。");
+          socket.close(1011, "NUBO voice handling failed");
         }
       };
 
       socket.onerror = () => {
-        setTranscript("Gemini Live連線異常，NUBO準備自動重連…");
+        setTranscript("即時語音連線異常，NUBO準備自動重連…");
       };
 
       socket.onclose = () => {
@@ -492,11 +492,11 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         playbackRef.current = null;
         socketRef.current = null;
         if (!closingRef.current) {
-          scheduleReconnect("Gemini Live連線被重置");
+          scheduleReconnect("即時語音連線被重置");
         }
       };
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Gemini Live啟動失敗";
+      const message = cause instanceof Error ? cause.message : "即時語音啟動失敗";
       if (isReconnect && !closingRef.current) {
         scheduleReconnect(message);
       } else {
@@ -507,10 +507,22 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   };
 
   const stateLabel = {
-    idle: ["NUBO待命", "920粒子科技球與Gemini Live語音"],
-    connecting: ["正在連接Gemini", "能量核心正在增強"],
-    connected: ["NUBO正在聆聽", "應用程式、網頁、Gmail與靜默喚醒已啟用"],
-    error: ["Gemini語音未連線", "球體已切換為錯誤狀態"],
+    idle: [
+      "NUBO待命",
+      "智慧語音與自動化服務已就緒",
+    ],
+    connecting: [
+      "NUBO正在連線",
+      "正在啟動智慧語音核心",
+    ],
+    connected: [
+      "NUBO正在聆聽",
+      "行動控制、網頁工具與自動化服務已啟用",
+    ],
+    error: [
+      "NUBO語音未連線",
+      "系統已切換為安全待命狀態",
+    ],
   }[state];
 
   return (
