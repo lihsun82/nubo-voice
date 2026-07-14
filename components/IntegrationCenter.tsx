@@ -217,7 +217,7 @@ export function IntegrationCenter() {
 
         <article className="integration-card">
           <div className="integration-card-top">
-            <strong>智慧研究核心</strong>
+            <strong>研究與分析</strong>
             <span className="badge active">自動備援</span>
           </div>
           <p>

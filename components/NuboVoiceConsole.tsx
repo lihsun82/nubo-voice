@@ -24,7 +24,7 @@ async function loadProviderData(signal: AbortSignal): Promise<ProviderData> {
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error ?? "無法讀取NUBO核心設定");
+        throw new Error(payload.error ?? "無法讀取NUBO服務設定");
       }
       return payload;
     } catch (cause) {
@@ -60,7 +60,7 @@ export function NuboVoiceConsole() {
             ? cause.message === "Failed to fetch"
               ? "NUBO後端尚未完成啟動，請稍候後重新整理。"
               : cause.message
-            : "核心設定錯誤",
+            : "服務設定錯誤",
         );
       });
 
@@ -70,35 +70,17 @@ export function NuboVoiceConsole() {
   if (error) return <div className="error">{error}</div>;
   if (!data) return <section className="console">正在等待NUBO後端啟動…</section>;
 
-  const geminiReady = data.providers.some((item) => item.name === "gemini" && item.configured);
-  const openaiReady = data.providers.some((item) => item.name === "openai" && item.configured);
 
-  return (
-    <>
-      <div className="provider-switcher">
-        <div>
-          <span className="provider-label">NUBO 核心</span>
-          <strong>{selected === "none" ? "尚未就緒" : selected === data.voiceProvider ? "主要語音核心" : "備援語音核心"}</strong>
-        </div>
-        <div className="provider-buttons">
-          <button className={selected === "gemini" ? "selected" : ""} disabled={!geminiReady} onClick={() => setSelected("gemini")}>
-            主要核心
-          </button>
-          <button className={selected === "openai" ? "selected" : ""} disabled={!openaiReady} onClick={() => setSelected("openai")}>
-            備援核心
-          </button>
-        </div>
-        <small>多重語音核心與自動備援已啟用</small>
+  return selected === "gemini" ? (
+    <GeminiVoiceConsole />
+  ) : selected === "openai" ? (
+    <OpenAIVoiceConsole />
+  ) : (
+    <section className="console">
+      <div className="error">
+        語音服務尚未完成設定，
+        請聯絡系統管理員。
       </div>
-      {selected === "gemini" ? (
-        <GeminiVoiceConsole />
-      ) : selected === "openai" ? (
-        <OpenAIVoiceConsole />
-      ) : (
-        <section className="console">
-          <div className="error">語音服務尚未完成設定，請聯絡系統管理員。</div>
-        </section>
-      )}
-    </>
+    </section>
   );
 }

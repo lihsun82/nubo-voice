@@ -51,20 +51,20 @@ export function OpenAIVoiceConsole() {
 
   const stateLabel = {
     idle: [
-      "NUBO 待命",
-      "備援語音核心已就緒",
+      "NUBO待命",
+      "語音服務已就緒",
     ],
     connecting: [
       "NUBO正在連線",
       "請允許麥克風權限",
     ],
     connected: [
-      "NUBO 正在聆聽",
-      "備援語音核心已連線",
+      "NUBO正在聆聽",
+      "語音服務已連線",
     ],
     error: [
-      "NUBO語音未連線",
-      "請檢查服務狀態與網路連線",
+      "NUBO尚未連線",
+      "請檢查服務與網路狀態",
     ],
   }[state];
 

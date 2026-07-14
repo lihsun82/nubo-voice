@@ -13,6 +13,7 @@ import {
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { NuboQuestionHistory, recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
@@ -306,6 +307,10 @@ export function GeminiVoiceConsole() {
           } else if (typeof userText === "string" && userText.trim()) {
             const trimmedUserText = userText.trim();
 
+            recordNuboQuestion(
+              trimmedUserText,
+            );
+
             // NUBO_TRAVEL_BACKGROUND_PREFETCH
             if (
               /(日本|東京|大阪|京都|沖繩|北海道|機票|航班|旅遊|旅行|行程)/.test(
@@ -509,18 +514,18 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   const stateLabel = {
     idle: [
       "NUBO待命",
-      "智慧語音與自動化服務已就緒",
+      "智慧服務已就緒",
     ],
     connecting: [
       "NUBO正在連線",
-      "正在啟動智慧語音核心",
+      "正在啟動語音服務",
     ],
     connected: [
       "NUBO正在聆聽",
-      "行動控制、網頁工具與自動化服務已啟用",
+      "行動控制與自動化服務已啟用",
     ],
     error: [
-      "NUBO語音未連線",
+      "NUBO尚未連線",
       "系統已切換為安全待命狀態",
     ],
   }[state];
@@ -556,6 +561,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       ) : null}
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
+      <NuboQuestionHistory />
       <div className="capabilities">
         <div className="capability"><b>應用程式控制</b><small>開啟LINE與固定白名單Windows應用程式。</small></div>
         <div className="capability"><b>NUBO喚醒</b><small>呼叫nubo時會把NUBO網頁帶回桌面。</small></div>
