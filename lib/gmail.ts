@@ -206,18 +206,74 @@ export async function prepareEmailSend(
   return pending;
 }
 
-export async function confirmEmailSend(id: string) {
-  const items = await readJson<PendingEmail[]>(pendingFile, []);
-  const pending = items.find((item) => item.id === id);
-  if (!pending) throw new Error("找不到待確認郵件");
-  if (pending.sentAt) throw new Error("這封郵件已寄出");
-  if (new Date(pending.expiresAt).getTime() < Date.now()) {
-    throw new Error("郵件確認已過期，請重新準備寄送");
+export async function confirmEmailSend(
+  id?: string,
+) {
+  const items =
+    await readJson<PendingEmail[]>(
+      pendingFile,
+      [],
+    );
+
+  const now = Date.now();
+
+  const pending = id
+    ? items.find(
+        (item) => item.id === id,
+      )
+    : [...items]
+        .reverse()
+        .find(
+          (item) =>
+            !item.sentAt &&
+            new Date(
+              item.expiresAt,
+            ).getTime() >= now,
+        );
+
+  if (!pending) {
+    throw new Error(
+      id
+        ? "找不到待確認郵件"
+        : "目前沒有待確認郵件，請先說明收件者、主旨與內容",
+    );
   }
-  const result = await sendGmailMessage(pending.to, pending.subject, pending.body);
-  pending.sentAt = new Date().toISOString();
-  await writeJson(pendingFile, items);
-  return { result, email: pending };
+
+  if (pending.sentAt) {
+    throw new Error(
+      "這封郵件已寄出",
+    );
+  }
+
+  if (
+    new Date(
+      pending.expiresAt,
+    ).getTime() < now
+  ) {
+    throw new Error(
+      "郵件確認已過期，請重新準備寄送",
+    );
+  }
+
+  const result =
+    await sendGmailMessage(
+      pending.to,
+      pending.subject,
+      pending.body,
+    );
+
+  pending.sentAt =
+    new Date().toISOString();
+
+  await writeJson(
+    pendingFile,
+    items,
+  );
+
+  return {
+    result,
+    email: pending,
+  };
 }
 
 export function isEmailAutosendAllowed(to: string): boolean {

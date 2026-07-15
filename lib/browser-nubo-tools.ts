@@ -6,6 +6,50 @@ export type FunctionCall = {
   args?: Record<string, unknown>;
 };
 
+const NUBO_PENDING_GMAIL_ID_KEY =
+  "nubo_pending_gmail_id_v1";
+
+function savePendingGmailId(
+  pendingId: string,
+) {
+  if (
+    typeof window === "undefined"
+  ) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    NUBO_PENDING_GMAIL_ID_KEY,
+    pendingId,
+  );
+}
+
+function readPendingGmailId() {
+  if (
+    typeof window === "undefined"
+  ) {
+    return "";
+  }
+
+  return (
+    window.localStorage.getItem(
+      NUBO_PENDING_GMAIL_ID_KEY,
+    ) ?? ""
+  ).trim();
+}
+
+function clearPendingGmailId() {
+  if (
+    typeof window === "undefined"
+  ) {
+    return;
+  }
+
+  window.localStorage.removeItem(
+    NUBO_PENDING_GMAIL_ID_KEY,
+  );
+}
+
 function normalizeTarget(value: unknown) {
   const raw = String(value ?? "").trim();
   const key = raw.toLowerCase().replace(/\s+/g, "");
@@ -508,7 +552,8 @@ export const geminiSystemInstruction = `
 7. 使用者要關閉LINE、計算機、記事本、小畫家、Chrome、Edge或Firefox等白名單程式時，呼叫close_desktop_app。
 8. 使用者問郵件時，先用gmail_search，再視需要用gmail_read；摘要時不得捏造內容。
 9. 使用者說寄到「我的Google信箱」、「我的Gmail」或「寄給我自己」時，先呼叫gmail_status取得email，再使用該email；若工具允許，也可用to=me。
-10. 使用者要寄信時，可以建立草稿。若要正式寄出，先呼叫gmail_prepare_send並覆誦收件者、主旨與內容摘要。只有下一句明確說確認寄出，才呼叫gmail_confirm_send。
+10. 使用者說「寄信」「寄出」「寄給某人」代表要正式寄送，必須呼叫gmail_prepare_send，不得只建立草稿。只有使用者明確說「建立草稿」「先存草稿」時，才呼叫gmail_create_draft。gmail_prepare_send完成後，覆誦收件者、主旨與內容摘要並等待確認。
+10A. 使用者下一句說「確認寄出」「確定寄出」「寄出吧」「可以寄」時，立即呼叫gmail_confirm_send。即使沒有pendingId也必須呼叫，系統會自動確認最近一封待確認郵件；不得再次建立草稿或重複準備同一封郵件。
 11. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
 12. 使用者要求排程結果寄信時設定deliveryType。gmail_send只有環境白名單允許才會自動寄出，否則建立草稿。
 13. 預設時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
@@ -800,11 +845,16 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "gmail_confirm_send",
-    description: "使用者明確說確認寄出後，以pendingId正式寄信。",
+    description:
+      "使用者明確說確認寄出、確定寄出、寄出吧或可以寄時，正式寄出最近一封待確認郵件；pendingId可省略。",
     parameters: {
       type: "OBJECT",
-      properties: { pendingId: { type: "STRING" } },
-      required: ["pendingId"],
+      properties: {
+        pendingId: {
+          type: "STRING",
+          nullable: true,
+        },
+      },
     },
   },
 ];
@@ -1069,8 +1119,56 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "gmail_search") return post("/api/gmail/search", { query: args.query, maxResults: args.maxResults || 10 });
   if (name === "gmail_read") return post("/api/gmail/read", { id: args.id });
   if (name === "gmail_create_draft") return post("/api/gmail/draft", { to: args.to, subject: args.subject, body: args.body });
-  if (name === "gmail_prepare_send") return post("/api/gmail/prepare-send", { to: args.to, subject: args.subject, body: args.body });
-  if (name === "gmail_confirm_send") return post("/api/gmail/confirm-send", { pendingId: args.pendingId });
+  if (
+    name === "gmail_prepare_send"
+  ) {
+    const result = await post(
+      "/api/gmail/prepare-send",
+      {
+        to: args.to,
+        subject: args.subject,
+        body: args.body,
+      },
+    );
+
+    const pendingId =
+      typeof result?.pendingId ===
+      "string"
+        ? result.pendingId.trim()
+        : "";
+
+    if (pendingId) {
+      savePendingGmailId(
+        pendingId,
+      );
+    }
+
+    return result;
+  }
+
+  if (
+    name === "gmail_confirm_send"
+  ) {
+    const suppliedPendingId =
+      String(
+        args.pendingId ?? "",
+      ).trim();
+
+    const pendingId =
+      suppliedPendingId ||
+      readPendingGmailId();
+
+    const result = await post(
+      "/api/gmail/confirm-send",
+      pendingId
+        ? { pendingId }
+        : {},
+    );
+
+    clearPendingGmailId();
+
+    return result;
+  }
 
   if (name === "create_task") {
     const source =
