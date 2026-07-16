@@ -176,6 +176,21 @@ function openClientUrl(url: string) {
   }
 
   /*
+   * 記住NUBO原本處於啟動狀態。
+   * 從地圖、網站或外部App返回時，
+   * 語音主控台會自動恢復。
+   */
+  window.localStorage.setItem(
+    "nubo_voice_auto_resume_v1",
+    "true",
+  );
+
+  window.localStorage.setItem(
+    "nubo_external_app_return_v1",
+    "true",
+  );
+
+  /*
    * 語音工具呼叫可能被瀏覽器視為
    * 非使用者點擊事件。
    * 先嘗試重用同一外部分頁；

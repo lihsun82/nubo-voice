@@ -42,6 +42,12 @@ function shouldAcknowledgeQuestion(text: string) {
 
 const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
 
+const NUBO_AUTO_RESUME_STORAGE_KEY =
+  "nubo_voice_auto_resume_v1";
+
+const NUBO_EXTERNAL_RETURN_STORAGE_KEY =
+  "nubo_external_app_return_v1";
+
 const NUBO_WAKE_WORDS = ["嗨nubo", "嗨 nubo", "ha nubo", "nubo", "兄弟", "有人嗎"];
 const NUBO_SILENCE_WORDS = ["閉嘴", "安靜", "退下", "不要講話", "先不要說話", "不要說話", "停止說話", "停", "stop"];
 
@@ -66,6 +72,8 @@ export function GeminiVoiceConsole() {
   const lastUserTextRef = useRef("");
   const travelPrefetchTextRef = useRef("");
   const silentUntilWakeRef = useRef(false);
+  const foregroundResumeTimerRef =
+    useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -181,7 +189,31 @@ export function GeminiVoiceConsole() {
   };
 
   const scheduleReconnect = (reason = "即時語音連線已中斷") => {
-    if (closingRef.current || reconnectTimerRef.current) return;
+    if (
+      closingRef.current ||
+      reconnectTimerRef.current
+    ) {
+      return;
+    }
+
+    /*
+     * 手機切到LINE、YouTube或地圖時，
+     * 瀏覽器可能暫停網路與麥克風。
+     * 背景期間不消耗重連次數，
+     * 回到NUBO後再自動恢復。
+     */
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState ===
+        "hidden"
+    ) {
+      setState("idle");
+      setError("");
+      setTranscript(
+        "NUBO已進入背景，返回後會自動恢復語音。",
+      );
+      return;
+    }
     const attempt = reconnectAttemptsRef.current + 1;
     reconnectAttemptsRef.current = attempt;
 
@@ -202,6 +234,13 @@ export function GeminiVoiceConsole() {
   };
 
   const disconnect = async () => {
+    window.localStorage.removeItem(
+      NUBO_AUTO_RESUME_STORAGE_KEY,
+    );
+    window.localStorage.removeItem(
+      NUBO_EXTERNAL_RETURN_STORAGE_KEY,
+    );
+
     closingRef.current = true;
     clearReconnectTimer();
     reconnectAttemptsRef.current = 0;
@@ -218,6 +257,11 @@ export function GeminiVoiceConsole() {
   const connect = async (isReconnect = false) => {
     clearReconnectTimer();
     setError("");
+
+    window.localStorage.setItem(
+      NUBO_AUTO_RESUME_STORAGE_KEY,
+      "true",
+    );
     if (!isReconnect) {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
@@ -416,8 +460,44 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                     mobileAction.autoOpen !==
                     false
                   ) {
+                    window.localStorage.setItem(
+                      NUBO_AUTO_RESUME_STORAGE_KEY,
+                      "true",
+                    );
+
+                    window.localStorage.setItem(
+                      NUBO_EXTERNAL_RETURN_STORAGE_KEY,
+                      "true",
+                    );
+
                     window.setTimeout(() => {
                       try {
+                        /*
+                         * 優先保留NUBO分頁，
+                         * 另外開啟LINE、YouTube或地圖。
+                         */
+                        const opened =
+                          window.open(
+                            targetUrl,
+                            "nubo_mobile_external",
+                          );
+
+                        if (opened) {
+                          try {
+                            opened.opener = null;
+                            opened.focus();
+                          } catch {
+                            // App或跨網域視窗不可控制時忽略。
+                          }
+
+                          return;
+                        }
+
+                        /*
+                         * 手機阻擋新視窗時，
+                         * 才使用目前頁面開啟。
+                         * 返回時仍會自動恢復NUBO。
+                         */
                         window.location.assign(
                           targetUrl,
                         );
@@ -510,6 +590,180 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       }
     }
   };
+
+  /*
+   * 手機從LINE、YouTube、地圖或其他App
+   * 回到NUBO時，自動重建語音連線。
+   */
+  useEffect(() => {
+    let resumeInProgress = false;
+
+    const resumeNuboAfterForeground =
+      () => {
+        if (
+          document.visibilityState !==
+          "visible"
+        ) {
+          return;
+        }
+
+        if (
+          window.localStorage.getItem(
+            NUBO_AUTO_RESUME_STORAGE_KEY,
+          ) !== "true"
+        ) {
+          return;
+        }
+
+        if (
+          silentUntilWakeRef.current ||
+          resumeInProgress
+        ) {
+          return;
+        }
+
+        const returningFromExternal =
+          window.localStorage.getItem(
+            NUBO_EXTERNAL_RETURN_STORAGE_KEY,
+          ) === "true";
+
+        const socket =
+          socketRef.current;
+
+        const socketOpen =
+          socket?.readyState ===
+          WebSocket.OPEN;
+
+        const socketConnecting =
+          socket?.readyState ===
+          WebSocket.CONNECTING;
+
+        /*
+         * 正常連線且不是從外部App返回時，
+         * 不需要重新建立連線。
+         */
+        if (
+          !returningFromExternal &&
+          (socketOpen ||
+            socketConnecting)
+        ) {
+          return;
+        }
+
+        resumeInProgress = true;
+
+        window.localStorage.removeItem(
+          NUBO_EXTERNAL_RETURN_STORAGE_KEY,
+        );
+
+        setError("");
+        setTranscript(
+          returningFromExternal
+            ? "已返回NUBO，正在自動恢復語音…"
+            : "NUBO正在自動恢復語音…",
+        );
+
+        if (
+          foregroundResumeTimerRef.current
+        ) {
+          window.clearTimeout(
+            foregroundResumeTimerRef.current,
+          );
+        }
+
+        foregroundResumeTimerRef.current =
+          window.setTimeout(() => {
+            const activeSocket =
+              socketRef.current;
+
+            if (
+              activeSocket?.readyState ===
+              WebSocket.OPEN
+            ) {
+              /*
+               * 即使WebSocket表面仍開啟，
+               * 手機背景期間的麥克風與音訊可能已暫停。
+               * 關閉後交由既有重連機制建立乾淨連線。
+               */
+              activeSocket.close(
+                1012,
+                "NUBO foreground resume",
+              );
+            } else if (
+              activeSocket?.readyState !==
+              WebSocket.CONNECTING
+            ) {
+              void connect(true);
+            }
+
+            window.setTimeout(() => {
+              resumeInProgress = false;
+            }, 1800);
+          }, 350);
+      };
+
+    const handleVisibilityChange =
+      () => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          resumeNuboAfterForeground();
+        }
+      };
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
+
+    window.addEventListener(
+      "focus",
+      resumeNuboAfterForeground,
+    );
+
+    window.addEventListener(
+      "pageshow",
+      resumeNuboAfterForeground,
+    );
+
+    const initialResumeTimer =
+      window.setTimeout(
+        resumeNuboAfterForeground,
+        700,
+      );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange,
+      );
+
+      window.removeEventListener(
+        "focus",
+        resumeNuboAfterForeground,
+      );
+
+      window.removeEventListener(
+        "pageshow",
+        resumeNuboAfterForeground,
+      );
+
+      window.clearTimeout(
+        initialResumeTimer,
+      );
+
+      if (
+        foregroundResumeTimerRef.current
+      ) {
+        window.clearTimeout(
+          foregroundResumeTimerRef.current,
+        );
+        foregroundResumeTimerRef.current =
+          null;
+      }
+    };
+  }, []);
 
   const stateLabel = {
     idle: [
