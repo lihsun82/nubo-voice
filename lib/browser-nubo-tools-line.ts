@@ -40,6 +40,28 @@ async function delegateWork(args: Record<string, unknown>) {
   return payload;
 }
 
+async function delegatedWorkStatus(args: Record<string, unknown>) {
+  const runId = String(args.runId ?? "").trim();
+  const requestedLimit = Number(args.limit ?? 5);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(Math.floor(requestedLimit), 1), 10)
+    : 5;
+  const query = runId
+    ? `?id=${encodeURIComponent(runId)}`
+    : `?limit=${limit}`;
+  const response = await fetch(
+    `/api/agents/delegate${query}`,
+    { cache: "no-store" },
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(
+      payload.error ?? "讀取NUBO Agent交辦紀錄失敗",
+    );
+  }
+  return payload;
+}
+
 export async function executeNuboBrowserTool(call: FunctionCall) {
   if (call.name === "device_setting") {
     const args = call.args ?? {};
@@ -53,6 +75,9 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (call.name === "delegate_work") {
     return delegateWork(call.args ?? {});
   }
+  if (call.name === "delegated_work_status") {
+    return delegatedWorkStatus(call.args ?? {});
+  }
   return executeBaseTool(call);
 }
 
@@ -64,6 +89,7 @@ NUBO喚醒補充：使用者呼叫nubo、叫nubo出來或要求NUBO網頁跳出�
 LINE與Windows應用程式只能使用固定白名單；不得執行任意程式路徑或命令。
 完整交付規則：使用者要求全文、完整、全部、逐字、完整做好或不要省略時，成果不得出現「以下略過」「以下省略」「其餘略」「未完待續」「待補」等內容。準備寄信時必須把完整正文放入body；不得只放開頭與省略符號。
 Agent交辦規則：使用者要求你完整處理一項工作、需要多步驟完成、需要產出長文或目前沒有直接工具可完成時，呼叫delegate_work。系統會搜尋已核准Skill、自動分派Agent並由Validator驗收。已有專用工具的天氣、旅館行情、附近搜尋、YouTube、Gmail與裝置控制仍優先使用專用工具。
+交辦追蹤規則：使用者詢問剛才交辦的工作、最近交辦、工作進度、Agent成果、是否完成或要求查看交辦內容時，呼叫delegated_work_status。沒有runId時查最近紀錄；已知runId時傳入runId讀取完整成果。
 能力不足規則：不得直接下載或執行陌生網路程式。找不到Skill時使用delegate_work進行核准能力搜尋與研究備援；涉及寄出、刪除、付款、改價、取消訂單或發布時，仍須等待使用者確認。
 等待提示禁用：你正在思考、查找資料、執行工具或跑流程時，不得用語音說「請稍等」「等一下」「我正在處理」「我正在查找」等等待提示。只需要在完成後直接回答。
 `;
@@ -128,6 +154,26 @@ export const geminiFunctionDeclarations = [
         },
       },
       required: ["title", "instruction"],
+    },
+  },
+  {
+    name: "delegated_work_status",
+    description:
+      "查詢最近的NUBO Agent交辦紀錄、執行狀態、成果摘要或指定runId的完整成果。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        runId: {
+          type: "STRING",
+          nullable: true,
+          description: "指定交辦紀錄ID；不知道時留空查最近紀錄。",
+        },
+        limit: {
+          type: "NUMBER",
+          nullable: true,
+          description: "查詢最近幾筆，預設5，最多10。",
+        },
+      },
     },
   },
 ];
