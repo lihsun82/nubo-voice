@@ -31,6 +31,18 @@ function validateLength(body: string) {
   }
 }
 
+function shouldUseTrustedContent(subject: string, body: string) {
+  const combined = `${subject}\n${body}`;
+  const explicitFullText =
+    /(心經全文|全文心經|完整心經|心經完整(?:內容|版本)?|般若波羅蜜多心經全文)/i.test(
+      combined,
+    );
+  const looksLikeTruncatedOriginal =
+    /觀自在菩薩/.test(body) &&
+    assessCompleteness(subject, body).hasOmissionMarker;
+  return explicitFullText || looksLikeTruncatedOriginal;
+}
+
 function buildRepairPrompt(subject: string, body: string, attempt: number) {
   return [
     "你是NUBO完整交付寫作Agent。請把下列郵件草稿改寫成可直接寄出的完整正文。",
@@ -54,10 +66,7 @@ export async function prepareCompleteEmailContent({
   const originalAssessment = assessCompleteness(subject, originalBody);
   const trusted = resolveTrustedContent(subject, originalBody);
 
-  if (
-    trusted &&
-    (originalAssessment.hasOmissionMarker || originalAssessment.requestedFull)
-  ) {
+  if (trusted && shouldUseTrustedContent(subject, originalBody)) {
     const trustedBody = trusted.body.trim();
     validateLength(trustedBody);
     const assessment = assertCompleteContent(subject, trustedBody);
