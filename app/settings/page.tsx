@@ -1,4 +1,5 @@
-﻿import NuboV12Shell from "@/components/v12/NuboV12Shell";
+import NuboV12Shell from "@/components/v12/NuboV12Shell";
+import EmailContactsPanel from "@/components/EmailContactsPanel";
 
 export default function SettingsPage() {
   return (
@@ -30,6 +31,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </section>
+
+      <EmailContactsPanel />
     </NuboV12Shell>
   );
 }

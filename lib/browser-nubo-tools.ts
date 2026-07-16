@@ -9,6 +9,144 @@ export type FunctionCall = {
 const NUBO_PENDING_GMAIL_ID_KEY =
   "nubo_pending_gmail_id_v1";
 
+const NUBO_EMAIL_CONTACTS_KEY =
+  "nubo_email_contacts_v1";
+
+type NuboEmailContact = {
+  id: string;
+  name: string;
+  email: string;
+  aliases: string[];
+};
+
+function normalizeEmailContactKey(
+  value: unknown,
+) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s　]+/g, "");
+}
+
+function readNuboEmailContacts():
+  NuboEmailContact[] {
+  if (
+    typeof window === "undefined"
+  ) {
+    return [];
+  }
+
+  try {
+    const raw =
+      window.localStorage.getItem(
+        NUBO_EMAIL_CONTACTS_KEY,
+      );
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed =
+      JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(
+      (
+        item,
+      ): item is NuboEmailContact =>
+        Boolean(
+          item &&
+            typeof item.id ===
+              "string" &&
+            typeof item.name ===
+              "string" &&
+            typeof item.email ===
+              "string" &&
+            Array.isArray(
+              item.aliases,
+            ),
+        ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function resolveNuboEmailRecipient(
+  value: unknown,
+) {
+  const raw =
+    String(value ?? "").trim();
+
+  if (!raw) {
+    throw new Error(
+      "缺少郵件收件者",
+    );
+  }
+
+  const key =
+    normalizeEmailContactKey(raw);
+
+  const selfAliases = [
+    "me",
+    "self",
+    "mygmail",
+    "我的gmail",
+    "我的google信箱",
+    "自己",
+    "我自己",
+  ];
+
+  if (
+    selfAliases.includes(key)
+  ) {
+    return raw;
+  }
+
+  if (
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+      .test(raw)
+  ) {
+    return raw;
+  }
+
+  const matches =
+    readNuboEmailContacts()
+      .filter((contact) => {
+        const keys = [
+          contact.name,
+          ...contact.aliases,
+        ].map(
+          normalizeEmailContactKey,
+        );
+
+        return keys.includes(
+          key,
+        );
+      });
+
+  if (
+    matches.length === 1
+  ) {
+    return matches[0].email;
+  }
+
+  if (
+    matches.length > 1
+  ) {
+    throw new Error(
+      `固定聯絡人「${raw}」有多筆符合資料，請在設定中刪除重複名稱或別名。`,
+    );
+  }
+
+  throw new Error(
+    `找不到固定聯絡人「${raw}」。請到NUBO設定頁新增名稱與Email。`,
+  );
+}
+
 function savePendingGmailId(
   pendingId: string,
 ) {
@@ -569,6 +707,7 @@ export const geminiSystemInstruction = `
 9. 使用者說寄到「我的Google信箱」、「我的Gmail」或「寄給我自己」時，先呼叫gmail_status取得email，再使用該email；若工具允許，也可用to=me。
 10. 使用者說「寄信」「寄出」「寄給某人」代表要正式寄送，必須呼叫gmail_prepare_send，不得只建立草稿。只有使用者明確說「建立草稿」「先存草稿」時，才呼叫gmail_create_draft。gmail_prepare_send完成後，覆誦收件者、主旨與內容摘要並等待確認。
 10A. 使用者下一句說「確認寄出」「確定寄出」「寄出吧」「可以寄」時，立即呼叫gmail_confirm_send。即使沒有pendingId也必須呼叫，系統會自動確認最近一封待確認郵件；不得再次建立草稿或重複準備同一封郵件。
+10B. 使用者用姓名或稱呼指定收件者時，gmail_prepare_send或gmail_create_draft的to直接傳入使用者說出的名稱，不得自行猜測Email。手機端會從固定聯絡人與別名解析；找不到時提示使用者到設定頁新增。
 11. 使用者要求每天或每小時自動整理Gmail時，建立sourceType=gmail的brief任務。
 12. 使用者要求排程結果寄信時設定deliveryType。gmail_send只有環境白名單允許才會自動寄出，否則建立草稿。
 13. 預設時區固定Asia/Taipei，具體時間使用含+08:00的ISO 8601。
@@ -1133,14 +1272,33 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "close_desktop_app") return post("/api/system/open-app", { action: "close", app: args.app });
   if (name === "gmail_search") return post("/api/gmail/search", { query: args.query, maxResults: args.maxResults || 10 });
   if (name === "gmail_read") return post("/api/gmail/read", { id: args.id });
-  if (name === "gmail_create_draft") return post("/api/gmail/draft", { to: args.to, subject: args.subject, body: args.body });
+  if (
+    name ===
+    "gmail_create_draft"
+  ) {
+    return post(
+      "/api/gmail/draft",
+      {
+        to:
+          resolveNuboEmailRecipient(
+            args.to,
+          ),
+        subject:
+          args.subject,
+        body: args.body,
+      },
+    );
+  }
   if (
     name === "gmail_prepare_send"
   ) {
     const result = await post(
       "/api/gmail/prepare-send",
       {
-        to: args.to,
+        to:
+          resolveNuboEmailRecipient(
+            args.to,
+          ),
         subject: args.subject,
         body: args.body,
       },
