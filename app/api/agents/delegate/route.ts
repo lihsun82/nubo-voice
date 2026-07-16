@@ -7,6 +7,7 @@ import {
   saveAgentWorkRun,
   type AgentWorkRun,
 } from "@/lib/agents/agent-run-store";
+import { addInboxItem } from "@/lib/inbox-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,45 @@ function extractResultText(result: unknown) {
   return typeof payload.result?.text === "string"
     ? payload.result.text
     : "";
+}
+
+function extractPlanSummary(result: unknown) {
+  if (!result || typeof result !== "object") return "";
+  const payload = result as {
+    plan?: {
+      agents?: Array<{ name?: unknown }>;
+      skills?: Array<{ name?: unknown }>;
+    };
+  };
+  const agentNames = Array.isArray(payload.plan?.agents)
+    ? payload.plan.agents
+        .map((agent) =>
+          typeof agent?.name === "string"
+            ? agent.name
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+  const skillNames = Array.isArray(payload.plan?.skills)
+    ? payload.plan.skills
+        .map((skill) =>
+          typeof skill?.name === "string"
+            ? skill.name
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+
+  return [
+    agentNames.length > 0
+      ? `Agent：${agentNames.join(" → ")}`
+      : "",
+    skillNames.length > 0
+      ? `Skill：${skillNames.join("、")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function compactRun(run: AgentWorkRun) {
@@ -65,7 +105,7 @@ export async function GET(request: NextRequest) {
       speechText:
         run.status === "success" ||
         run.status === "planned"
-          ? `交辦工作「${run.title}」已完成。`
+          ? `交辦工作「${run.title}」已完成，成果已保存到NUBO收件匣。`
           : run.status === "failed"
             ? `交辦工作「${run.title}」執行失敗：${run.error ?? "未知錯誤"}`
             : `交辦工作「${run.title}」正在執行。`,
@@ -140,11 +180,31 @@ export async function POST(request: Request) {
     run.result = result;
     await saveAgentWorkRun(run);
 
+    const resultText = extractResultText(result);
+    const planSummary = extractPlanSummary(result);
+    const noticeMessage = [
+      `交辦狀態：${run.status}`,
+      `交辦內容：${run.instruction}`,
+      planSummary,
+      resultText
+        ? `\n完整成果：\n${resultText.slice(0, 16000)}`
+        : "本次為規劃模式，完整計畫已保存於交辦紀錄。",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const notice = await addInboxItem(
+      run.id,
+      `Agent交辦完成｜${run.title}`,
+      noticeMessage,
+    );
+
     return NextResponse.json({
       ...result,
       runId: run.id,
       runStatus: run.status,
       saved: true,
+      inboxNoticeId: notice.id,
+      deliveredToInbox: true,
     });
   } catch (error) {
     const message =
@@ -156,12 +216,24 @@ export async function POST(request: Request) {
     run.error = message;
     await saveAgentWorkRun(run);
 
+    const notice = await addInboxItem(
+      run.id,
+      `Agent交辦失敗｜${run.title}`,
+      [
+        `交辦內容：${run.instruction}`,
+        `失敗原因：${message}`,
+        "NUBO沒有宣稱工作已完成，請依錯誤原因重新交辦或補充必要權限。",
+      ].join("\n"),
+    );
+
     return NextResponse.json(
       {
         error: message,
         runId: run.id,
         runStatus: run.status,
         saved: true,
+        inboxNoticeId: notice.id,
+        deliveredToInbox: true,
       },
       { status: 500 },
     );
