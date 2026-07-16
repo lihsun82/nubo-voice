@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import styles from "@/components/AgentWorkCenter.module.css";
 
 type AgentRunSummary = {
   id: string;
@@ -54,6 +55,10 @@ function formatTime(value: string | null) {
 
 function resultText(run: AgentRunDetail | null) {
   return run?.result?.result?.text?.trim() ?? "";
+}
+
+function statusClass(status: AgentRunSummary["status"]) {
+  return `${styles.status} ${styles[status]}`;
 }
 
 export function AgentWorkCenter() {
@@ -142,8 +147,8 @@ export function AgentWorkCenter() {
   const text = resultText(selected);
 
   return (
-    <section className="agent-work-center">
-      <div className="agent-work-heading">
+    <section className={styles.center}>
+      <div className={styles.heading}>
         <div>
           <div className="eyebrow">NUBO AGENT WORK CENTER</div>
           <h2>Agent 交辦中心</h2>
@@ -154,31 +159,31 @@ export function AgentWorkCenter() {
         </button>
       </div>
 
-      <div className="agent-work-layout">
-        <div className="agent-run-list" aria-label="Agent交辦紀錄">
+      <div className={styles.layout}>
+        <div className={styles.list} aria-label="Agent交辦紀錄">
           {runs.length === 0 ? (
-            <p className="agent-work-empty">
+            <p className={styles.empty}>
               對 NUBO 說：「交辦一項工作，幫我完整製作一份旅館營運報告。」
             </p>
           ) : (
             runs.map((run) => (
               <button
                 type="button"
-                className={`agent-run-card ${
-                  selected?.id === run.id ? "selected" : ""
+                className={`${styles.card} ${
+                  selected?.id === run.id ? styles.selected : ""
                 }`}
                 key={run.id}
                 onClick={() => void openRun(run.id)}
                 disabled={loadingId === run.id}
               >
-                <span className="agent-run-card-top">
+                <span className={styles.cardTop}>
                   <strong>{run.title}</strong>
-                  <span className={`agent-status ${run.status}`}>
+                  <span className={statusClass(run.status)}>
                     {statusLabels[run.status]}
                   </span>
                 </span>
-                <span className="agent-run-instruction">{run.instruction}</span>
-                <span className="agent-run-meta">
+                <span className={styles.instruction}>{run.instruction}</span>
+                <span className={styles.meta}>
                   {formatTime(run.createdAt)} · {run.resultCharacterCount.toLocaleString()} 字
                 </span>
               </button>
@@ -186,16 +191,16 @@ export function AgentWorkCenter() {
           )}
         </div>
 
-        <div className="agent-result-panel">
+        <div className={styles.resultPanel}>
           {!selected ? (
-            <div className="agent-work-empty">
+            <div className={styles.empty}>
               點選左側工作即可查看完整成果、Agent、Skill 與驗收結果。
             </div>
           ) : (
             <>
-              <div className="agent-result-header">
+              <div className={styles.resultHeader}>
                 <div>
-                  <span className={`agent-status ${selected.status}`}>
+                  <span className={statusClass(selected.status)}>
                     {statusLabels[selected.status]}
                   </span>
                   <h3>{selected.title}</h3>
@@ -209,7 +214,7 @@ export function AgentWorkCenter() {
                 </button>
               </div>
 
-              <div className="agent-result-facts">
+              <div className={styles.facts}>
                 <div>
                   <span>Agent</span>
                   <strong>
@@ -245,10 +250,10 @@ export function AgentWorkCenter() {
               </div>
 
               {selected.error ? (
-                <div className="agent-result-error">{selected.error}</div>
+                <div className={styles.error}>{selected.error}</div>
               ) : null}
 
-              <div className="agent-result-body">
+              <div className={styles.body}>
                 {text ||
                   (selected.mode === "plan"
                     ? "這筆工作為規劃模式，請查看Agent與Skill分派資訊。"
