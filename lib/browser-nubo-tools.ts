@@ -685,6 +685,10 @@ export const geminiSystemInstruction = `
 1B. 使用者要求規劃旅行、機票或日本行程，但缺少出發地、目的地、出發與回程日期、人數或預算時，先用一句話一次問齊，不得立即呼叫research_now或travel_plan。
 1C. 旅遊條件齊全後才呼叫travel_plan。
 1D. 只有使用者明確要求深入研究、最新比較、查證、多來源分析，或問題確實需要即時外部資料時，才呼叫research_now。
+1D-1. NUBO_HOTEL_RADAR_AGENT_V1：使用者詢問旅館周邊行情、房價行情、市場行情、競品房價、新寶智慧一中館、一中商圈或忠孝復興商圈行情時，立即呼叫hotel_market_report，不得改用research_now。
+1D-2. 新寶智慧一中館、一中館、台中一中、錦新街使用zone=taichung；忠孝復興、台北忠孝復興使用zone=taipei；要求兩區或全部時使用zone=all。
+1D-3. hotel_market_report回傳stale=true時，必須先明確說資料已過期及最後更新時間，再報告現有資料；不得宣稱是今天最新行情。
+1D-4. 使用者明確要求立即更新、重新抓取、執行雷達或啟動行情工作流時，呼叫hotel_market_refresh。工具只代表GitHub工作流已開始，不代表新報告已完成。
 1E. NUBO_MOBILE_PLACES_V1：使用者詢問附近、周邊、這附近、住家附近的飲料店、因料店、餐廳、咖啡廳、早餐店、便利商店、藥局、停車場、加油站或其他店家時，立即呼叫search_nearby，不得呼叫research_now。
 1E-1. 只傳入店家類型或搜尋條件，例如「飲料店」「評價好的餐廳」「營業中的咖啡廳」。使用者有指定城市或行政區時才填location。
 1E-2. 使用者只說附近、周邊、這裡或我住的周邊時，不得自行改成台南；location保持空白，讓Google Maps使用手機目前位置。
@@ -1011,6 +1015,36 @@ export const geminiFunctionDeclarations = [
       },
     },
   },
+  {
+    name: "hotel_market_report",
+    description:
+      "讀取AinuboX1最新旅館行情，報告新寶智慧一中館、台中一中商圈、台北忠孝復興或全部區域今天到後天的市場房價與建議售價。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        zone: {
+          type: "STRING",
+          enum: [
+            "taichung",
+            "taipei",
+            "all",
+          ],
+          description:
+            "taichung代表新寶智慧一中館；taipei代表忠孝復興；all代表全部區域。",
+        },
+      },
+      required: ["zone"],
+    },
+  },
+  {
+    name: "hotel_market_refresh",
+    description:
+      "立即啟動AinuboX1的旅館行情production工作流。只表示工作流已開始，不表示新行情已產生。",
+    parameters: {
+      type: "OBJECT",
+      properties: {},
+    },
+  },
 ];
 
 async function requestJson(url: string, init?: RequestInit) {
@@ -1156,6 +1190,39 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return post(
       "/api/system/open-website",
       { target: url },
+    );
+  }
+
+  if (
+    name ===
+    "hotel_market_report"
+  ) {
+    const zone =
+      String(
+        args.zone ??
+        "taichung",
+      ).trim() ||
+      "taichung";
+
+    return requestJson(
+      "/api/hotel-radar/report?zone=" +
+        encodeURIComponent(
+          zone,
+        ),
+      {
+        cache:
+          "no-store",
+      },
+    );
+  }
+
+  if (
+    name ===
+    "hotel_market_refresh"
+  ) {
+    return post(
+      "/api/hotel-radar/refresh",
+      {},
     );
   }
 
