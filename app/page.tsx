@@ -1,4 +1,5 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
+import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 
 export default function HomePage() {
@@ -10,6 +11,7 @@ export default function HomePage() {
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
       <NuboVoiceConsole />
+      <NuboLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
         <span>v0.5.1 System Control</span>
