@@ -14,6 +14,7 @@ type ProviderData = {
 };
 
 const PROVIDER_CACHE_KEY = "nubo_voice_provider_v1";
+const PROVIDER_CHOICE_KEY = "nubo_voice_provider_choice_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 
 async function loadProviderData(
@@ -21,11 +22,6 @@ async function loadProviderData(
 ): Promise<ProviderData> {
   let lastError: unknown;
 
-  /*
-   * NUBO_MOBILE_FAST_BOOT_V1
-   * 語音介面會先以既有Gemini設定立即啟動，
-   * 服務設定只在背景同步，因此這裡不再阻塞畫面15秒。
-   */
   for (let attempt = 1; attempt <= 4; attempt += 1) {
     try {
       const response = await fetch("/api/providers", {
@@ -53,49 +49,58 @@ async function loadProviderData(
     : new Error("NUBO後端尚未就緒");
 }
 
+function isConfigured(
+  payload: ProviderData,
+  provider: "gemini" | "openai",
+) {
+  return payload.providers.some(
+    (item) => item.name === provider && item.configured,
+  );
+}
+
 export function NuboVoiceConsole() {
-  /*
-   * 專案目前正式語音核心是Gemini。
-   * 直接先渲染語音主控台，可同時執行Token預熱，
-   * 不必等待/api/providers往返後才開始載入。
-   */
   const [selected, setSelected] =
     useState<VoiceProvider>("gemini");
   const [warning, setWarning] = useState("");
 
   useEffect(() => {
+    const storedChoice = window.localStorage.getItem(
+      PROVIDER_CHOICE_KEY,
+    );
     const cached = window.localStorage.getItem(
       PROVIDER_CACHE_KEY,
     );
-    if (
-      cached === "gemini" ||
-      cached === "openai"
-    ) {
-      setSelected(cached);
+    const preferred =
+      storedChoice === "gemini" || storedChoice === "openai"
+        ? storedChoice
+        : cached === "gemini" || cached === "openai"
+          ? cached
+          : null;
+
+    if (preferred) {
+      setSelected(preferred);
     }
 
     const controller = new AbortController();
 
     loadProviderData(controller.signal)
       .then((payload) => {
-        setSelected(payload.voiceProvider);
+        const resolved =
+          preferred && isConfigured(payload, preferred)
+            ? preferred
+            : payload.voiceProvider;
+
+        setSelected(resolved);
         setWarning("");
-        if (
-          payload.voiceProvider === "gemini" ||
-          payload.voiceProvider === "openai"
-        ) {
+        if (resolved === "gemini" || resolved === "openai") {
           window.localStorage.setItem(
             PROVIDER_CACHE_KEY,
-            payload.voiceProvider,
+            resolved,
           );
         }
       })
       .catch((cause) => {
         if (controller.signal.aborted) return;
-        /*
-         * 已快取的語音核心仍可繼續啟動；
-         * 不再用整頁錯誤阻擋手機NUBO。
-         */
         setWarning(
           cause instanceof Error
             ? cause.message
@@ -107,12 +112,6 @@ export function NuboVoiceConsole() {
   }, []);
 
   useEffect(() => {
-    /*
-     * NUBO_MOBILE_KEEP_LIVE_SESSION_V1
-     * 先前從LINE、YouTube或地圖返回時會強制關閉仍正常的WebSocket，
-     * 造成重新取Token、重送工具與再次取得麥克風的等待。
-     * 現在先保留健康連線；若連線真的已關閉，Gemini主控台仍會自動重連。
-     */
     const keepHealthySession = () => {
       if (document.visibilityState === "visible") {
         window.localStorage.removeItem(
