@@ -8,28 +8,57 @@ import { useRef, useState } from "react";
 import { nuboAgent } from "@/lib/nubo-agent";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
+type OpenAIVoice = "marin" | "cedar" | "coral" | "sage";
+
+const OPENAI_VOICE_KEY = "nubo_openai_voice_v1";
+
+function readOpenAIVoice(): OpenAIVoice {
+  const stored = window.localStorage.getItem(OPENAI_VOICE_KEY);
+  if (
+    stored === "cedar" ||
+    stored === "coral" ||
+    stored === "sage"
+  ) {
+    return stored;
+  }
+  return "marin";
+}
 
 export function OpenAIVoiceConsole() {
   const sessionRef = useRef<RealtimeSession | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
+  const [voiceLabel, setVoiceLabel] = useState("Marin高擬人語音");
 
   const connect = async () => {
     setError("");
     setState("connecting");
     try {
+      const voice = readOpenAIVoice();
+      setVoiceLabel(
+        voice === "cedar"
+          ? "Cedar沉穩專業"
+          : voice === "coral"
+            ? "Coral明亮有活力"
+            : voice === "sage"
+              ? "Sage知性柔和"
+              : "Marin高擬人自然",
+      );
+
       const transport = new OpenAIRealtimeWebRTC({
-        baseUrl: `${window.location.origin}/api/realtime-call`,
+        baseUrl:
+          `${window.location.origin}/api/realtime-call` +
+          `?voice=${encodeURIComponent(voice)}`,
         useInsecureApiKey: true,
       });
       const session = new RealtimeSession(nuboAgent, {
         model: "gpt-realtime-2",
         transport,
-        config: { audio: { output: { voice: "marin" } } },
+        config: { audio: { output: { voice } } },
       });
       session.on("error", (event) => {
         console.error("NUBO backup voice session error", event);
-        setError("備援語音連線失敗，請查看系統錯誤訊息。");
+        setError("OpenAI擬人語音連線失敗，請檢查API額度或切回Gemini。");
         setState("error");
       });
       await session.connect({ apiKey: "nubo-server-proxy" });
@@ -37,7 +66,7 @@ export function OpenAIVoiceConsole() {
       setState("connected");
     } catch (cause) {
       console.error("NUBO backup voice connection failed", cause);
-      setError(cause instanceof Error ? cause.message : "備援語音連線失敗");
+      setError(cause instanceof Error ? cause.message : "OpenAI擬人語音連線失敗");
       setState("error");
     }
   };
@@ -52,7 +81,7 @@ export function OpenAIVoiceConsole() {
   const stateLabel = {
     idle: [
       "NUBO待命",
-      "語音服務已就緒",
+      voiceLabel,
     ],
     connecting: [
       "NUBO正在連線",
@@ -60,7 +89,7 @@ export function OpenAIVoiceConsole() {
     ],
     connected: [
       "NUBO正在聆聽",
-      "語音服務已連線",
+      voiceLabel,
     ],
     error: [
       "NUBO尚未連線",
@@ -87,8 +116,8 @@ export function OpenAIVoiceConsole() {
       </div>
       {error ? <div className="error">{error}</div> : null}
       <div className="capabilities">
-        <div className="capability"><b>備援語音核心</b><small>系統會在需要時自動切換。</small></div>
-        <div className="capability"><b>任務中心</b><small>語音建立、執行與管理排程任務。</small></div>
+        <div className="capability"><b>OpenAI擬人語音</b><small>可切換Marin、Cedar、Coral與Sage。</small></div>
+        <div className="capability"><b>自然互動</b><small>適合陪伴、聊天與更有情緒的表達。</small></div>
         <div className="capability"><b>安全權限</b><small>高風險外部操作仍需再次確認。</small></div>
       </div>
     </section>
