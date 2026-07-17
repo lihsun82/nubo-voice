@@ -14,6 +14,7 @@ type ProviderData = {
 };
 
 const PROVIDER_CACHE_KEY = "nubo_voice_provider_v1";
+const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 
 async function loadProviderData(
   signal: AbortSignal,
@@ -103,6 +104,58 @@ export function NuboVoiceConsole() {
       });
 
     return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    /*
+     * NUBO_MOBILE_KEEP_LIVE_SESSION_V1
+     * 先前從LINE、YouTube或地圖返回時會強制關閉仍正常的WebSocket，
+     * 造成重新取Token、重送工具與再次取得麥克風的等待。
+     * 現在先保留健康連線；若連線真的已關閉，Gemini主控台仍會自動重連。
+     */
+    const keepHealthySession = () => {
+      if (document.visibilityState === "visible") {
+        window.localStorage.removeItem(
+          EXTERNAL_RETURN_KEY,
+        );
+      }
+    };
+
+    document.addEventListener(
+      "visibilitychange",
+      keepHealthySession,
+      true,
+    );
+    window.addEventListener(
+      "focus",
+      keepHealthySession,
+      true,
+    );
+    window.addEventListener(
+      "pageshow",
+      keepHealthySession,
+      true,
+    );
+
+    keepHealthySession();
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        keepHealthySession,
+        true,
+      );
+      window.removeEventListener(
+        "focus",
+        keepHealthySession,
+        true,
+      );
+      window.removeEventListener(
+        "pageshow",
+        keepHealthySession,
+        true,
+      );
+    };
   }, []);
 
   const console =
