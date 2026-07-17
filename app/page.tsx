@@ -1,7 +1,5 @@
-import { AgentWorkCenter } from "@/components/AgentWorkCenter";
-import { IntegrationCenter } from "@/components/IntegrationCenter";
+import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
-import { TaskCenter } from "@/components/TaskCenter";
 
 export default function HomePage() {
   return (
@@ -12,9 +10,7 @@ export default function HomePage() {
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
       <NuboVoiceConsole />
-      <AgentWorkCenter />
-      <IntegrationCenter />
-      <TaskCenter />
+      <DeferredDashboardCenters />
       <footer>
         <span>v0.5.1 System Control</span>
         <span>應用程式採固定白名單；音量限制0–100</span>
