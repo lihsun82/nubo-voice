@@ -1,10 +1,13 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
+import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
+import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 
 export default function HomePage() {
   return (
     <main className="shell">
+      <NuboLiveLatencyProbe />
       <section className="hero">
         <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
         <h1>NUBO</h1>
@@ -12,6 +15,7 @@ export default function HomePage() {
       </section>
       <NuboVoiceConsole />
       <NuboLatencyPanel />
+      <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
         <span>v0.5.1 System Control</span>
