@@ -83,9 +83,11 @@ const emptySnapshot: NuboLiveLatencySnapshot = {
 let snapshot: NuboLiveLatencySnapshot = { ...emptySnapshot };
 let installed = false;
 let sessionCounter = 0;
-let restoreHandlers: Array<() => void> = [];
+let originalFetch: typeof window.fetch | null = null;
+let originalSocketSend: WebSocket["send"] | null = null;
+const instrumentedSockets = new WeakSet<WebSocket>();
 
-function nowEpoch() {
+function now() {
   return Date.now();
 }
 
@@ -93,18 +95,15 @@ function publish(patch: Partial<NuboLiveLatencySnapshot>) {
   snapshot = {
     ...snapshot,
     ...patch,
-    updatedAt: nowEpoch(),
+    updatedAt: now(),
   };
 
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(snapshot),
-    );
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
   } catch {
-    // Diagnostics must never interrupt voice operation.
+    // Diagnostics must never interrupt NUBO voice.
   }
 
   window.dispatchEvent(
@@ -115,7 +114,8 @@ function publish(patch: Partial<NuboLiveLatencySnapshot>) {
 }
 
 function resetTurnMetrics() {
-  publish({
+  snapshot = {
+    ...snapshot,
     userTranscriptFirstAt: null,
     userTranscriptLastAt: null,
     lastUserText: "",
@@ -128,29 +128,41 @@ function resetTurnMetrics() {
     transcriptToFirstAudioMs: null,
     toolResponseToFirstAudioMs: null,
     turnCompleteAt: null,
-  });
+  };
 }
 
-function resetSessionMetrics() {
+function beginSession(openAt: number) {
   sessionCounter += 1;
-  const startedAt = nowEpoch();
+  const tokenFields = {
+    tokenStartedAt: snapshot.tokenStartedAt,
+    tokenFinishedAt: snapshot.tokenFinishedAt,
+    tokenRoundTripMs: snapshot.tokenRoundTripMs,
+    tokenServerMs: snapshot.tokenServerMs,
+  };
+
   snapshot = {
     ...emptySnapshot,
+    ...tokenFields,
     sessionId: sessionCounter,
-    updatedAt: startedAt,
-    connectionStartedAt: startedAt,
-    websocketCreatedAt: startedAt,
+    updatedAt: openAt,
+    connectionStartedAt: snapshot.tokenStartedAt ?? openAt,
+    websocketCreatedAt: snapshot.tokenFinishedAt ?? openAt,
+    websocketOpenAt: openAt,
+    websocketOpenMs:
+      snapshot.tokenFinishedAt === null
+        ? null
+        : Math.max(0, openAt - snapshot.tokenFinishedAt),
   };
   publish({});
 }
 
-function readUrl(input: RequestInfo | URL) {
+function readFetchUrl(input: Parameters<typeof fetch>[0]) {
   if (typeof input === "string") return input;
   if (input instanceof URL) return input.href;
   return input.url;
 }
 
-async function parseSocketPayload(data: unknown): Promise<Record<string, any> | null> {
+async function parseSocketPayload(data: unknown): Promise<Record<string, unknown> | null> {
   try {
     let text: string;
     if (typeof data === "string") text = data;
@@ -158,105 +170,78 @@ async function parseSocketPayload(data: unknown): Promise<Record<string, any> | 
     else if (data instanceof ArrayBuffer) text = new TextDecoder().decode(data);
     else if (ArrayBuffer.isView(data)) text = new TextDecoder().decode(data);
     else return null;
-    return JSON.parse(text) as Record<string, any>;
+    return JSON.parse(text) as Record<string, unknown>;
   } catch {
     return null;
   }
 }
 
-function inspectClientMessage(data: unknown) {
-  if (typeof data !== "string") return;
-
-  try {
-    const message = JSON.parse(data) as Record<string, any>;
-    const now = nowEpoch();
-
-    if (message.setup) {
-      publish({ setupSentAt: now });
-    }
-
-    if (message.realtimeInput?.audio) {
-      publish({
-        firstAudioUploadAt: snapshot.firstAudioUploadAt ?? now,
-        audioPacketCount: snapshot.audioPacketCount + 1,
-      });
-    }
-
-    if (message.toolResponse) {
-      publish({
-        toolResponseAt: now,
-        toolDurationMs:
-          snapshot.toolCallAt === null
-            ? null
-            : Math.max(0, now - snapshot.toolCallAt),
-      });
-    }
-  } catch {
-    // Ignore non-JSON WebSocket messages.
-  }
+function readObject(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-function inspectServerMessage(message: Record<string, any>) {
-  const now = nowEpoch();
+function inspectServerMessage(message: Record<string, unknown>) {
+  const receivedAt = now();
 
-  if (message.setupComplete) {
+  if (message.setupComplete !== undefined) {
     publish({
-      setupCompleteAt: now,
+      setupCompleteAt: receivedAt,
       setupHandshakeMs:
         snapshot.setupSentAt === null
           ? null
-          : Math.max(0, now - snapshot.setupSentAt),
+          : Math.max(0, receivedAt - snapshot.setupSentAt),
     });
   }
 
-  const functionCalls = message.toolCall?.functionCalls;
+  const toolCall = readObject(message.toolCall);
+  const functionCalls = toolCall?.functionCalls;
   if (Array.isArray(functionCalls) && functionCalls.length > 0) {
     publish({
-      toolCallAt: snapshot.toolCallAt ?? now,
-      toolNames: functionCalls
-        .map((call: { name?: unknown }) =>
-          typeof call?.name === "string" ? call.name : "未知工具",
-        )
-        .filter(Boolean),
+      toolCallAt: snapshot.toolCallAt ?? receivedAt,
+      toolNames: functionCalls.map((item) => {
+        const call = readObject(item);
+        return typeof call?.name === "string" ? call.name : "未知工具";
+      }),
     });
   }
 
-  const serverContent = message.serverContent;
-  if (!serverContent || typeof serverContent !== "object") return;
+  const serverContent = readObject(message.serverContent);
+  if (!serverContent) return;
 
-  const userText = serverContent.inputTranscription?.text;
+  const inputTranscription = readObject(serverContent.inputTranscription);
+  const userText = inputTranscription?.text;
   if (typeof userText === "string" && userText.trim()) {
-    /* A new transcript after a completed model turn starts a fresh measurement. */
     if (snapshot.turnCompleteAt !== null) {
       resetTurnMetrics();
     }
 
-    const transcriptAt = nowEpoch();
+    const transcriptAt = now();
     publish({
-      userTranscriptFirstAt:
-        snapshot.userTranscriptFirstAt ?? transcriptAt,
+      userTranscriptFirstAt: snapshot.userTranscriptFirstAt ?? transcriptAt,
       userTranscriptLastAt: transcriptAt,
       lastUserText: userText.trim().slice(-240),
     });
   }
 
-  const modelText = serverContent.outputTranscription?.text;
+  const outputTranscription = readObject(serverContent.outputTranscription);
+  const modelText = outputTranscription?.text;
   if (typeof modelText === "string" && modelText.trim()) {
-    publish({
-      firstModelTextAt: snapshot.firstModelTextAt ?? nowEpoch(),
-    });
+    publish({ firstModelTextAt: snapshot.firstModelTextAt ?? now() });
   }
 
-  const parts = serverContent.modelTurn?.parts;
-  if (Array.isArray(parts)) {
-    const hasAudio = parts.some(
-      (part: Record<string, any>) =>
-        typeof part?.inlineData?.data === "string" &&
-        part.inlineData.data.length > 0,
-    );
+  const modelTurn = readObject(serverContent.modelTurn);
+  const parts = modelTurn?.parts;
+  if (Array.isArray(parts) && snapshot.firstModelAudioAt === null) {
+    const hasAudio = parts.some((item) => {
+      const part = readObject(item);
+      const inlineData = readObject(part?.inlineData);
+      return typeof inlineData?.data === "string" && inlineData.data.length > 0;
+    });
 
-    if (hasAudio && snapshot.firstModelAudioAt === null) {
-      const audioAt = nowEpoch();
+    if (hasAudio) {
+      const audioAt = now();
       publish({
         firstModelAudioAt: audioAt,
         transcriptToFirstAudioMs:
@@ -272,29 +257,13 @@ function inspectServerMessage(message: Record<string, any>) {
   }
 
   if (serverContent.turnComplete === true) {
-    publish({ turnCompleteAt: nowEpoch() });
+    publish({ turnCompleteAt: now() });
   }
 }
 
-function instrumentSocket(socket: WebSocket) {
-  resetSessionMetrics();
-
-  const originalSend = socket.send.bind(socket);
-  socket.send = ((data: string | ArrayBufferLike | Blob | ArrayBufferView) => {
-    inspectClientMessage(data);
-    originalSend(data);
-  }) as WebSocket["send"];
-
-  socket.addEventListener("open", () => {
-    const openedAt = nowEpoch();
-    publish({
-      websocketOpenAt: openedAt,
-      websocketOpenMs:
-        snapshot.websocketCreatedAt === null
-          ? null
-          : Math.max(0, openedAt - snapshot.websocketCreatedAt),
-    });
-  });
+function attachSocketListeners(socket: WebSocket) {
+  if (instrumentedSockets.has(socket)) return;
+  instrumentedSockets.add(socket);
 
   socket.addEventListener("message", (event) => {
     void parseSocketPayload(event.data).then((message) => {
@@ -304,7 +273,7 @@ function instrumentSocket(socket: WebSocket) {
 
   socket.addEventListener("close", (event) => {
     publish({
-      websocketClosedAt: nowEpoch(),
+      websocketClosedAt: now(),
       websocketCloseCode: event.code,
       websocketCloseReason: event.reason || "未提供原因",
     });
@@ -315,140 +284,121 @@ function instrumentSocket(socket: WebSocket) {
   });
 }
 
-function installFetchProbe() {
-  const originalFetch = window.fetch.bind(window);
+function inspectClientMessage(socket: WebSocket, data: unknown) {
+  if (typeof data !== "string") return;
 
-  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = readUrl(input);
-    if (!url.includes("/api/gemini-token")) {
-      return originalFetch(input, init);
+  try {
+    const message = JSON.parse(data) as Record<string, unknown>;
+    const sentAt = now();
+
+    if (message.setup !== undefined) {
+      beginSession(sentAt);
+      attachSocketListeners(socket);
+      publish({ setupSentAt: sentAt });
     }
 
-    const startedAt = nowEpoch();
+    const realtimeInput = readObject(message.realtimeInput);
+    if (readObject(realtimeInput?.audio)) {
+      const firstPacket = snapshot.firstAudioUploadAt === null;
+      publish({
+        firstAudioUploadAt: snapshot.firstAudioUploadAt ?? sentAt,
+        audioPacketCount: snapshot.audioPacketCount + 1,
+        microphoneReadyAt: snapshot.microphoneReadyAt ?? sentAt,
+        microphoneReadyMs:
+          firstPacket && snapshot.setupCompleteAt !== null
+            ? Math.max(0, sentAt - snapshot.setupCompleteAt)
+            : snapshot.microphoneReadyMs,
+        voiceReadyMs:
+          firstPacket && snapshot.connectionStartedAt !== null
+            ? Math.max(0, sentAt - snapshot.connectionStartedAt)
+            : snapshot.voiceReadyMs,
+      });
+    }
+
+    if (message.toolResponse !== undefined) {
+      publish({
+        toolResponseAt: sentAt,
+        toolDurationMs:
+          snapshot.toolCallAt === null
+            ? null
+            : Math.max(0, sentAt - snapshot.toolCallAt),
+      });
+    }
+  } catch {
+    // Ignore non-JSON client messages.
+  }
+}
+
+function installFetchProbe() {
+  originalFetch = window.fetch.bind(window);
+  const baseFetch = originalFetch;
+
+  window.fetch = async (...args: Parameters<typeof fetch>) => {
+    const url = readFetchUrl(args[0]);
+    if (!url.includes("/api/gemini-token")) {
+      return baseFetch(...args);
+    }
+
+    const startedAt = now();
     publish({ tokenStartedAt: startedAt });
 
     try {
-      const response = await originalFetch(input, init);
-      const finishedAt = nowEpoch();
-      const payload = await response
-        .clone()
-        .json()
-        .catch(() => ({}));
+      const response = await baseFetch(...args);
+      const finishedAt = now();
+      const payload = (await response.clone().json().catch(() => ({}))) as {
+        elapsedMs?: unknown;
+      };
 
       publish({
         tokenFinishedAt: finishedAt,
         tokenRoundTripMs: Math.max(0, finishedAt - startedAt),
         tokenServerMs:
-          typeof payload?.elapsedMs === "number"
-            ? payload.elapsedMs
-            : null,
+          typeof payload.elapsedMs === "number" ? payload.elapsedMs : null,
       });
-
       return response;
     } catch (error) {
       publish({
-        tokenFinishedAt: nowEpoch(),
+        tokenFinishedAt: now(),
         error:
-          error instanceof Error
-            ? error.message
-            : "Gemini Token請求失敗",
-      });
-      throw error;
-    }
-  }) as typeof window.fetch;
-
-  restoreHandlers.push(() => {
-    window.fetch = originalFetch;
-  });
-}
-
-function installWebSocketProbe() {
-  const OriginalWebSocket = window.WebSocket;
-  const WrappedWebSocket = new Proxy(OriginalWebSocket, {
-    construct(target, args, newTarget) {
-      const socket = Reflect.construct(
-        target,
-        args,
-        newTarget,
-      ) as WebSocket;
-      const url = String(args[0] ?? "");
-      if (GEMINI_SOCKET_PATTERN.test(url)) {
-        instrumentSocket(socket);
-      }
-      return socket;
-    },
-  });
-
-  window.WebSocket = WrappedWebSocket as typeof WebSocket;
-
-  restoreHandlers.push(() => {
-    if (window.WebSocket === WrappedWebSocket) {
-      window.WebSocket = OriginalWebSocket;
-    }
-  });
-}
-
-function installMicrophoneProbe() {
-  const mediaDevices = navigator.mediaDevices;
-  if (!mediaDevices?.getUserMedia) return;
-
-  const originalGetUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
-  const wrapped = async (constraints?: MediaStreamConstraints) => {
-    const requestedAt = nowEpoch();
-    publish({ microphoneRequestedAt: requestedAt });
-
-    try {
-      const stream = await originalGetUserMedia(constraints);
-      const readyAt = nowEpoch();
-      publish({
-        microphoneReadyAt: readyAt,
-        microphoneReadyMs: Math.max(0, readyAt - requestedAt),
-        voiceReadyMs:
-          snapshot.connectionStartedAt === null
-            ? null
-            : Math.max(0, readyAt - snapshot.connectionStartedAt),
-      });
-      return stream;
-    } catch (error) {
-      publish({
-        error:
-          error instanceof Error
-            ? `麥克風：${error.message}`
-            : "麥克風啟動失敗",
+          error instanceof Error ? error.message : "Gemini Token請求失敗",
       });
       throw error;
     }
   };
+}
 
-  try {
-    mediaDevices.getUserMedia = wrapped;
-    restoreHandlers.push(() => {
-      mediaDevices.getUserMedia = originalGetUserMedia;
-    });
-  } catch {
-    // Some browsers expose getUserMedia as read-only. Other metrics still work.
-  }
+function installSocketProbe() {
+  originalSocketSend = WebSocket.prototype.send;
+  const baseSend = originalSocketSend;
+
+  WebSocket.prototype.send = function sendWithLatencyProbe(
+    data: string | ArrayBufferLike | Blob | ArrayBufferView,
+  ) {
+    if (GEMINI_SOCKET_PATTERN.test(this.url)) {
+      inspectClientMessage(this, data);
+    }
+    baseSend.call(this, data);
+  };
 }
 
 export function installNuboLiveLatencyProbe() {
   if (typeof window === "undefined" || installed) return;
   installed = true;
-  restoreHandlers = [];
-
   installFetchProbe();
-  installWebSocketProbe();
-  installMicrophoneProbe();
+  installSocketProbe();
 }
 
 export function uninstallNuboLiveLatencyProbe() {
-  for (const restore of restoreHandlers.reverse()) {
-    try {
-      restore();
-    } catch {
-      // Ignore diagnostics cleanup failures.
-    }
+  if (typeof window === "undefined" || !installed) return;
+
+  if (originalFetch) {
+    window.fetch = originalFetch;
+    originalFetch = null;
   }
-  restoreHandlers = [];
+  if (originalSocketSend) {
+    WebSocket.prototype.send = originalSocketSend;
+    originalSocketSend = null;
+  }
   installed = false;
 }
 
@@ -457,11 +407,13 @@ export function getNuboLiveLatencySnapshot() {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const stored = JSON.parse(raw) as Partial<NuboLiveLatencySnapshot>;
-        snapshot = { ...emptySnapshot, ...stored };
+        snapshot = {
+          ...emptySnapshot,
+          ...(JSON.parse(raw) as Partial<NuboLiveLatencySnapshot>),
+        };
       }
     } catch {
-      // Use in-memory data.
+      // Use current in-memory data.
     }
   }
   return { ...snapshot };
@@ -476,7 +428,6 @@ export function subscribeNuboLiveLatency(
     const customEvent = event as CustomEvent<NuboLiveLatencySnapshot>;
     listener(customEvent.detail);
   };
-
   window.addEventListener(EVENT_NAME, handler);
   return () => window.removeEventListener(EVENT_NAME, handler);
 }
@@ -486,7 +437,7 @@ export function resetNuboLiveLatency() {
   snapshot = {
     ...emptySnapshot,
     sessionId: sessionCounter,
-    updatedAt: nowEpoch(),
+    updatedAt: now(),
   };
   publish({});
 }
