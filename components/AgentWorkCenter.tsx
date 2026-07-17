@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import styles from "@/components/AgentWorkCenter.module.css";
 
 type AgentRunSummary = {
@@ -64,10 +69,14 @@ function statusClass(status: AgentRunSummary["status"]) {
 export function AgentWorkCenter() {
   const [runs, setRuns] = useState<AgentRunSummary[]>([]);
   const [selected, setSelected] = useState<AgentRunDetail | null>(null);
-  const [status, setStatus] = useState("載入Agent交辦紀錄中");
+  const [status, setStatus] = useState("Agent交辦中心待命");
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const loadingRunsRef = useRef(false);
 
   const loadRuns = useCallback(async () => {
+    if (loadingRunsRef.current) return;
+    loadingRunsRef.current = true;
+
     try {
       const response = await fetch("/api/agents/delegate?limit=10", {
         cache: "no-store",
@@ -91,6 +100,8 @@ export function AgentWorkCenter() {
           ? error.message
           : "無法讀取Agent交辦紀錄",
       );
+    } finally {
+      loadingRunsRef.current = false;
     }
   }, []);
 
@@ -133,13 +144,33 @@ export function AgentWorkCenter() {
   };
 
   useEffect(() => {
-    void loadRuns();
+    /*
+     * NUBO_MOBILE_BACKGROUND_POLL_V1
+     * 首頁先讓Gemini Live、麥克風與Token完成啟動，
+     * Agent紀錄延後載入；手機輪詢由20秒降為90秒。
+     */
+    const mobile = window.matchMedia(
+      "(pointer: coarse) and (max-width: 1100px)",
+    ).matches;
+    const initialDelay = mobile ? 2_500 : 1_200;
+    const interval = mobile ? 90_000 : 60_000;
+
+    const initialTimer = window.setTimeout(() => {
+      if (document.visibilityState === "visible") {
+        void loadRuns();
+      }
+    }, initialDelay);
+
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void loadRuns();
       }
-    }, 20_000);
-    return () => window.clearInterval(timer);
+    }, interval);
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
   }, [loadRuns]);
 
   const plan = selected?.result?.plan;
