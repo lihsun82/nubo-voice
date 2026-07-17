@@ -5,9 +5,8 @@ import {
   RealtimeSession,
 } from "@openai/agents/realtime";
 import { useEffect, useRef, useState } from "react";
-import { createNuboOpenAIAgent } from "@/lib/nubo-openai-agent";
+import { nuboAgent } from "@/lib/nubo-agent";
 import {
-  getNuboPersonalityInstruction,
   openaiVoiceOptions,
   personalityOptions,
   readNuboVoiceProfile,
@@ -42,10 +41,6 @@ export function OpenAIVoiceConsole() {
     try {
       const profile = readNuboVoiceProfile();
       const voice = profile.openaiVoice;
-      const personalityInstruction =
-        getNuboPersonalityInstruction(
-          profile.personality,
-        );
       const voiceLabel =
         openaiVoiceOptions.find(
           (option) => option.id === voice,
@@ -67,24 +62,17 @@ export function OpenAIVoiceConsole() {
         useInsecureApiKey: true,
       });
 
-      const agent = createNuboOpenAIAgent(
-        personalityInstruction,
-      );
-      const session = new RealtimeSession(
-        agent,
-        {
-          model: "gpt-realtime-2.1",
-          transport,
-          config: {
-            outputModalities: ["audio"],
-            reasoning: { effort: "low" },
-            parallelToolCalls: false,
-            audio: {
-              output: { voice },
+      const session = new RealtimeSession(nuboAgent, {
+        model: "gpt-realtime-2",
+        transport,
+        config: {
+          audio: {
+            output: {
+              voice: voice as "marin",
             },
           },
-        } as any,
-      );
+        },
+      });
 
       session.on("error", (event) => {
         console.error(
@@ -129,10 +117,7 @@ export function OpenAIVoiceConsole() {
       "NUBO正在連線",
       "正在啟動OpenAI擬人語音",
     ],
-    connected: [
-      "NUBO正在聆聽",
-      activeLabel,
-    ],
+    connected: ["NUBO正在聆聽", activeLabel],
     error: [
       "NUBO尚未連線",
       "可切回Gemini Live繼續使用",
@@ -180,13 +165,13 @@ export function OpenAIVoiceConsole() {
         <div className="capability">
           <b>OpenAI擬人語音</b>
           <small>
-            使用Marin、Cedar等自然聲線，支援情緒化表達。
+            可切換Marin、Cedar、Coral與Sage聲線。
           </small>
         </div>
         <div className="capability">
-          <b>低延遲模式</b>
+          <b>自然互動</b>
           <small>
-            推理強度設定為low，一般問題優先直接回答。
+            適合陪伴、輕鬆聊天與更有情緒的表達。
           </small>
         </div>
         <div className="capability">
