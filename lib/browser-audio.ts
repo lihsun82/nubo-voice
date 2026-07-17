@@ -39,38 +39,99 @@ function floatToPcm16(input: Float32Array): Uint8Array {
   return new Uint8Array(buffer);
 }
 
+function addForegroundListeners(listener: () => void) {
+  document.addEventListener("visibilitychange", listener, true);
+  window.addEventListener("focus", listener, true);
+  window.addEventListener("pageshow", listener, true);
+}
+
+function removeForegroundListeners(listener: () => void) {
+  document.removeEventListener("visibilitychange", listener, true);
+  window.removeEventListener("focus", listener, true);
+  window.removeEventListener("pageshow", listener, true);
+}
+
 export class MicrophonePcmStream {
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
   private mute: GainNode | null = null;
+  private foregroundListenersAttached = false;
+
+  private readonly handleForeground = () => {
+    if (document.visibilityState === "visible") {
+      void this.resume();
+    }
+  };
+
+  private attachForegroundListeners() {
+    if (this.foregroundListenersAttached) return;
+    addForegroundListeners(this.handleForeground);
+    this.foregroundListenersAttached = true;
+  }
+
+  private detachForegroundListeners() {
+    if (!this.foregroundListenersAttached) return;
+    removeForegroundListeners(this.handleForeground);
+    this.foregroundListenersAttached = false;
+  }
 
   async start(onAudio: (base64: string) => void) {
+    if (this.stream || this.context) {
+      await this.stop();
+    }
+
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 16000 },
       },
     });
     this.context = new AudioContext({ latencyHint: "interactive" });
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
+
+    /*
+     * 2048在常見48kHz裝置約43ms，符合Gemini Live建議的小音訊區塊，
+     * 同時避免手機累積一秒後才傳送造成明顯延遲。
+     */
     this.processor = this.context.createScriptProcessor(2048, 1, 1);
     this.mute = this.context.createGain();
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
-      const pcm = floatToPcm16(downsample(input, event.inputBuffer.sampleRate, 16000));
+      const pcm = floatToPcm16(
+        downsample(input, event.inputBuffer.sampleRate, 16000),
+      );
       onAudio(toBase64(pcm));
     };
     this.source.connect(this.processor);
     this.processor.connect(this.mute);
     this.mute.connect(this.context.destination);
+    this.attachForegroundListeners();
+  }
+
+  async resume() {
+    if (!this.context || !this.stream) return false;
+
+    for (const track of this.stream.getAudioTracks()) {
+      track.enabled = true;
+    }
+
+    if (this.context.state === "suspended") {
+      await this.context.resume().catch(() => undefined);
+    }
+
+    return this.context.state === "running";
   }
 
   async stop() {
+    this.detachForegroundListeners();
+    if (this.processor) this.processor.onaudioprocess = null;
     this.processor?.disconnect();
     this.source?.disconnect();
     this.mute?.disconnect();
@@ -89,11 +150,42 @@ export class PcmPlaybackQueue {
   private nextStart = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private readonly scheduleLeadSeconds = 0.08;
+  private foregroundListenersAttached = false;
+
+  private readonly handleForeground = () => {
+    if (document.visibilityState === "visible") {
+      void this.resume();
+    }
+  };
+
+  private attachForegroundListeners() {
+    if (this.foregroundListenersAttached) return;
+    addForegroundListeners(this.handleForeground);
+    this.foregroundListenersAttached = true;
+  }
+
+  private detachForegroundListeners() {
+    if (!this.foregroundListenersAttached) return;
+    removeForegroundListeners(this.handleForeground);
+    this.foregroundListenersAttached = false;
+  }
 
   private async ensureContext() {
-    if (!this.context) this.context = new AudioContext({ latencyHint: "interactive" });
+    if (!this.context) {
+      this.context = new AudioContext({ latencyHint: "interactive" });
+      this.attachForegroundListeners();
+    }
     if (this.context.state === "suspended") await this.context.resume();
     return this.context;
+  }
+
+  async resume() {
+    if (!this.context) return false;
+    if (this.context.state === "suspended") {
+      await this.context.resume().catch(() => undefined);
+    }
+    this.nextStart = Math.max(this.nextStart, this.context.currentTime);
+    return this.context.state === "running";
   }
 
   async enqueue(base64: string, sampleRate = 24000) {
@@ -109,7 +201,10 @@ export class PcmPlaybackQueue {
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(context.destination);
-    const startAt = Math.max(context.currentTime + this.scheduleLeadSeconds, this.nextStart);
+    const startAt = Math.max(
+      context.currentTime + this.scheduleLeadSeconds,
+      this.nextStart,
+    );
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
     this.sources.add(source);
@@ -129,6 +224,7 @@ export class PcmPlaybackQueue {
   }
 
   async close() {
+    this.detachForegroundListeners();
     this.interrupt();
     await this.context?.close().catch(() => undefined);
     this.context = null;
