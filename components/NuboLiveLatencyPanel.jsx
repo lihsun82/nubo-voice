@@ -67,8 +67,11 @@ function buildDiagnosis(snapshot) {
       snapshot.toolDurationMs !== null &&
       snapshot.toolDurationMs >= 1500
     ) {
+      const names = Array.isArray(snapshot.toolNames)
+        ? snapshot.toolNames.join("、")
+        : "未知工具";
       notes.push(
-        `這次回覆主要卡在工具執行，工具耗時${Math.round(snapshot.toolDurationMs)}ms。`,
+        `這次回覆主要卡在工具執行（${names}），工具耗時${Math.round(snapshot.toolDurationMs)}ms。`,
       );
     } else {
       notes.push(
@@ -135,6 +138,11 @@ export function NuboLiveLatencyPanel() {
     setSnapshot(getNuboLiveLatencySnapshot());
   };
 
+  const toolNames =
+    Array.isArray(snapshot.toolNames) && snapshot.toolNames.length > 0
+      ? snapshot.toolNames.join("、")
+      : "本次未呼叫工具";
+
   return (
     <details className="nubo-latency-panel" open>
       <summary>Gemini Live 全鏈路診斷</summary>
@@ -166,6 +174,9 @@ export function NuboLiveLatencyPanel() {
         <p>
           辨識文字到第一段AI聲音：{ms(snapshot.transcriptToFirstAudioMs)}｜工具耗時：
           {ms(snapshot.toolDurationMs)}
+        </p>
+        <p>
+          實際工具：{toolNames}
         </p>
         <p>
           工具回傳到AI開始說話：{ms(snapshot.toolResponseToFirstAudioMs)}｜音訊上傳封包：
