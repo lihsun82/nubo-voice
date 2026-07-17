@@ -3,6 +3,7 @@ import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
 import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
 import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
+import { NuboVoiceStudio } from "@/components/NuboVoiceStudio";
 
 export default function HomePage() {
   return (
@@ -13,6 +14,7 @@ export default function HomePage() {
         <h1>NUBO</h1>
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
+      <NuboVoiceStudio />
       <NuboVoiceConsole />
       <NuboLatencyPanel />
       <NuboLiveLatencyPanel />
