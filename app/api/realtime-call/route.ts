@@ -3,13 +3,6 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENAI_VOICES = new Set([
-  "marin",
-  "cedar",
-  "coral",
-  "sage",
-]);
-
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -18,14 +11,6 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
-
-  const url = new URL(request.url);
-  const requestedVoice =
-    url.searchParams.get("voice")?.toLowerCase() ??
-    "marin";
-  const voice = OPENAI_VOICES.has(requestedVoice)
-    ? requestedVoice
-    : "marin";
 
   const offerSdp = await request.text();
   if (!offerSdp.startsWith("v=")) {
@@ -43,26 +28,22 @@ export async function POST(request: Request) {
       type: "realtime",
       model: "gpt-realtime-2",
       audio: {
-        output: { voice },
+        output: { voice: "marin" },
       },
     }),
   );
 
   try {
-    const upstream = await fetch(
-      "https://api.openai.com/v1/realtime/calls",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "OpenAI-Safety-Identifier":
-            process.env.OPENAI_SAFETY_IDENTIFIER ??
-            "nubo-owner",
-        },
-        body: form,
-        cache: "no-store",
+    const upstream = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "OpenAI-Safety-Identifier":
+          process.env.OPENAI_SAFETY_IDENTIFIER ?? "nubo-owner",
       },
-    );
+      body: form,
+      cache: "no-store",
+    });
 
     const body = await upstream.text();
 
@@ -75,9 +56,7 @@ export async function POST(request: Request) {
       return new Response(body, {
         status: upstream.status,
         headers: {
-          "Content-Type":
-            upstream.headers.get("Content-Type") ??
-            "application/json",
+          "Content-Type": upstream.headers.get("Content-Type") ?? "application/json",
           "Cache-Control": "no-store",
         },
       });
@@ -89,11 +68,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/sdp",
         "Cache-Control": "no-store",
         ...(upstream.headers.get("Location")
-          ? {
-              Location: upstream.headers.get(
-                "Location",
-              ) as string,
-            }
+          ? { Location: upstream.headers.get("Location") as string }
           : {}),
       },
     });
