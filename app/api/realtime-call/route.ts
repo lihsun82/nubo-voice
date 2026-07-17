@@ -3,6 +3,13 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const OPENAI_VOICES = new Set([
+  "marin",
+  "cedar",
+  "coral",
+  "sage",
+]);
+
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -11,6 +18,14 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  const url = new URL(request.url);
+  const requestedVoice =
+    url.searchParams.get("voice")?.toLowerCase() ??
+    "marin";
+  const voice = OPENAI_VOICES.has(requestedVoice)
+    ? requestedVoice
+    : "marin";
 
   const offerSdp = await request.text();
   if (!offerSdp.startsWith("v=")) {
@@ -28,7 +43,7 @@ export async function POST(request: Request) {
       type: "realtime",
       model: "gpt-realtime-2",
       audio: {
-        output: { voice: "marin" },
+        output: { voice },
       },
     }),
   );
