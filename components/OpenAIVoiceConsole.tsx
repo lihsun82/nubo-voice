@@ -70,18 +70,21 @@ export function OpenAIVoiceConsole() {
       const agent = createNuboOpenAIAgent(
         personalityInstruction,
       );
-      const session = new RealtimeSession(agent, {
-        model: "gpt-realtime-2.1",
-        transport,
-        config: {
-          outputModalities: ["audio"],
-          reasoning: { effort: "low" },
-          parallelToolCalls: false,
-          audio: {
-            output: { voice },
+      const session = new RealtimeSession(
+        agent,
+        {
+          model: "gpt-realtime-2.1",
+          transport,
+          config: {
+            outputModalities: ["audio"],
+            reasoning: { effort: "low" },
+            parallelToolCalls: false,
+            audio: {
+              output: { voice },
+            },
           },
-        },
-      });
+        } as any,
+      );
 
       session.on("error", (event) => {
         console.error(
