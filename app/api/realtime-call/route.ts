@@ -41,11 +41,7 @@ export async function POST(request: Request) {
     "session",
     JSON.stringify({
       type: "realtime",
-      model: "gpt-realtime-2.1",
-      output_modalities: ["audio"],
-      reasoning: {
-        effort: "low",
-      },
+      model: "gpt-realtime-2",
       audio: {
         output: { voice },
       },
