@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
 import { OpenAIVoiceConsole } from "@/components/OpenAIVoiceConsole";
+import styles from "@/components/NuboVoiceProfile.module.css";
 import {
   defaultNuboVoiceProfile,
   geminiVoiceOptions,
@@ -276,8 +277,8 @@ export function NuboVoiceConsole() {
 
   return (
     <>
-      <section className="voice-profile-panel">
-        <div className="voice-profile-heading">
+      <section className={styles.panel}>
+        <div className={styles.heading}>
           <div>
             <div className="provider-label">
               NUBO VOICE STUDIO
@@ -323,10 +324,11 @@ export function NuboVoiceConsole() {
           </div>
         </div>
 
-        <div className="voice-profile-grid">
-          <label className="voice-profile-field">
+        <div className={styles.grid}>
+          <label className={styles.field}>
             <span>聲線</span>
             <select
+              className={styles.select}
               value={selectedVoice}
               onChange={(event) => {
                 const value = event.target.value;
@@ -357,18 +359,18 @@ export function NuboVoiceConsole() {
             <small>{voiceDescription}</small>
           </label>
 
-          <div className="voice-profile-field">
+          <div className={styles.field}>
             <span>個性模式</span>
-            <div className="personality-buttons">
+            <div className={styles.personalityButtons}>
               {personalityOptions.map((option) => (
                 <button
                   type="button"
                   key={option.id}
-                  className={
+                  className={`${styles.personalityButton} ${
                     draft.personality === option.id
-                      ? "selected"
+                      ? styles.selectedPersonality
                       : ""
-                  }
+                  }`}
                   onClick={() =>
                     setDraft((current) => ({
                       ...current,
@@ -384,7 +386,7 @@ export function NuboVoiceConsole() {
           </div>
         </div>
 
-        <div className="voice-profile-actions">
+        <div className={styles.actions}>
           <button
             type="button"
             className="primary"
