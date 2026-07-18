@@ -9,10 +9,23 @@ import styles from "@/components/NuboVisionPanel.module.css";
 
 type FacingMode = "environment" | "user";
 type VisionMode = "off" | "preview" | "continuous";
+type VisionCommand =
+  | "open"
+  | "analyze"
+  | "continuous"
+  | "stop-continuous"
+  | "switch"
+  | "front"
+  | "back"
+  | "close";
 
 type VisionStatusDetail = {
   ok?: boolean;
   message?: string;
+};
+
+type VisionCommandDetail = {
+  action?: VisionCommand;
 };
 
 const FRAME_WIDTH = 640;
@@ -253,6 +266,32 @@ export function NuboVisionPanel() {
       }
     };
 
+    const handleCommand = (event: Event) => {
+      const action = (
+        event as CustomEvent<VisionCommandDetail>
+      ).detail?.action;
+
+      if (action === "open") {
+        void startCamera();
+      } else if (action === "analyze") {
+        void analyzeOnce();
+      } else if (action === "continuous") {
+        void startContinuous();
+      } else if (action === "stop-continuous") {
+        stopContinuous();
+      } else if (action === "switch") {
+        void switchCamera();
+      } else if (action === "front") {
+        clearContinuousTimer();
+        void startCamera("user");
+      } else if (action === "back") {
+        clearContinuousTimer();
+        void startCamera("environment");
+      } else if (action === "close") {
+        stopCamera();
+      }
+    };
+
     const stopWhenHidden = () => {
       if (document.visibilityState === "hidden") {
         stopCamera();
@@ -263,6 +302,10 @@ export function NuboVisionPanel() {
       "nubo-vision-status",
       handleStatus,
     );
+    window.addEventListener(
+      "nubo-vision-command",
+      handleCommand,
+    );
     document.addEventListener(
       "visibilitychange",
       stopWhenHidden,
@@ -272,6 +315,10 @@ export function NuboVisionPanel() {
       window.removeEventListener(
         "nubo-vision-status",
         handleStatus,
+      );
+      window.removeEventListener(
+        "nubo-vision-command",
+        handleCommand,
       );
       document.removeEventListener(
         "visibilitychange",
