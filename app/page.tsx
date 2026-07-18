@@ -6,14 +6,15 @@ import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
 import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboVoiceStudio } from "@/components/NuboVoiceStudio";
+import styles from "@/app/page.module.css";
 
 export default function HomePage() {
   return (
-    <main className="shell nubo-clean-shell">
+    <main className={`shell ${styles.shell}`}>
       <NuboLiveLatencyProbe />
       <NuboGeminiVoiceProfileProbe />
 
-      <section className="hero nubo-clean-hero">
+      <section className={`hero ${styles.hero}`}>
         <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
         <h1>NUBO</h1>
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
@@ -21,7 +22,7 @@ export default function HomePage() {
 
       <NuboVoiceConsole />
 
-      <div className="nubo-compact-stack">
+      <div className={styles.stack}>
         <NuboCompactSection
           id="voice-studio"
           title="語音設定"
