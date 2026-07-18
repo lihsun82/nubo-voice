@@ -22,12 +22,7 @@ async function checkOllama(): Promise<boolean> {
 }
 
 function chooseVoiceProvider() {
-  const requested = (process.env.NUBO_VOICE_PROVIDER ?? "gemini").toLowerCase();
-  if (requested === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
-  if (requested === "openai" && process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.GEMINI_API_KEY) return "gemini";
-  if (process.env.OPENAI_API_KEY) return "openai";
-  return "none";
+  return process.env.GEMINI_API_KEY ? "gemini" : "none";
 }
 
 export async function GET() {
