@@ -1,5 +1,8 @@
 "use client";
 
+const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
+const NUBO_TOKEN_STANDBY_STORAGE_KEY = "nubo_token_saver_standby_v1";
+
 function readNumber(text: string, fallback = 10) {
   const match = text.match(/(\d{1,3})/);
   if (!match) return fallback;
@@ -32,6 +35,13 @@ function isWakePhrase(text: string) {
   return (
     text === "nubo" ||
     text === "努寶" ||
+    text === "努宝" ||
+    text === "兄弟" ||
+    text === "有人嗎" ||
+    text === "有人吗" ||
+    text.includes("嗨nubo") ||
+    text.includes("hanubo") ||
+    text.includes("heynubo") ||
     text.includes("叫nubo出來") ||
     text.includes("喚醒nubo") ||
     text.includes("打開nubo") ||
@@ -40,10 +50,66 @@ function isWakePhrase(text: string) {
   );
 }
 
+function isStandbyPhrase(text: string) {
+  return (
+    text.includes("閉嘴") ||
+    text.includes("闭嘴") ||
+    text.includes("安靜") ||
+    text.includes("安静") ||
+    text.includes("退下") ||
+    text.includes("不要講話") ||
+    text.includes("不要说话") ||
+    text.includes("停止說話") ||
+    text.includes("停止说话")
+  );
+}
+
+function enterTokenSaverStandby() {
+  window.localStorage.setItem(
+    NUBO_SILENT_STORAGE_KEY,
+    "true",
+  );
+  window.localStorage.setItem(
+    NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    "true",
+  );
+  window.speechSynthesis?.cancel();
+  document
+    .querySelectorAll<HTMLAudioElement>("audio")
+    .forEach((audio) => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+  window.dispatchEvent(
+    new CustomEvent("nubo-token-saver-idle", {
+      detail: { reason: "voice-command" },
+    }),
+  );
+}
+
 export async function runLocalVoiceCommand(text: string) {
   const normalized = text.replace(/\s+/g, "").toLowerCase();
 
+  if (isStandbyPhrase(normalized)) {
+    enterTokenSaverStandby();
+    return {
+      handled: true,
+      type: "token-saver-standby",
+      result: {
+        ok: true,
+        message:
+          "NUBO已關閉Gemini收音並進入省Token待命。",
+      },
+    };
+  }
+
   if (isWakePhrase(normalized)) {
+    window.localStorage.removeItem(
+      NUBO_SILENT_STORAGE_KEY,
+    );
+    window.localStorage.removeItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    );
     return {
       handled: true,
       type: "nubo",
