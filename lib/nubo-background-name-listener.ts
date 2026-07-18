@@ -28,6 +28,14 @@ type SpeechRecognitionLike = {
   abort?: () => void;
 };
 
+type NuboVoicePhase =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "error";
+
 declare global {
   interface Window {
     SpeechRecognition?: SpeechRecognitionConstructor;
@@ -134,7 +142,6 @@ const LOCAL_NAME_KEYWORDS = [
   "梅樂",
   "梅勒",
   "沒了",
-  "美樂",
   "美洛",
 
   // 通用稱呼
@@ -145,23 +152,79 @@ const LOCAL_NAME_KEYWORDS = [
   "兄弟",
 ];
 
+const WAKE_WORDS = [
+  "嗨nubo",
+  "嗨努寶",
+  "嗨努宝",
+  "hanubo",
+  "heynubo",
+  "nubo",
+  "努寶",
+  "努宝",
+  "兄弟",
+  "有人嗎",
+  "有人吗",
+];
+
+const SILENCE_WORDS = [
+  "閉嘴",
+  "闭嘴",
+  "安靜",
+  "安静",
+  "退下",
+  "不要講話",
+  "不要说话",
+  "停止說話",
+  "停止说话",
+];
+
+const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
+const NUBO_TOKEN_STANDBY_STORAGE_KEY = "nubo_token_saver_standby_v1";
+
 function normalizeText(value: string): string {
   return value
     .trim()
+    .toLowerCase()
     .replace(/\s+/g, "")
     .replace(/，/g, ",")
-    .replace(/。/g, "")
-    .replace(/！/g, "")
-    .replace(/!/g, "")
-    .replace(/？/g, "")
-    .replace(/\?/g, "");
+    .replace(/[。！!？?]/g, "");
+}
+
+function includesAny(text: string, words: string[]) {
+  const normalized = normalizeText(text);
+  return words.some((word) =>
+    normalized.includes(normalizeText(word)),
+  );
+}
+
+function dispatchBackgroundTranscript(transcript: string) {
+  window.dispatchEvent(
+    new CustomEvent("nubo-background-name-transcript", {
+      detail: { transcript },
+    }),
+  );
+}
+
+function clickNuboButton(label: string) {
+  const normalizedLabel = normalizeText(label);
+  const button = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("button"),
+  ).find((candidate) =>
+    normalizeText(candidate.textContent ?? "").includes(
+      normalizedLabel,
+    ),
+  );
+
+  if (!button || button.disabled) return false;
+  button.click();
+  return true;
 }
 
 export function isNuboNameAlertText(transcript: string): boolean {
-  const normalized = normalizeText(transcript).toLowerCase();
+  const normalized = normalizeText(transcript);
 
   return LOCAL_NAME_KEYWORDS.some((keyword) =>
-    normalized.includes(normalizeText(keyword).toLowerCase()),
+    normalized.includes(normalizeText(keyword)),
   );
 }
 
@@ -172,12 +235,14 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
   const text = transcript.trim();
   if (!text) return;
 
-  window.dispatchEvent(new CustomEvent("nubo-background-name-transcript", {
-    detail: { transcript: text },
-  }));
-
+  dispatchBackgroundTranscript(text);
   console.log("[name-alert/background] transcript:", text);
 
+  /*
+   * 喚醒詞只負責喚醒NUBO，不送名字通知，避免每次說「兄弟」都
+   * 觸發LINE名字通知。
+   */
+  if (includesAny(text, WAKE_WORDS)) return;
   if (!isNuboNameAlertText(text)) return;
 
   const now = Date.now();
@@ -212,22 +277,6 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
 export function startNuboBackgroundNameListener(): () => void {
   if (typeof window === "undefined") return () => {};
 
-  const userAgent = window.navigator.userAgent;
-  const isIpadOs =
-    /Macintosh/i.test(userAgent) &&
-    window.navigator.maxTouchPoints > 1;
-
-  const isMobileBrowser =
-    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
-    isIpadOs;
-
-  if (isMobileBrowser) {
-    console.log(
-      "[name-alert/background] disabled on mobile to avoid recognition restart chime",
-    );
-    return () => {};
-  }
-
   if (window.__nuboBackgroundNameListenerStop) {
     console.log("[name-alert/background] listener already running");
     return window.__nuboBackgroundNameListenerStop;
@@ -237,68 +286,46 @@ export function startNuboBackgroundNameListener(): () => void {
     window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognition) {
-    console.warn("[name-alert/background] this browser does not support SpeechRecognition");
+    console.warn(
+      "[name-alert/background] this browser does not support SpeechRecognition",
+    );
     return () => {};
   }
 
+  const userAgent = window.navigator.userAgent;
+  const isIpadOs =
+    /Macintosh/i.test(userAgent) &&
+    window.navigator.maxTouchPoints > 1;
+  const isMobileBrowser =
+    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+    isIpadOs;
+
   let stopped = false;
+  let recognitionRunning = false;
   let restartTimer: number | null = null;
+  let currentPhase: NuboVoicePhase = "idle";
 
   const recognition = new SpeechRecognition();
-
   recognition.lang = "zh-TW";
   recognition.continuous = true;
-
-  // 重要：兩個字名字常常只出現在 interim，不能只等 final。
   recognition.interimResults = true;
-
   recognition.maxAlternatives = 1;
 
-  const start = () => {
-    if (stopped) return;
+  const shouldListenLocally = () =>
+    !stopped &&
+    document.visibilityState === "visible" &&
+    (currentPhase === "idle" || currentPhase === "error");
 
-    try {
-      recognition.start();
-      console.log("[name-alert/background] listener started");
-    } catch {
-      // Chrome already started 時會丟錯，安全忽略。
-    }
+  const clearRestartTimer = () => {
+    if (!restartTimer) return;
+    window.clearTimeout(restartTimer);
+    restartTimer = null;
   };
 
-  recognition.onresult = (event: SpeechRecognitionEventLike) => {
-    for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      const result = event.results[i];
-      const text = result?.[0]?.transcript?.trim();
-
-      if (text) {
-        void sendBackgroundTranscript(text);
-      }
-    }
-  };
-
-  recognition.onerror = (event: unknown) => {
-    console.warn("[name-alert/background] recognition error", event);
-  };
-
-  recognition.onend = () => {
-    if (stopped) return;
-
-    restartTimer = window.setTimeout(() => {
-      start();
-    }, 600);
-  };
-
-  const stop = () => {
-    stopped = true;
-
-    if (restartTimer) {
-      window.clearTimeout(restartTimer);
-      restartTimer = null;
-    }
-
-    recognition.onresult = null;
-    recognition.onerror = null;
-    recognition.onend = null;
+  const stopRecognition = () => {
+    clearRestartTimer();
+    if (!recognitionRunning) return;
+    recognitionRunning = false;
 
     try {
       recognition.stop();
@@ -307,6 +334,151 @@ export function startNuboBackgroundNameListener(): () => void {
     try {
       recognition.abort?.();
     } catch {}
+  };
+
+  const startRecognition = () => {
+    if (!shouldListenLocally() || recognitionRunning) return;
+
+    try {
+      recognition.start();
+      recognitionRunning = true;
+      console.log(
+        "[name-alert/background] local wake listener started",
+      );
+    } catch (error) {
+      console.warn(
+        "[name-alert/background] local wake listener start failed",
+        error,
+      );
+    }
+  };
+
+  const scheduleRestart = () => {
+    clearRestartTimer();
+    if (!shouldListenLocally()) return;
+
+    restartTimer = window.setTimeout(
+      startRecognition,
+      isMobileBrowser ? 1200 : 600,
+    );
+  };
+
+  const enterStandby = (reason: string) => {
+    window.localStorage.setItem(
+      NUBO_SILENT_STORAGE_KEY,
+      "true",
+    );
+    window.localStorage.setItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+      "true",
+    );
+    dispatchBackgroundTranscript(reason);
+    window.speechSynthesis?.cancel();
+    document
+      .querySelectorAll<HTMLAudioElement>("audio")
+      .forEach((audio) => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+    clickNuboButton("結束對話");
+  };
+
+  const wakeNubo = (text: string) => {
+    window.localStorage.removeItem(NUBO_SILENT_STORAGE_KEY);
+    window.localStorage.removeItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    );
+    dispatchBackgroundTranscript(text);
+    stopRecognition();
+
+    window.setTimeout(() => {
+      if (!clickNuboButton("啟動NUBO")) {
+        dispatchBackgroundTranscript(
+          "已聽到喚醒詞，請按一下啟動NUBO。",
+        );
+      }
+    }, 80);
+  };
+
+  recognition.onresult = (event: SpeechRecognitionEventLike) => {
+    for (
+      let index = event.resultIndex;
+      index < event.results.length;
+      index += 1
+    ) {
+      const result = event.results[index];
+      const text = result?.[0]?.transcript?.trim();
+      if (!text) continue;
+
+      if (includesAny(text, SILENCE_WORDS)) {
+        enterStandby(
+          "NUBO已安靜並進入省Token待命。請說NUBO、兄弟或有人嗎重新喚醒。",
+        );
+        return;
+      }
+
+      if (includesAny(text, WAKE_WORDS)) {
+        wakeNubo(text);
+        return;
+      }
+
+      void sendBackgroundTranscript(text);
+    }
+  };
+
+  recognition.onerror = (event: unknown) => {
+    console.warn("[name-alert/background] recognition error", event);
+  };
+
+  recognition.onend = () => {
+    recognitionRunning = false;
+    scheduleRestart();
+  };
+
+  const handleVoicePhase = (event: Event) => {
+    const customEvent = event as CustomEvent<{
+      phase?: NuboVoicePhase;
+    }>;
+    const phase = customEvent.detail?.phase;
+    if (!phase) return;
+
+    currentPhase = phase;
+    if (shouldListenLocally()) startRecognition();
+    else stopRecognition();
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      startRecognition();
+    } else {
+      stopRecognition();
+    }
+  };
+
+  const handleTokenSaverIdle = () => {
+    enterStandby(
+      "45秒沒有對話，NUBO已關閉Gemini收音並進入省Token待命。請說NUBO、兄弟或有人嗎重新喚醒。",
+    );
+  };
+
+  const stop = () => {
+    stopped = true;
+    stopRecognition();
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    window.removeEventListener(
+      "nubo-voice-phase",
+      handleVoicePhase,
+    );
+    window.removeEventListener(
+      "nubo-token-saver-idle",
+      handleTokenSaverIdle,
+    );
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibilityChange,
+    );
 
     if (window.__nuboBackgroundNameListenerStop === stop) {
       window.__nuboBackgroundNameListenerStop = undefined;
@@ -316,10 +488,19 @@ export function startNuboBackgroundNameListener(): () => void {
   };
 
   window.__nuboBackgroundNameListenerStop = stop;
+  window.addEventListener(
+    "nubo-voice-phase",
+    handleVoicePhase,
+  );
+  window.addEventListener(
+    "nubo-token-saver-idle",
+    handleTokenSaverIdle,
+  );
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange,
+  );
 
-  start();
-
+  startRecognition();
   return stop;
 }
-
-
