@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import styles from "@/components/NuboCompactSection.module.css";
 
 type NuboCompactSectionProps = {
   id: string;
@@ -36,10 +37,10 @@ export function NuboCompactSection({
   };
 
   return (
-    <section className="nubo-compact-section">
+    <section className={styles.section}>
       <button
         type="button"
-        className="nubo-compact-section-toggle"
+        className={styles.toggle}
         onClick={toggle}
         aria-expanded={open}
         aria-controls={`nubo-section-${id}`}
@@ -51,7 +52,7 @@ export function NuboCompactSection({
         <b aria-hidden="true">{open ? "−" : "+"}</b>
       </button>
       {open ? (
-        <div id={`nubo-section-${id}`} className="nubo-compact-section-body">
+        <div id={`nubo-section-${id}`} className={styles.body}>
           {children}
         </div>
       ) : null}
