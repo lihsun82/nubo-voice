@@ -45,7 +45,6 @@ declare global {
 }
 
 const LOCAL_NAME_KEYWORDS = [
-  // 政勲 / 政勳
   "政勲",
   "政勳",
   "正勳",
@@ -57,8 +56,6 @@ const LOCAL_NAME_KEYWORDS = [
   "振勲",
   "政熏",
   "正熏",
-
-  // 玉娟
   "玉娟",
   "育娟",
   "玉捐",
@@ -67,8 +64,6 @@ const LOCAL_NAME_KEYWORDS = [
   "余娟",
   "玉涓",
   "育涓",
-
-  // 承裕
   "承裕",
   "承育",
   "陳玉",
@@ -81,16 +76,12 @@ const LOCAL_NAME_KEYWORDS = [
   "承諭",
   "晨玉",
   "晨育",
-
-  // 品研
   "品研",
   "品妍",
   "品言",
   "品嚴",
   "品延",
   "品燕",
-
-  // 耀鳴
   "耀鳴",
   "耀明",
   "耀銘",
@@ -104,8 +95,6 @@ const LOCAL_NAME_KEYWORDS = [
   "曜銘",
   "藥名",
   "要命",
-
-  // 耀呈
   "耀呈",
   "耀成",
   "曜呈",
@@ -116,16 +105,12 @@ const LOCAL_NAME_KEYWORDS = [
   "藥呈",
   "右呈",
   "又成",
-
-  // 小魚
   "小魚",
   "小余",
   "小瑜",
   "小于",
   "曉魚",
   "曉瑜",
-
-  // 魚均
   "魚均",
   "瑜君",
   "于君",
@@ -134,8 +119,6 @@ const LOCAL_NAME_KEYWORDS = [
   "于均",
   "余均",
   "瑜均",
-
-  // 美樂
   "美樂",
   "美勒",
   "美了",
@@ -143,8 +126,6 @@ const LOCAL_NAME_KEYWORDS = [
   "梅勒",
   "沒了",
   "美洛",
-
-  // 通用稱呼
   "老闆",
   "老板",
   "老大",
@@ -222,7 +203,6 @@ function clickNuboButton(label: string) {
 
 export function isNuboNameAlertText(transcript: string): boolean {
   const normalized = normalizeText(transcript);
-
   return LOCAL_NAME_KEYWORDS.some((keyword) =>
     normalized.includes(normalizeText(keyword)),
   );
@@ -238,10 +218,6 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
   dispatchBackgroundTranscript(text);
   console.log("[name-alert/background] transcript:", text);
 
-  /*
-   * 喚醒詞只負責喚醒NUBO，不送名字通知，避免每次說「兄弟」都
-   * 觸發LINE名字通知。
-   */
   if (includesAny(text, WAKE_WORDS)) return;
   if (!isNuboNameAlertText(text)) return;
 
@@ -257,8 +233,6 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
   lastSentAt = now;
 
   try {
-    console.log("[name-alert/background] sending name alert:", text);
-
     await fetch("/api/notify/name-called", {
       method: "POST",
       headers: {
@@ -278,7 +252,6 @@ export function startNuboBackgroundNameListener(): () => void {
   if (typeof window === "undefined") return () => {};
 
   if (window.__nuboBackgroundNameListenerStop) {
-    console.log("[name-alert/background] listener already running");
     return window.__nuboBackgroundNameListenerStop;
   }
 
@@ -303,6 +276,7 @@ export function startNuboBackgroundNameListener(): () => void {
   let stopped = false;
   let recognitionRunning = false;
   let restartTimer: number | null = null;
+  let deferredStandbyTimer: number | null = null;
   let currentPhase: NuboVoicePhase = "idle";
 
   const recognition = new SpeechRecognition();
@@ -320,6 +294,12 @@ export function startNuboBackgroundNameListener(): () => void {
     if (!restartTimer) return;
     window.clearTimeout(restartTimer);
     restartTimer = null;
+  };
+
+  const clearDeferredStandby = () => {
+    if (!deferredStandbyTimer) return;
+    window.clearTimeout(deferredStandbyTimer);
+    deferredStandbyTimer = null;
   };
 
   const stopRecognition = () => {
@@ -346,6 +326,7 @@ export function startNuboBackgroundNameListener(): () => void {
         "[name-alert/background] local wake listener started",
       );
     } catch (error) {
+      recognitionRunning = false;
       console.warn(
         "[name-alert/background] local wake listener start failed",
         error,
@@ -364,6 +345,7 @@ export function startNuboBackgroundNameListener(): () => void {
   };
 
   const enterStandby = (reason: string) => {
+    clearDeferredStandby();
     window.localStorage.setItem(
       NUBO_SILENT_STORAGE_KEY,
       "true",
@@ -384,6 +366,7 @@ export function startNuboBackgroundNameListener(): () => void {
   };
 
   const wakeNubo = (text: string) => {
+    clearDeferredStandby();
     window.localStorage.removeItem(NUBO_SILENT_STORAGE_KEY);
     window.localStorage.removeItem(
       NUBO_TOKEN_STANDBY_STORAGE_KEY,
@@ -398,6 +381,26 @@ export function startNuboBackgroundNameListener(): () => void {
         );
       }
     }, 80);
+  };
+
+  const attemptAutomaticStandby = () => {
+    clearDeferredStandby();
+
+    if (
+      currentPhase === "connecting" ||
+      currentPhase === "thinking" ||
+      currentPhase === "speaking"
+    ) {
+      deferredStandbyTimer = window.setTimeout(
+        attemptAutomaticStandby,
+        3000,
+      );
+      return;
+    }
+
+    enterStandby(
+      "45秒沒有對話，NUBO已關閉Gemini收音並進入省Token待命。請說NUBO、兄弟或有人嗎重新喚醒。",
+    );
   };
 
   recognition.onresult = (event: SpeechRecognitionEventLike) => {
@@ -427,7 +430,9 @@ export function startNuboBackgroundNameListener(): () => void {
   };
 
   recognition.onerror = (event: unknown) => {
+    recognitionRunning = false;
     console.warn("[name-alert/background] recognition error", event);
+    scheduleRestart();
   };
 
   recognition.onend = () => {
@@ -451,18 +456,18 @@ export function startNuboBackgroundNameListener(): () => void {
     if (document.visibilityState === "visible") {
       startRecognition();
     } else {
+      clearDeferredStandby();
       stopRecognition();
     }
   };
 
-  const handleTokenSaverIdle = () => {
-    enterStandby(
-      "45秒沒有對話，NUBO已關閉Gemini收音並進入省Token待命。請說NUBO、兄弟或有人嗎重新喚醒。",
-    );
+  const handleSpeechActivity = () => {
+    clearDeferredStandby();
   };
 
   const stop = () => {
     stopped = true;
+    clearDeferredStandby();
     stopRecognition();
     recognition.onresult = null;
     recognition.onerror = null;
@@ -473,7 +478,11 @@ export function startNuboBackgroundNameListener(): () => void {
     );
     window.removeEventListener(
       "nubo-token-saver-idle",
-      handleTokenSaverIdle,
+      attemptAutomaticStandby,
+    );
+    window.removeEventListener(
+      "nubo-local-speech-activity",
+      handleSpeechActivity,
     );
     document.removeEventListener(
       "visibilitychange",
@@ -483,8 +492,6 @@ export function startNuboBackgroundNameListener(): () => void {
     if (window.__nuboBackgroundNameListenerStop === stop) {
       window.__nuboBackgroundNameListenerStop = undefined;
     }
-
-    console.log("[name-alert/background] listener stopped");
   };
 
   window.__nuboBackgroundNameListenerStop = stop;
@@ -494,7 +501,11 @@ export function startNuboBackgroundNameListener(): () => void {
   );
   window.addEventListener(
     "nubo-token-saver-idle",
-    handleTokenSaverIdle,
+    attemptAutomaticStandby,
+  );
+  window.addEventListener(
+    "nubo-local-speech-activity",
+    handleSpeechActivity,
   );
   document.addEventListener(
     "visibilitychange",
