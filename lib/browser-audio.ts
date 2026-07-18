@@ -149,8 +149,17 @@ export class PcmPlaybackQueue {
   private context: AudioContext | null = null;
   private nextStart = 0;
   private sources = new Set<AudioBufferSourceNode>();
-  private readonly scheduleLeadSeconds = 0.08;
+  private playbackStarted = false;
   private foregroundListenersAttached = false;
+
+  /*
+   * 第一段保留約110ms抖動緩衝；後續音訊直接無縫接在nextStart。
+   * 舊版每次enqueue都強制currentTime+80ms，當網路稍有抖動時會在
+   * 每個PCM片段之間反覆插入80ms空白，聽起來就是斷斷續續。
+   */
+  private readonly initialLeadSeconds = 0.11;
+  private readonly recoveryLeadSeconds = 0.018;
+  private readonly underrunToleranceSeconds = 0.012;
 
   private readonly handleForeground = () => {
     if (document.visibilityState === "visible") {
@@ -184,7 +193,12 @@ export class PcmPlaybackQueue {
     if (this.context.state === "suspended") {
       await this.context.resume().catch(() => undefined);
     }
-    this.nextStart = Math.max(this.nextStart, this.context.currentTime);
+
+    if (this.nextStart < this.context.currentTime) {
+      this.nextStart = this.context.currentTime;
+      this.playbackStarted = false;
+    }
+
     return this.context.state === "running";
   }
 
@@ -193,18 +207,33 @@ export class PcmPlaybackQueue {
     const bytes = fromBase64(base64);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const sampleCount = Math.floor(bytes.byteLength / 2);
+    if (sampleCount <= 0) return;
+
     const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
     const channel = audioBuffer.getChannelData(0);
     for (let i = 0; i < sampleCount; i += 1) {
       channel[i] = view.getInt16(i * 2, true) / 0x8000;
     }
+
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(context.destination);
-    const startAt = Math.max(
-      context.currentTime + this.scheduleLeadSeconds,
-      this.nextStart,
-    );
+
+    const currentTime = context.currentTime;
+    const queuedAhead = this.nextStart - currentTime;
+    let startAt: number;
+
+    if (!this.playbackStarted) {
+      startAt = currentTime + this.initialLeadSeconds;
+      this.playbackStarted = true;
+    } else if (queuedAhead < -this.underrunToleranceSeconds) {
+      /* 真正斷流時只補18ms，不再重新插入80ms空白。 */
+      startAt = currentTime + this.recoveryLeadSeconds;
+    } else {
+      /* 正常情況永遠緊接上一段，避免片段間出現可聽見的縫隙。 */
+      startAt = Math.max(this.nextStart, currentTime + 0.003);
+    }
+
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
     this.sources.add(source);
@@ -221,6 +250,7 @@ export class PcmPlaybackQueue {
     }
     this.sources.clear();
     this.nextStart = this.context?.currentTime ?? 0;
+    this.playbackStarted = false;
   }
 
   async close() {
