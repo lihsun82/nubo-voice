@@ -39,6 +39,22 @@ function floatToPcm16(input: Float32Array): Uint8Array {
   return new Uint8Array(buffer);
 }
 
+function measureLevel(input: Float32Array) {
+  let squareSum = 0;
+  let peak = 0;
+
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = Math.abs(input[index]);
+    squareSum += sample * sample;
+    peak = Math.max(peak, sample);
+  }
+
+  return {
+    rms: Math.sqrt(squareSum / Math.max(1, input.length)),
+    peak,
+  };
+}
+
 function addForegroundListeners(listener: () => void) {
   document.addEventListener("visibilitychange", listener, true);
   window.addEventListener("focus", listener, true);
@@ -51,6 +67,10 @@ function removeForegroundListeners(listener: () => void) {
   window.removeEventListener("pageshow", listener, true);
 }
 
+const TOKEN_SAVER_IDLE_MS = 45_000;
+const SPEECH_TAIL_MS = 1_350;
+const ACTIVITY_EVENT_INTERVAL_MS = 500;
+
 export class MicrophonePcmStream {
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
@@ -58,6 +78,10 @@ export class MicrophonePcmStream {
   private processor: ScriptProcessorNode | null = null;
   private mute: GainNode | null = null;
   private foregroundListenersAttached = false;
+  private lastSpeechAt = 0;
+  private lastActivityEventAt = 0;
+  private idleDispatched = false;
+  private noiseFloor = 0.005;
 
   private readonly handleForeground = () => {
     if (document.visibilityState === "visible") {
@@ -94,6 +118,10 @@ export class MicrophonePcmStream {
     this.context = new AudioContext({ latencyHint: "interactive" });
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
+    this.lastSpeechAt = Date.now();
+    this.lastActivityEventAt = 0;
+    this.idleDispatched = false;
+    this.noiseFloor = 0.005;
 
     /*
      * 2048在常見48kHz裝置約43ms，符合Gemini Live建議的小音訊區塊，
@@ -103,11 +131,69 @@ export class MicrophonePcmStream {
     this.mute = this.context.createGain();
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
+      const now = Date.now();
       const input = event.inputBuffer.getChannelData(0);
-      const pcm = floatToPcm16(
-        downsample(input, event.inputBuffer.sampleRate, 16000),
+      const mono16k = downsample(
+        input,
+        event.inputBuffer.sampleRate,
+        16000,
       );
-      onAudio(toBase64(pcm));
+      const { rms, peak } = measureLevel(mono16k);
+      const rmsThreshold = Math.max(0.0075, this.noiseFloor * 2.4);
+      const peakThreshold = Math.max(0.055, this.noiseFloor * 6);
+      const isLikelySpeech =
+        rms >= rmsThreshold ||
+        peak >= peakThreshold;
+
+      if (isLikelySpeech) {
+        this.lastSpeechAt = now;
+        this.idleDispatched = false;
+
+        if (
+          now - this.lastActivityEventAt >=
+          ACTIVITY_EVENT_INTERVAL_MS
+        ) {
+          this.lastActivityEventAt = now;
+          window.dispatchEvent(
+            new CustomEvent("nubo-local-speech-activity", {
+              detail: { rms, peak },
+            }),
+          );
+        }
+      } else {
+        /*
+         * 只在非語音區段緩慢更新環境底噪，避免冷氣或風扇讓靜音
+         * 被誤判成持續說話。
+         */
+        this.noiseFloor = Math.min(
+          0.04,
+          this.noiseFloor * 0.985 + rms * 0.015,
+        );
+      }
+
+      /*
+       * 本機VAD：只有偵測到語音以及語音結束後的短尾音才送給
+       * Gemini。無人說話時不持續上傳靜音PCM，直接降低Token消耗。
+       */
+      if (
+        isLikelySpeech ||
+        now - this.lastSpeechAt <= SPEECH_TAIL_MS
+      ) {
+        const pcm = floatToPcm16(mono16k);
+        onAudio(toBase64(pcm));
+      }
+
+      if (
+        !this.idleDispatched &&
+        now - this.lastSpeechAt >= TOKEN_SAVER_IDLE_MS
+      ) {
+        this.idleDispatched = true;
+        window.dispatchEvent(
+          new CustomEvent("nubo-token-saver-idle", {
+            detail: { idleMs: now - this.lastSpeechAt },
+          }),
+        );
+      }
     };
     this.source.connect(this.processor);
     this.processor.connect(this.mute);
@@ -142,6 +228,10 @@ export class MicrophonePcmStream {
     this.source = null;
     this.processor = null;
     this.mute = null;
+    this.lastSpeechAt = 0;
+    this.lastActivityEventAt = 0;
+    this.idleDispatched = false;
+    this.noiseFloor = 0.005;
   }
 }
 
