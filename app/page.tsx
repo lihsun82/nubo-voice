@@ -3,6 +3,8 @@ import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfile
 import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
 import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
 import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
+import { NuboVisionPanel } from "@/components/NuboVisionPanel";
+import { NuboVisionSocketBridge } from "@/components/NuboVisionSocketBridge";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboVoiceStudio } from "@/components/NuboVoiceStudio";
 
@@ -10,6 +12,7 @@ export default function HomePage() {
   return (
     <main className="shell">
       <NuboLiveLatencyProbe />
+      <NuboVisionSocketBridge />
       <NuboGeminiVoiceProfileProbe />
       <section className="hero">
         <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
@@ -18,6 +21,7 @@ export default function HomePage() {
       </section>
       <NuboVoiceStudio />
       <NuboVoiceConsole />
+      <NuboVisionPanel />
       <NuboLatencyPanel />
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
