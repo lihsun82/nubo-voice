@@ -4,6 +4,8 @@ import { useEffect } from "react";
 
 const GEMINI_SOCKET_PATTERN =
   /generativelanguage\.googleapis\.com\/ws\//i;
+const MAX_CONTINUOUS_BUFFERED_BYTES = 48 * 1024;
+const MAX_ONCE_BUFFERED_BYTES = 160 * 1024;
 
 const VISION_SYSTEM_INSTRUCTION = [
   "NUBO視覺規則：",
@@ -65,6 +67,7 @@ export function NuboVisionSocketBridge() {
     let activeSocket = null;
     let pendingVisionAt = 0;
     let pendingMode = "fast";
+    let voicePhase = "idle";
 
     const attachResponseObserver = (socket) => {
       if (observedSockets.has(socket)) return;
@@ -139,9 +142,11 @@ export function NuboVisionSocketBridge() {
 
     WebSocket.prototype.send = visionAwareSend;
 
-    const handleFrame = (event) => {
-      const detail = event.detail;
+    const transmitFrame = (detail, attempt = 0) => {
       const socket = activeSocket;
+      const prompt =
+        typeof detail?.prompt === "string" ? detail.prompt.trim() : "";
+      const isContinuousFrame = !prompt;
 
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         dispatchVisionStatus(
@@ -156,9 +161,42 @@ export function NuboVisionSocketBridge() {
         return;
       }
 
+      /*
+       * Gemini語音與視覺共用同一條WebSocket。AI正在說話或產生回覆時，
+       * 持續影格必須讓位，避免圖片Base64與PCM音訊在主執行緒及Socket排隊。
+       */
+      if (
+        isContinuousFrame &&
+        (voicePhase === "speaking" || voicePhase === "thinking")
+      ) {
+        dispatchVisionStatus(
+          true,
+          "NUBO正在回覆，持續觀察暫停傳圖以保持語音順暢。",
+        );
+        return;
+      }
+
+      const bufferedLimit = isContinuousFrame
+        ? MAX_CONTINUOUS_BUFFERED_BYTES
+        : MAX_ONCE_BUFFERED_BYTES;
+
+      if (socket.bufferedAmount > bufferedLimit) {
+        if (!isContinuousFrame && attempt < 4) {
+          window.setTimeout(() => transmitFrame(detail, attempt + 1), 90);
+          return;
+        }
+
+        dispatchVisionStatus(
+          true,
+          isContinuousFrame
+            ? "網路傳輸較忙，已略過這張持續影格以維持語音順暢。"
+            : "目前語音連線較忙，請再按一次快速辨識。",
+          { skippedForBackpressure: true },
+        );
+        return;
+      }
+
       try {
-        const prompt =
-          typeof detail.prompt === "string" ? detail.prompt.trim() : "";
         const realtimeInput = {
           video: {
             data: detail.data,
@@ -187,7 +225,7 @@ export function NuboVisionSocketBridge() {
           true,
           prompt
             ? `影像與辨識指令已一次送出${kilobytes ? `，約${kilobytes}KB` : ""}${encodeMs !== null ? `，手機壓縮${encodeMs}ms` : ""}。`
-            : "省流量持續觀察中：只傳送有明顯變化的畫面。",
+            : "省流量持續觀察中：只傳送有明顯變化且不影響語音的畫面。",
           {
             bytes: detail.bytes,
             encodeMs,
@@ -205,6 +243,17 @@ export function NuboVisionSocketBridge() {
       }
     };
 
+    const handleFrame = (event) => {
+      transmitFrame(event.detail);
+    };
+
+    const handleVoicePhase = (event) => {
+      const nextPhase = event.detail?.phase;
+      if (typeof nextPhase === "string") {
+        voicePhase = nextPhase;
+      }
+    };
+
     const clearClosedSocket = () => {
       if (activeSocket?.readyState === WebSocket.CLOSED) {
         activeSocket = null;
@@ -213,10 +262,12 @@ export function NuboVisionSocketBridge() {
     };
 
     window.addEventListener("nubo-vision-frame", handleFrame);
+    window.addEventListener("nubo-voice-phase", handleVoicePhase);
     window.addEventListener("focus", clearClosedSocket);
 
     return () => {
       window.removeEventListener("nubo-vision-frame", handleFrame);
+      window.removeEventListener("nubo-voice-phase", handleVoicePhase);
       window.removeEventListener("focus", clearClosedSocket);
 
       if (WebSocket.prototype.send === visionAwareSend) {
