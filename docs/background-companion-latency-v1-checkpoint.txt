@@ -1,0 +1,1 @@
+Checkpoint marker. Stable rollback branch points to commit 3e403a5b5782ee2d694d695dab6884f769488c14 before background companion and latency changes.
