@@ -67,7 +67,7 @@ function removeForegroundListeners(listener: () => void) {
   window.removeEventListener("pageshow", listener, true);
 }
 
-const TOKEN_SAVER_IDLE_MS = 45_000;
+const TOKEN_SAVER_IDLE_MS = 25_000;
 const ACTIVITY_EVENT_INTERVAL_MS = 500;
 
 export class MicrophonePcmStream {
@@ -168,9 +168,8 @@ export class MicrophonePcmStream {
 
       /*
        * Gemini Live在連線期間必須收到連續PCM，才能準確保留句首、
-       * 判斷停頓與完成斷句。V1曾只傳送超過門檻的人聲片段，造成
-       * 句首被切掉、停頓判斷變慢與回覆不流暢。現在本機VAD只用來
-       * 判斷45秒無人對話，不再裁切送往Gemini的音訊。
+       * 判斷停頓與完成斷句。本機VAD只用來判斷25秒無人對話，
+       * 不裁切送往Gemini的音訊，確保回覆流暢。
        */
       const pcm = floatToPcm16(mono16k);
       onAudio(toBase64(pcm));
@@ -183,6 +182,14 @@ export class MicrophonePcmStream {
         window.dispatchEvent(
           new CustomEvent("nubo-token-saver-idle", {
             detail: { idleMs: now - this.lastSpeechAt },
+          }),
+        );
+        window.dispatchEvent(
+          new CustomEvent("nubo-background-name-transcript", {
+            detail: {
+              transcript:
+                "25秒沒有對話，NUBO已關閉Gemini收音並進入省Token待命。請說NUBO、兄弟或有人嗎重新喚醒。",
+            },
           }),
         );
       }
