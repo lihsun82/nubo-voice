@@ -16,6 +16,13 @@ function isMobileBrowser() {
   );
 }
 
+const TOKEN_SAVER_EVENT = "nubo-token-saver-idle";
+const BACKGROUND_TRANSCRIPT_EVENT =
+  "nubo-background-name-transcript";
+const LEGACY_IDLE_PREFIX = "25秒沒有對話";
+const MOBILE_STANDBY_TEXT =
+  "NUBO手機持續聆聽中，直接說NUBO、兄弟或有人嗎即可繼續對話。";
+
 export function NuboVoiceConsole() {
   useEffect(() => {
     /*
@@ -38,11 +45,14 @@ export function NuboVoiceConsole() {
     if (!isMobileBrowser()) return;
 
     /*
-     * 手機不能同時兼顧「25秒完全關閉麥克風」與「純語音喚醒」：
-     * 完全關閉後，瀏覽器沒有任何收音來源可聽見NUBO喚醒詞。
-     * 因此手機改成柔性待命：攔截自動關閉事件，保留原本Gemini
-     * 單一麥克風連線，避免Web Speech反覆開關造成嘟嘟聲，同時
-     * 讓NUBO、兄弟、有人嗎等喚醒語句仍可立即被聽見。
+     * 手機純語音喚醒必須保留Gemini的單一麥克風連線。
+     * 舊版在25秒時先廣播省Token事件，背景監聽器收到後會按下
+     * 「結束對話」；之後即使畫面上的攔截器再清除旗標，連線也
+     * 已經被關閉，所以喚醒詞完全沒有收音來源。
+     *
+     * 這裡直接在window.dispatchEvent入口攔截手機的省Token事件，
+     * 讓它不會抵達任何會關閉Gemini的舊監聽器；同時把舊的
+     * 「已關閉收音」提示改成正確的持續聆聽提示。桌機不受影響。
      */
     window.localStorage.removeItem(
       "nubo_voice_auto_resume_v1",
@@ -60,42 +70,48 @@ export function NuboVoiceConsole() {
       "nubo_silent_until_wake",
     );
 
-    const keepMobileWakeAvailable = (event: Event) => {
-      event.stopImmediatePropagation();
-      window.localStorage.removeItem(
-        "nubo_token_saver_standby_v1",
-      );
-      window.localStorage.removeItem(
-        "nubo_silent_until_wake",
-      );
+    const originalDispatchEvent = window.dispatchEvent;
 
-      window.setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent(
-            "nubo-background-name-transcript",
-            {
-              detail: {
-                transcript:
-                  "NUBO手機持續待命中，直接說NUBO、兄弟或有人嗎即可繼續對話。",
-              },
-            },
-          ),
+    const mobileSafeDispatchEvent = function (
+      this: Window,
+      event: Event,
+    ) {
+      if (event.type === TOKEN_SAVER_EVENT) {
+        window.localStorage.removeItem(
+          "nubo_token_saver_standby_v1",
         );
-      }, 0);
-    };
+        window.localStorage.removeItem(
+          "nubo_silent_until_wake",
+        );
+        return true;
+      }
 
-    window.addEventListener(
-      "nubo-token-saver-idle",
-      keepMobileWakeAvailable,
-      true,
-    );
+      if (event.type === BACKGROUND_TRANSCRIPT_EVENT) {
+        const transcript = (
+          event as CustomEvent<{ transcript?: string }>
+        ).detail?.transcript?.trim();
+
+        if (transcript?.startsWith(LEGACY_IDLE_PREFIX)) {
+          return originalDispatchEvent.call(
+            window,
+            new CustomEvent(BACKGROUND_TRANSCRIPT_EVENT, {
+              detail: {
+                transcript: MOBILE_STANDBY_TEXT,
+              },
+            }),
+          );
+        }
+      }
+
+      return originalDispatchEvent.call(window, event);
+    } as typeof window.dispatchEvent;
+
+    window.dispatchEvent = mobileSafeDispatchEvent;
 
     return () => {
-      window.removeEventListener(
-        "nubo-token-saver-idle",
-        keepMobileWakeAvailable,
-        true,
-      );
+      if (window.dispatchEvent === mobileSafeDispatchEvent) {
+        window.dispatchEvent = originalDispatchEvent;
+      }
     };
   }, []);
 
