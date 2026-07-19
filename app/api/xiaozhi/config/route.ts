@@ -27,19 +27,18 @@ function sanitizeHttpUrl(value: string | undefined) {
   }
 }
 
-function sanitizeWebSocketUrl(value: string | undefined) {
+function hasSafeWebSocketUrl(value: string | undefined) {
   const raw = value?.trim();
-  if (!raw) return "";
+  if (!raw) return false;
 
   try {
     const url = new URL(raw);
-    const allowed =
+    return (
       url.protocol === "wss:" ||
-      (url.protocol === "ws:" && isLocalHostname(url.hostname));
-
-    return allowed ? url.toString() : "";
+      (url.protocol === "ws:" && isLocalHostname(url.hostname))
+    );
   } catch {
-    return "";
+    return false;
   }
 }
 
@@ -48,7 +47,7 @@ export async function GET() {
     process.env.XIAOZHI_H5_URL ||
       process.env.NEXT_PUBLIC_XIAOZHI_H5_URL,
   );
-  const websocketUrl = sanitizeWebSocketUrl(
+  const websocketConfigured = hasSafeWebSocketUrl(
     process.env.XIAOZHI_WS_URL,
   );
 
@@ -57,7 +56,7 @@ export async function GET() {
     provider: "xiaozhi-self-hosted",
     configured: Boolean(h5Url),
     h5Url: h5Url || null,
-    websocketUrl: websocketUrl || null,
+    websocketConfigured,
     publicThirdPartyBackendEnabled: false,
   });
 }
