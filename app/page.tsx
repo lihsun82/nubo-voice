@@ -4,6 +4,7 @@ import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfile
 import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
 import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
 import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
+import { NuboSingleFingerScroll } from "@/components/NuboSingleFingerScroll";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboVoiceStudio } from "@/components/NuboVoiceStudio";
 import styles from "@/app/page.module.css";
@@ -11,6 +12,7 @@ import styles from "@/app/page.module.css";
 export default function HomePage() {
   return (
     <main className={`shell ${styles.shell}`}>
+      <NuboSingleFingerScroll />
       <NuboLiveLatencyProbe />
       <NuboGeminiVoiceProfileProbe />
 
