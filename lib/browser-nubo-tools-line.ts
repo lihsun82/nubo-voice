@@ -9,6 +9,15 @@ import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 
 export type { FunctionCall };
 
+type CacheEntry = {
+  value: unknown;
+  expiresAt: number;
+};
+
+const weatherCache = new Map<string, CacheEntry>();
+const weatherInflight = new Map<string, Promise<unknown>>();
+const WEATHER_BROWSER_CACHE_MS = 5 * 60_000;
+
 async function postSetting(
   target: "audio" | "brightness",
   action: string,
@@ -62,6 +71,104 @@ async function delegatedWorkStatus(args: Record<string, unknown>) {
   return payload;
 }
 
+function fastCurrentTime(args: Record<string, unknown>) {
+  const requestedTimezone =
+    String(args.timezone ?? "Asia/Taipei").trim() ||
+    "Asia/Taipei";
+  const location = String(args.location ?? "").trim();
+  const now = new Date();
+  let timezone = requestedTimezone;
+  let formatter: Intl.DateTimeFormat;
+
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  };
+
+  try {
+    formatter = new Intl.DateTimeFormat("zh-TW", options);
+  } catch {
+    timezone = "Asia/Taipei";
+    formatter = new Intl.DateTimeFormat("zh-TW", {
+      ...options,
+      timeZone: timezone,
+    });
+  }
+
+  const parts = formatter.formatToParts(now);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+
+  return {
+    ok: true,
+    source: "browser-device-clock",
+    location: location || undefined,
+    timezone,
+    localTime: formatter.format(now),
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    time: `${part("hour")}:${part("minute")}:${part("second")}`,
+    weekday: part("weekday"),
+  };
+}
+
+async function fastWeather(args: Record<string, unknown>) {
+  const location = String(args.location ?? "").trim();
+  const key = location.replace(/\s+/g, "").toLowerCase() || "__default__";
+  const cached = weatherCache.get(key);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const existing = weatherInflight.get(key);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const query = location
+      ? `?location=${encodeURIComponent(location)}`
+      : "";
+    const response = await fetch(`/api/weather${query}`, {
+      cache: "no-store",
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "天氣查詢失敗");
+    }
+
+    const compact = {
+      ok: true,
+      source: payload.source,
+      requestedLocation: payload.requestedLocation,
+      resolvedLocation:
+        payload.resolvedLocation?.displayName ??
+        payload.resolvedLocation?.name,
+      approximate:
+        payload.resolvedLocation?.approximate === true,
+      current: payload.current,
+      today: payload.today,
+      tomorrow: payload.tomorrow,
+    };
+
+    weatherCache.set(key, {
+      value: compact,
+      expiresAt: Date.now() + WEATHER_BROWSER_CACHE_MS,
+    });
+    return compact;
+  })().finally(() => {
+    weatherInflight.delete(key);
+  });
+
+  weatherInflight.set(key, request);
+  return request;
+}
+
 export async function executeNuboBrowserTool(call: FunctionCall) {
   if (call.name === "device_setting") {
     const args = call.args ?? {};
@@ -71,6 +178,12 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       String(args.action ?? "status"),
       Number(args.value ?? 10),
     );
+  }
+  if (call.name === "get_current_time") {
+    return fastCurrentTime(call.args ?? {});
+  }
+  if (call.name === "get_weather") {
+    return fastWeather(call.args ?? {});
   }
   if (call.name === "delegate_work") {
     return delegateWork(call.args ?? {});
@@ -89,7 +202,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 }
 
 /*
- * NUBO_MOBILE_FAST_PROMPT_V2
+ * NUBO_MOBILE_FAST_PROMPT_V3
  * Gemini Live 每次建立連線都要傳送完整系統指令。
  * 保留安全與工具路由，同時阻止錯誤轉錄觸發長時間研究。
  */
@@ -100,7 +213,7 @@ export const geminiSystemInstruction = `
 1. 一般聊天、常識、簡單建議與一般問題直接回答，不得呼叫research_now。
 2. 只有使用者明確說出「查詢、搜尋、最新、查證、比較、來源、研究、多來源、深入分析」等意圖，且確實需要外部即時資料時，才能呼叫research_now。
 3. 若語音辨識結果很短、不完整、不是繁體中文，或看起來像Também、Okay、Yeah等錯誤外語片段，直接說「我剛剛沒聽清楚，請再說一次」，不得呼叫任何工具。
-4. 時間與相對日期用get_current_time；天氣用get_weather；附近店家用search_nearby；條件完整的旅行規劃用travel_plan。
+4. 時間與相對日期立即用get_current_time；天氣立即用get_weather；附近店家用search_nearby；條件完整的旅行規劃用travel_plan。時間與天氣工具只呼叫一次，取得結果後立刻簡短回答。
 5. 旅館房價與競品行情用hotel_market_report；明確要求重新抓取時才用hotel_market_refresh。
 6. 音樂或影片用open_youtube。手機App用open_mobile_app；網站用open_website；桌機白名單程式用open_desktop_app或close_desktop_app。
 7. 查信先用gmail_search，必要時gmail_read。建立草稿用gmail_create_draft。
@@ -110,6 +223,7 @@ export const geminiSystemInstruction = `
 
 速度規則：
 - 簡單問題必須直接回答，目標是在辨識完成後立即開始說話。
+- 時間工具在手機本機完成；天氣工具有短期快取。不得為時間或天氣再做第二次搜尋。
 - research_now若工具回傳skipped=true，代表語音辨識不清或沒有研究意圖；直接請使用者重說或直接回答，不得再次呼叫research_now。
 - research_now若工具回傳timeout=true，先簡短回答可確定內容；需要完整研究時再建議使用Agent交辦，不得重試同一工具。
 
@@ -143,6 +257,20 @@ export const geminiFunctionDeclarations = [
         ...declaration,
         description:
           "只在使用者明確要求最新搜尋、查證、多來源比較、來源或深入研究時使用。禁止用於一般問答、聊天、短句、語音不清或外語誤辨識；此工具在手機語音最多等待10秒。",
+      };
+    }
+    if (declaration.name === "get_current_time") {
+      return {
+        ...declaration,
+        description:
+          "極速取得目前日期、時間與星期。詢問時間、日期、星期或相對日期時立即使用一次。",
+      };
+    }
+    if (declaration.name === "get_weather") {
+      return {
+        ...declaration,
+        description:
+          "極速取得指定地點目前、今天與明天天氣。使用者詢問天氣時立即使用一次，不得改用research_now。",
       };
     }
     return declaration;
