@@ -21,8 +21,20 @@
     #cameraContainer,
     #cameraBtn,
     #visionUrl,
-    label[for="visionUrl"] {
+    label[for="visionUrl"],
+    #live2d-stage,
+    .model-container,
+    [data-tab="other"],
+    #otherTab {
       display: none !important;
+    }
+
+    .container {
+      min-height: 100svh;
+    }
+
+    .chat-container {
+      padding-top: 90px;
     }
   `;
   document.head.appendChild(style);
