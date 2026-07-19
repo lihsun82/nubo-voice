@@ -13,6 +13,7 @@ COPY --from=upstream /src/LICENSE /licenses/xiaozhi-esp32-server-LICENSE
 COPY deploy/xiaozhi-standalone/entrypoint.sh /usr/local/bin/nubo-xiaozhi-entrypoint
 COPY deploy/xiaozhi-standalone/nginx.conf.template /etc/nginx/templates/nubo-xiaozhi.conf.template
 COPY deploy/xiaozhi-standalone/nubo-bootstrap.js /srv/xiaozhi-h5/js/nubo-bootstrap.js
+COPY deploy/xiaozhi-standalone/gemini_asr.py ./core/providers/asr/gemini_asr.py
 
 RUN chmod +x /usr/local/bin/nubo-xiaozhi-entrypoint \
     && sed -i '/<script type="module" src="js\/app.js/i\    <script src="js/nubo-bootstrap.js"></script>' /srv/xiaozhi-h5/index.html \
