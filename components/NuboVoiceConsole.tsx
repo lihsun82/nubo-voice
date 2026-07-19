@@ -2,8 +2,8 @@
 
 import { useEffect } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
-
-const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
+import { NuboExternalCompanion } from "@/components/NuboExternalCompanion";
+import { NuboLiveLatencyTuner } from "@/components/NuboLiveLatencyTuner";
 
 export function NuboVoiceConsole() {
   useEffect(() => {
@@ -25,51 +25,11 @@ export function NuboVoiceConsole() {
     );
   }, []);
 
-  useEffect(() => {
-    const keepHealthySession = () => {
-      if (document.visibilityState === "visible") {
-        window.localStorage.removeItem(
-          EXTERNAL_RETURN_KEY,
-        );
-      }
-    };
-
-    document.addEventListener(
-      "visibilitychange",
-      keepHealthySession,
-      true,
-    );
-    window.addEventListener(
-      "focus",
-      keepHealthySession,
-      true,
-    );
-    window.addEventListener(
-      "pageshow",
-      keepHealthySession,
-      true,
-    );
-
-    keepHealthySession();
-
-    return () => {
-      document.removeEventListener(
-        "visibilitychange",
-        keepHealthySession,
-        true,
-      );
-      window.removeEventListener(
-        "focus",
-        keepHealthySession,
-        true,
-      );
-      window.removeEventListener(
-        "pageshow",
-        keepHealthySession,
-        true,
-      );
-    };
-  }, []);
-
-  return <GeminiVoiceConsole />;
+  return (
+    <>
+      <NuboLiveLatencyTuner />
+      <NuboExternalCompanion />
+      <GeminiVoiceConsole />
+    </>
+  );
 }
