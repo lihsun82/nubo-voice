@@ -1,0 +1,1 @@
+Ready to apply the 25-second standby timeout.
