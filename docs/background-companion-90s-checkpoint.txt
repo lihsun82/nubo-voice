@@ -1,0 +1,1 @@
+Checkpoint before reducing NUBO external companion mode from 10 minutes to 90 seconds.
