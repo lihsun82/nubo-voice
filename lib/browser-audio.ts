@@ -68,7 +68,6 @@ function removeForegroundListeners(listener: () => void) {
 }
 
 const TOKEN_SAVER_IDLE_MS = 45_000;
-const SPEECH_TAIL_MS = 1_350;
 const ACTIVITY_EVENT_INTERVAL_MS = 500;
 
 export class MicrophonePcmStream {
@@ -161,10 +160,6 @@ export class MicrophonePcmStream {
           );
         }
       } else {
-        /*
-         * 只在非語音區段緩慢更新環境底噪，避免冷氣或風扇讓靜音
-         * 被誤判成持續說話。
-         */
         this.noiseFloor = Math.min(
           0.04,
           this.noiseFloor * 0.985 + rms * 0.015,
@@ -172,16 +167,13 @@ export class MicrophonePcmStream {
       }
 
       /*
-       * 本機VAD：只有偵測到語音以及語音結束後的短尾音才送給
-       * Gemini。無人說話時不持續上傳靜音PCM，直接降低Token消耗。
+       * Gemini Live在連線期間必須收到連續PCM，才能準確保留句首、
+       * 判斷停頓與完成斷句。V1曾只傳送超過門檻的人聲片段，造成
+       * 句首被切掉、停頓判斷變慢與回覆不流暢。現在本機VAD只用來
+       * 判斷45秒無人對話，不再裁切送往Gemini的音訊。
        */
-      if (
-        isLikelySpeech ||
-        now - this.lastSpeechAt <= SPEECH_TAIL_MS
-      ) {
-        const pcm = floatToPcm16(mono16k);
-        onAudio(toBase64(pcm));
-      }
+      const pcm = floatToPcm16(mono16k);
+      onAudio(toBase64(pcm));
 
       if (
         !this.idleDispatched &&
@@ -242,11 +234,6 @@ export class PcmPlaybackQueue {
   private playbackStarted = false;
   private foregroundListenersAttached = false;
 
-  /*
-   * 第一段保留約110ms抖動緩衝；後續音訊直接無縫接在nextStart。
-   * 舊版每次enqueue都強制currentTime+80ms，當網路稍有抖動時會在
-   * 每個PCM片段之間反覆插入80ms空白，聽起來就是斷斷續續。
-   */
   private readonly initialLeadSeconds = 0.11;
   private readonly recoveryLeadSeconds = 0.018;
   private readonly underrunToleranceSeconds = 0.012;
@@ -317,10 +304,8 @@ export class PcmPlaybackQueue {
       startAt = currentTime + this.initialLeadSeconds;
       this.playbackStarted = true;
     } else if (queuedAhead < -this.underrunToleranceSeconds) {
-      /* 真正斷流時只補18ms，不再重新插入80ms空白。 */
       startAt = currentTime + this.recoveryLeadSeconds;
     } else {
-      /* 正常情況永遠緊接上一段，避免片段間出現可聽見的縫隙。 */
       startAt = Math.max(this.nextStart, currentTime + 0.003);
     }
 
