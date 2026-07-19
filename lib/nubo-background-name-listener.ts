@@ -178,6 +178,18 @@ function includesAny(text: string, words: string[]) {
   );
 }
 
+function isMobileBrowser() {
+  const userAgent = window.navigator.userAgent;
+  const isIpadOs =
+    /Macintosh/i.test(userAgent) &&
+    window.navigator.maxTouchPoints > 1;
+
+  return (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+    isIpadOs
+  );
+}
+
 function dispatchBackgroundTranscript(transcript: string) {
   window.dispatchEvent(
     new CustomEvent("nubo-background-name-transcript", {
@@ -199,6 +211,16 @@ function clickNuboButton(label: string) {
   if (!button || button.disabled) return false;
   button.click();
   return true;
+}
+
+function stopNuboOutput() {
+  window.speechSynthesis?.cancel();
+  document
+    .querySelectorAll<HTMLAudioElement>("audio")
+    .forEach((audio) => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
 }
 
 export function isNuboNameAlertText(transcript: string): boolean {
@@ -225,7 +247,10 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
   const normalized = normalizeText(text);
 
   if (normalized === lastSentText && now - lastSentAt < 8000) {
-    console.log("[name-alert/background] duplicated transcript skipped:", text);
+    console.log(
+      "[name-alert/background] duplicated transcript skipped:",
+      text,
+    );
     return;
   }
 
@@ -244,8 +269,60 @@ async function sendBackgroundTranscript(transcript: string): Promise<void> {
       }),
     });
   } catch (error) {
-    console.warn("[name-alert/background] failed to send transcript", error);
+    console.warn(
+      "[name-alert/background] failed to send transcript",
+      error,
+    );
   }
+}
+
+function startMobileSafeStandbyHandler(): () => void {
+  const wasAutomaticStandby =
+    window.localStorage.getItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    ) === "true";
+
+  window.localStorage.removeItem(
+    NUBO_TOKEN_STANDBY_STORAGE_KEY,
+  );
+
+  if (wasAutomaticStandby) {
+    window.localStorage.removeItem(NUBO_SILENT_STORAGE_KEY);
+  }
+
+  const handleTokenSaverIdle = () => {
+    window.localStorage.removeItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    );
+    stopNuboOutput();
+    clickNuboButton("結束對話");
+    dispatchBackgroundTranscript(
+      "NUBO已關閉收音並進入手機省電待命。請按啟動NUBO重新對話。",
+    );
+  };
+
+  const stop = () => {
+    window.removeEventListener(
+      "nubo-token-saver-idle",
+      handleTokenSaverIdle,
+    );
+
+    if (window.__nuboBackgroundNameListenerStop === stop) {
+      window.__nuboBackgroundNameListenerStop = undefined;
+    }
+  };
+
+  window.__nuboBackgroundNameListenerStop = stop;
+  window.addEventListener(
+    "nubo-token-saver-idle",
+    handleTokenSaverIdle,
+  );
+
+  console.info(
+    "[name-alert/background] mobile Web Speech wake listener disabled to prevent microphone toggle sounds",
+  );
+
+  return stop;
 }
 
 export function startNuboBackgroundNameListener(): () => void {
@@ -253,6 +330,15 @@ export function startNuboBackgroundNameListener(): () => void {
 
   if (window.__nuboBackgroundNameListenerStop) {
     return window.__nuboBackgroundNameListenerStop;
+  }
+
+  /*
+   * Android與iOS的Web Speech辨識會週期性結束並重新開啟麥克風，
+   * 部分手機因此持續播放「嘟」聲。手機版完全停用這個第二麥克風，
+   * 只保留Gemini Live單一收音；省Token後改由使用者按鈕重新啟動。
+   */
+  if (isMobileBrowser()) {
+    return startMobileSafeStandbyHandler();
   }
 
   const SpeechRecognition =
@@ -265,19 +351,12 @@ export function startNuboBackgroundNameListener(): () => void {
     return () => {};
   }
 
-  const userAgent = window.navigator.userAgent;
-  const isIpadOs =
-    /Macintosh/i.test(userAgent) &&
-    window.navigator.maxTouchPoints > 1;
-  const isMobileBrowser =
-    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
-    isIpadOs;
-
   let stopped = false;
   let recognitionRunning = false;
   let restartTimer: number | null = null;
   let deferredStandbyTimer: number | null = null;
   let currentPhase: NuboVoicePhase = "idle";
+  let permissionBlocked = false;
 
   const recognition = new SpeechRecognition();
   recognition.lang = "zh-TW";
@@ -290,13 +369,9 @@ export function startNuboBackgroundNameListener(): () => void {
       NUBO_TOKEN_STANDBY_STORAGE_KEY,
     ) === "true";
 
-  /*
-   * 修正手機雙麥克風競爭：Web Speech喚醒器只在真正的省Token待命
-   * 狀態運作，不再於一般idle/error狀態搶先占用麥克風。Gemini
-   * 連線期間完全停用本機辨識，避免啟動慢、句首漏字與斷續。
-   */
   const shouldListenLocally = () =>
     !stopped &&
+    !permissionBlocked &&
     document.visibilityState === "visible" &&
     isTokenSaverStandby() &&
     (currentPhase === "idle" || currentPhase === "error");
@@ -319,12 +394,12 @@ export function startNuboBackgroundNameListener(): () => void {
     recognitionRunning = false;
 
     try {
-      recognition.stop();
-    } catch {}
-
-    try {
       recognition.abort?.();
-    } catch {}
+    } catch {
+      try {
+        recognition.stop();
+      } catch {}
+    }
   };
 
   const startRecognition = () => {
@@ -334,7 +409,7 @@ export function startNuboBackgroundNameListener(): () => void {
       recognition.start();
       recognitionRunning = true;
       console.log(
-        "[name-alert/background] local wake listener started",
+        "[name-alert/background] desktop wake listener started",
       );
     } catch (error) {
       recognitionRunning = false;
@@ -349,10 +424,7 @@ export function startNuboBackgroundNameListener(): () => void {
     clearRestartTimer();
     if (!shouldListenLocally()) return;
 
-    restartTimer = window.setTimeout(
-      startRecognition,
-      isMobileBrowser ? 1200 : 600,
-    );
+    restartTimer = window.setTimeout(startRecognition, 1500);
   };
 
   const enterStandby = (reason: string) => {
@@ -366,13 +438,7 @@ export function startNuboBackgroundNameListener(): () => void {
       "true",
     );
     dispatchBackgroundTranscript(reason);
-    window.speechSynthesis?.cancel();
-    document
-      .querySelectorAll<HTMLAudioElement>("audio")
-      .forEach((audio) => {
-        audio.pause();
-        audio.currentTime = 0;
-      });
+    stopNuboOutput();
     clickNuboButton("結束對話");
   };
 
@@ -385,17 +451,13 @@ export function startNuboBackgroundNameListener(): () => void {
     dispatchBackgroundTranscript(text);
     stopRecognition();
 
-    /*
-     * 先讓Web Speech完整釋放手機麥克風，再啟動Gemini getUserMedia，
-     * 避免兩套錄音系統交接時卡住或第一次說話被吃掉。
-     */
     window.setTimeout(() => {
       if (!clickNuboButton("啟動NUBO")) {
         dispatchBackgroundTranscript(
           "已聽到喚醒詞，請按一下啟動NUBO。",
         );
       }
-    }, isMobileBrowser ? 320 : 120);
+    }, 120);
   };
 
   const attemptAutomaticStandby = () => {
@@ -446,7 +508,27 @@ export function startNuboBackgroundNameListener(): () => void {
 
   recognition.onerror = (event: unknown) => {
     recognitionRunning = false;
-    console.warn("[name-alert/background] recognition error", event);
+    const errorCode =
+      typeof event === "object" && event !== null && "error" in event
+        ? String((event as { error?: unknown }).error ?? "")
+        : "";
+
+    if (
+      errorCode === "not-allowed" ||
+      errorCode === "service-not-allowed"
+    ) {
+      permissionBlocked = true;
+      clearRestartTimer();
+      console.warn(
+        "[name-alert/background] microphone permission blocked; wake listener disabled",
+      );
+      return;
+    }
+
+    console.warn(
+      "[name-alert/background] recognition error",
+      event,
+    );
     scheduleRestart();
   };
 
@@ -482,6 +564,7 @@ export function startNuboBackgroundNameListener(): () => void {
 
   const stop = () => {
     stopped = true;
+    clearRestartTimer();
     clearDeferredStandby();
     stopRecognition();
     recognition.onresult = null;
