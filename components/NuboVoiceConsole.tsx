@@ -35,36 +35,68 @@ export function NuboVoiceConsole() {
       "nubo_openai_voice_v1",
     );
 
-    if (isMobileBrowser()) {
-      const wasAutomaticStandby =
-        window.localStorage.getItem(
-          "nubo_token_saver_standby_v1",
-        ) === "true";
+    if (!isMobileBrowser()) return;
 
-      /*
-       * 舊版會把自動續接旗標永久留在手機，導致每次開啟或切回
-       * NUBO時重建麥克風，部分Android會連續播放「嘟」聲。
-       * 手機改為只在可見頁面由使用者啟動Gemini Live。
-       */
-      window.localStorage.removeItem(
-        "nubo_voice_auto_resume_v1",
-      );
-      window.localStorage.removeItem(
-        "nubo_external_app_return_v1",
-      );
-      window.localStorage.removeItem(
-        "nubo_external_companion_until_v1",
-      );
+    /*
+     * 手機不能同時兼顧「25秒完全關閉麥克風」與「純語音喚醒」：
+     * 完全關閉後，瀏覽器沒有任何收音來源可聽見NUBO喚醒詞。
+     * 因此手機改成柔性待命：攔截自動關閉事件，保留原本Gemini
+     * 單一麥克風連線，避免Web Speech反覆開關造成嘟嘟聲，同時
+     * 讓NUBO、兄弟、有人嗎等喚醒語句仍可立即被聽見。
+     */
+    window.localStorage.removeItem(
+      "nubo_voice_auto_resume_v1",
+    );
+    window.localStorage.removeItem(
+      "nubo_external_app_return_v1",
+    );
+    window.localStorage.removeItem(
+      "nubo_external_companion_until_v1",
+    );
+    window.localStorage.removeItem(
+      "nubo_token_saver_standby_v1",
+    );
+    window.localStorage.removeItem(
+      "nubo_silent_until_wake",
+    );
+
+    const keepMobileWakeAvailable = (event: Event) => {
+      event.stopImmediatePropagation();
       window.localStorage.removeItem(
         "nubo_token_saver_standby_v1",
       );
+      window.localStorage.removeItem(
+        "nubo_silent_until_wake",
+      );
 
-      if (wasAutomaticStandby) {
-        window.localStorage.removeItem(
-          "nubo_silent_until_wake",
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(
+            "nubo-background-name-transcript",
+            {
+              detail: {
+                transcript:
+                  "NUBO手機持續待命中，直接說NUBO、兄弟或有人嗎即可繼續對話。",
+              },
+            },
+          ),
         );
-      }
-    }
+      }, 0);
+    };
+
+    window.addEventListener(
+      "nubo-token-saver-idle",
+      keepMobileWakeAvailable,
+      true,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "nubo-token-saver-idle",
+        keepMobileWakeAvailable,
+        true,
+      );
+    };
   }, []);
 
   return (
