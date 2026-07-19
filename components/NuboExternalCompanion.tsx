@@ -5,7 +5,7 @@ import { useEffect } from "react";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const COMPANION_UNTIL_KEY = "nubo_external_companion_until_v1";
-const COMPANION_WINDOW_MS = 10 * 60_000;
+const COMPANION_WINDOW_MS = 90_000;
 
 function readCompanionUntil() {
   const value = Number(
@@ -67,7 +67,15 @@ export function NuboExternalCompanion() {
 
     const expireCompanion = () => {
       clearExpiryTimer();
+      clearReconnectTimer();
       window.localStorage.removeItem(COMPANION_UNTIL_KEY);
+
+      /*
+       * 90秒到期後同步清除外部陪伴與自動續接旗標，避免背景輪詢
+       * 又把陪伴模式重新啟動，確保Gemini真的關閉並停止Token消耗。
+       */
+      window.localStorage.removeItem(EXTERNAL_RETURN_KEY);
+      window.localStorage.removeItem(AUTO_RESUME_KEY);
 
       if (document.visibilityState === "hidden") {
         window.dispatchEvent(
@@ -150,7 +158,7 @@ export function NuboExternalCompanion() {
       if (document.visibilityState === "visible") {
         /*
          * GeminiVoiceConsole先完成返回前景的自動續接，再恢復原本25秒
-         * 省Token規則，避免回到NUBO後仍額外常駐10分鐘。
+         * 省Token規則，避免回到NUBO後仍額外常駐1.5分鐘。
          */
         scheduleForegroundCleanup();
       }
