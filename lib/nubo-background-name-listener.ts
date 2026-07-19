@@ -285,9 +285,20 @@ export function startNuboBackgroundNameListener(): () => void {
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
 
+  const isTokenSaverStandby = () =>
+    window.localStorage.getItem(
+      NUBO_TOKEN_STANDBY_STORAGE_KEY,
+    ) === "true";
+
+  /*
+   * 修正手機雙麥克風競爭：Web Speech喚醒器只在真正的省Token待命
+   * 狀態運作，不再於一般idle/error狀態搶先占用麥克風。Gemini
+   * 連線期間完全停用本機辨識，避免啟動慢、句首漏字與斷續。
+   */
   const shouldListenLocally = () =>
     !stopped &&
     document.visibilityState === "visible" &&
+    isTokenSaverStandby() &&
     (currentPhase === "idle" || currentPhase === "error");
 
   const clearRestartTimer = () => {
@@ -374,13 +385,17 @@ export function startNuboBackgroundNameListener(): () => void {
     dispatchBackgroundTranscript(text);
     stopRecognition();
 
+    /*
+     * 先讓Web Speech完整釋放手機麥克風，再啟動Gemini getUserMedia，
+     * 避免兩套錄音系統交接時卡住或第一次說話被吃掉。
+     */
     window.setTimeout(() => {
       if (!clickNuboButton("啟動NUBO")) {
         dispatchBackgroundTranscript(
           "已聽到喚醒詞，請按一下啟動NUBO。",
         );
       }
-    }, 80);
+    }, isMobileBrowser ? 320 : 120);
   };
 
   const attemptAutomaticStandby = () => {
