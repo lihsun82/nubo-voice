@@ -2,8 +2,19 @@
 
 import { useEffect } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
-import { NuboExternalCompanion } from "@/components/NuboExternalCompanion";
 import { NuboLiveLatencyTuner } from "@/components/NuboLiveLatencyTuner";
+
+function isMobileBrowser() {
+  const userAgent = window.navigator.userAgent;
+  const isIpadOs =
+    /Macintosh/i.test(userAgent) &&
+    window.navigator.maxTouchPoints > 1;
+
+  return (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||
+    isIpadOs
+  );
+}
 
 export function NuboVoiceConsole() {
   useEffect(() => {
@@ -23,12 +34,42 @@ export function NuboVoiceConsole() {
     window.localStorage.removeItem(
       "nubo_openai_voice_v1",
     );
+
+    if (isMobileBrowser()) {
+      const wasAutomaticStandby =
+        window.localStorage.getItem(
+          "nubo_token_saver_standby_v1",
+        ) === "true";
+
+      /*
+       * 舊版會把自動續接旗標永久留在手機，導致每次開啟或切回
+       * NUBO時重建麥克風，部分Android會連續播放「嘟」聲。
+       * 手機改為只在可見頁面由使用者啟動Gemini Live。
+       */
+      window.localStorage.removeItem(
+        "nubo_voice_auto_resume_v1",
+      );
+      window.localStorage.removeItem(
+        "nubo_external_app_return_v1",
+      );
+      window.localStorage.removeItem(
+        "nubo_external_companion_until_v1",
+      );
+      window.localStorage.removeItem(
+        "nubo_token_saver_standby_v1",
+      );
+
+      if (wasAutomaticStandby) {
+        window.localStorage.removeItem(
+          "nubo_silent_until_wake",
+        );
+      }
+    }
   }, []);
 
   return (
     <>
       <NuboLiveLatencyTuner />
-      <NuboExternalCompanion />
       <GeminiVoiceConsole />
     </>
   );
