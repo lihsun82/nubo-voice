@@ -5,7 +5,6 @@ import { useEffect } from "react";
 declare global {
   interface Window {
     __nuboLiveLatencyPatched?: boolean;
-    __nuboOriginalWebSocketSend?: WebSocket["send"];
   }
 }
 
@@ -13,17 +12,16 @@ const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
 
 /**
  * Applies a conservative low-latency Gemini Live VAD profile without touching
- * the stable voice-console state machine. The server's end-of-speech wait is
- * shortened while retaining enough silence tolerance for natural Mandarin.
+ * the stable voice-console state machine.
  */
 export function NuboLiveLatencyTuner() {
   useEffect(() => {
     if (!window.__nuboLiveLatencyPatched) {
       const originalSend = WebSocket.prototype.send;
-      window.__nuboOriginalWebSocketSend = originalSend;
 
-      WebSocket.prototype.send = function sendWithNuboLatencyTuning(
-        data: string | ArrayBufferLike | Blob | ArrayBufferView,
+      const patchedSend = function (
+        this: WebSocket,
+        data: unknown,
       ) {
         let nextData = data;
 
@@ -37,7 +35,7 @@ export function NuboLiveLatencyTuner() {
             };
 
             if (payload.setup) {
-              payload.setup.realtimeInputConfig = {
+              payload.setup["realtimeInputConfig"] = {
                 automaticActivityDetection: {
                   disabled: false,
                   startOfSpeechSensitivity:
@@ -57,17 +55,14 @@ export function NuboLiveLatencyTuner() {
           }
         }
 
-        return originalSend.call(this, nextData);
+        originalSend.call(this, nextData as never);
       };
 
+      WebSocket.prototype.send =
+        patchedSend as WebSocket["send"];
       window.__nuboLiveLatencyPatched = true;
     }
 
-    /*
-     * Warm the two most common server paths while the user is looking at the
-     * page. Failures are intentionally ignored because normal on-demand calls
-     * remain available.
-     */
     void Promise.allSettled([
       fetch("/api/gemini-token?warm=1", {
         cache: "no-store",
