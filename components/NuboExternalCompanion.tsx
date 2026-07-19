@@ -37,13 +37,12 @@ function findStartButton() {
  * When NUBO opens another website/app, the current page normally becomes hidden.
  * This component keeps the 25-second token saver from immediately closing the
  * existing Gemini Live session and attempts to reconnect if Android suspends it.
- * Browsers may still impose hard background microphone limits; this is the most
- * reliable behavior available without converting NUBO into a native Android app.
  */
 export function NuboExternalCompanion() {
   useEffect(() => {
     let expiryTimer: number | null = null;
     let reconnectTimer: number | null = null;
+    let foregroundCleanupTimer: number | null = null;
     let reconnectInProgress = false;
 
     const clearExpiryTimer = () => {
@@ -56,6 +55,12 @@ export function NuboExternalCompanion() {
       if (!reconnectTimer) return;
       window.clearTimeout(reconnectTimer);
       reconnectTimer = null;
+    };
+
+    const clearForegroundCleanupTimer = () => {
+      if (!foregroundCleanupTimer) return;
+      window.clearTimeout(foregroundCleanupTimer);
+      foregroundCleanupTimer = null;
     };
 
     const isCompanionActive = () => Date.now() < readCompanionUntil();
@@ -84,6 +89,7 @@ export function NuboExternalCompanion() {
     };
 
     const startCompanion = () => {
+      clearForegroundCleanupTimer();
       const currentUntil = readCompanionUntil();
       const nextUntil = Math.max(
         currentUntil,
@@ -122,6 +128,15 @@ export function NuboExternalCompanion() {
       );
     };
 
+    const scheduleForegroundCleanup = () => {
+      clearForegroundCleanupTimer();
+      foregroundCleanupTimer = window.setTimeout(() => {
+        if (document.visibilityState !== "visible") return;
+        clearExpiryTimer();
+        window.localStorage.removeItem(COMPANION_UNTIL_KEY);
+      }, 2800);
+    };
+
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === "hidden" &&
@@ -129,6 +144,15 @@ export function NuboExternalCompanion() {
       ) {
         startCompanion();
         scheduleBackgroundReconnect();
+        return;
+      }
+
+      if (document.visibilityState === "visible") {
+        /*
+         * GeminiVoiceConsole先完成返回前景的自動續接，再恢復原本25秒
+         * 省Token規則，避免回到NUBO後仍額外常駐10分鐘。
+         */
+        scheduleForegroundCleanup();
       }
     };
 
@@ -156,11 +180,6 @@ export function NuboExternalCompanion() {
       }
     };
 
-    /*
-     * Voice tools set localStorage immediately before opening the external tab.
-     * A short poll covers same-document localStorage writes, because the browser
-     * does not emit a storage event back to the same page.
-     */
     const companionPoll = window.setInterval(() => {
       if (
         document.visibilityState === "hidden" &&
@@ -198,6 +217,7 @@ export function NuboExternalCompanion() {
     return () => {
       clearExpiryTimer();
       clearReconnectTimer();
+      clearForegroundCleanupTimer();
       window.clearInterval(companionPoll);
       window.removeEventListener(
         "nubo-token-saver-idle",
