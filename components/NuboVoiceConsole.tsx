@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
 import { NuboLiveLatencyTuner } from "@/components/NuboLiveLatencyTuner";
 
@@ -24,6 +24,8 @@ const MOBILE_STANDBY_TEXT =
   "NUBO手機持續聆聽中，直接說NUBO、兄弟或有人嗎即可繼續對話。";
 
 export function NuboVoiceConsole() {
+  const [voiceReady, setVoiceReady] = useState(false);
+
   useEffect(() => {
     /*
      * NUBO_GEMINI_ONLY_V1
@@ -42,17 +44,20 @@ export function NuboVoiceConsole() {
       "nubo_openai_voice_v1",
     );
 
-    if (!isMobileBrowser()) return;
+    if (!isMobileBrowser()) {
+      setVoiceReady(true);
+      return;
+    }
 
     /*
-     * 手機純語音喚醒必須保留Gemini的單一麥克風連線。
-     * 舊版在25秒時先廣播省Token事件，背景監聽器收到後會按下
-     * 「結束對話」；之後即使畫面上的攔截器再清除旗標，連線也
-     * 已經被關閉，所以喚醒詞完全沒有收音來源。
+     * 真正原因有兩層：
+     * 1. 25秒事件會先抵達手機背景監聽器，監聽器直接按下「結束對話」。
+     * 2. Gemini子元件比父層effect更早掛載時，可能已把舊的靜音旗標
+     *    讀入silentUntilWakeRef；父層稍後只清localStorage也無法改掉ref。
      *
-     * 這裡直接在window.dispatchEvent入口攔截手機的省Token事件，
-     * 讓它不會抵達任何會關閉Gemini的舊監聽器；同時把舊的
-     * 「已關閉收音」提示改成正確的持續聆聽提示。桌機不受影響。
+     * 因此手機先清除所有舊旗標、安裝事件入口保護，完成後才掛載
+     * GeminiVoiceConsole。這樣25秒後保留Gemini單一麥克風，不啟用會
+     * 嘟嘟響的Web Speech，也不會殘留無法喚醒的靜音ref。
      */
     window.localStorage.removeItem(
       "nubo_voice_auto_resume_v1",
@@ -108,8 +113,9 @@ export function NuboVoiceConsole() {
 
     window.dispatchEvent = mobileSafeDispatchEvent;
     console.info(
-      "[NUBO mobile wake] 25-second hard close disabled; Gemini microphone remains active",
+      "[NUBO mobile wake] protection installed before Gemini voice mount",
     );
+    setVoiceReady(true);
 
     return () => {
       if (window.dispatchEvent === mobileSafeDispatchEvent) {
@@ -121,7 +127,7 @@ export function NuboVoiceConsole() {
   return (
     <>
       <NuboLiveLatencyTuner />
-      <GeminiVoiceConsole />
+      {voiceReady ? <GeminiVoiceConsole /> : null}
     </>
   );
 }
