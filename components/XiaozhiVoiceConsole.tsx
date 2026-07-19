@@ -7,7 +7,7 @@ const XIAOZHI_H5_STORAGE_KEY = "nubo_xiaozhi_h5_url_v1";
 type XiaozhiConfig = {
   configured?: boolean;
   h5Url?: string | null;
-  websocketUrl?: string | null;
+  websocketConfigured?: boolean;
   publicThirdPartyBackendEnabled?: boolean;
 };
 
@@ -161,7 +161,7 @@ export function XiaozhiVoiceConsole() {
         </div>
         <small>
           目前來源：{displayHost}
-          {serverConfig.websocketUrl ? "；WebSocket 已由伺服器設定" : ""}
+          {serverConfig.websocketConfigured ? "；WebSocket 已在伺服器端設定" : ""}
         </small>
       </div>
 
