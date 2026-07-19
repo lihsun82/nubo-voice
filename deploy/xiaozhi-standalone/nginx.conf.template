@@ -1,0 +1,64 @@
+map $http_upgrade $connection_upgrade {
+  default upgrade;
+  '' close;
+}
+
+server {
+  listen ${PORT};
+  listen [::]:${PORT};
+  server_name _;
+
+  root /srv/xiaozhi-h5;
+  index index.html;
+  client_max_body_size 12m;
+
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(self)" always;
+  add_header Content-Security-Policy "frame-ancestors 'self' https://nubo.ainubo.com" always;
+
+  location = /health {
+    proxy_pass http://127.0.0.1:8000/;
+    proxy_http_version 1.1;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 3s;
+  }
+
+  location /xiaozhi/v1/ {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_buffering off;
+  }
+
+  location /xiaozhi/ota/ {
+    proxy_pass http://127.0.0.1:8003;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 30s;
+  }
+
+  location /mcp/vision/ {
+    return 404;
+  }
+
+  location ~* \.(?:css|js|png|jpg|jpeg|gif|svg|webp|wasm|bin|model3\.json|moc3|motion3\.json)$ {
+    try_files $uri =404;
+    expires 7d;
+    add_header Cache-Control "public, max-age=604800, immutable";
+  }
+
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
