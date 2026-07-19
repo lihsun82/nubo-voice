@@ -6,6 +6,7 @@ import "./integration-center.css";
 import "./youtube-player.css";
 import "./orb-theme.css";
 import "./mobile-pwa.css";
+import "./xiaozhi-provider.css";
 
 export const metadata: Metadata = {
   title: {
