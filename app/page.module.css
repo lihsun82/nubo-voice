@@ -2,6 +2,29 @@
   gap: 14px;
   padding-top: 22px;
   padding-bottom: 24px;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * 手機單指捲動修正：NUBO球體是純視覺動畫，不應攔截觸控。
+ * 讓手指落在球體或其畫布上時，也能直接上下滑動整個頁面。
+ */
+.shell :global(.orb-wrap),
+.shell :global(.nubo-energy-orb),
+.shell :global(.nubo-energy-orb canvas) {
+  pointer-events: none;
+  touch-action: pan-y;
+}
+
+.shell :global(button),
+.shell :global(a),
+.shell :global(summary),
+.shell :global(input),
+.shell :global(select),
+.shell :global(textarea) {
+  touch-action: manipulation;
 }
 
 .hero {
@@ -60,6 +83,9 @@
 .shell :global(.voice-transcript) {
   max-height: min(28vh, 260px);
   margin-top: 12px;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .shell :global(footer) {
