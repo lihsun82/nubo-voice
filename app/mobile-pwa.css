@@ -229,3 +229,44 @@ button {
     text-decoration: none;
   }
 }
+
+/*
+ * NUBO_FORCE_SINGLE_FINGER_SCROLL_V2
+ * 某些Android PWA/WebView會把第一根手指交給Canvas或手勢層，導致
+ * 頁面看起來只能雙指滑動。啟用JS接管器後，強制讓文件維持正常的
+ * 垂直捲動容器；JS再把單指垂直位移直接換算成scrollTop。
+ */
+@media (pointer: coarse) {
+  html.nubo-single-finger-scroll-enabled,
+  html.nubo-single-finger-scroll-enabled body {
+    width: 100%;
+    height: auto !important;
+    min-height: 100%;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: auto !important;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  html.nubo-single-finger-scroll-enabled body {
+    position: static !important;
+  }
+
+  html.nubo-single-finger-scroll-enabled .shell,
+  html.nubo-single-finger-scroll-enabled .console,
+  html.nubo-single-finger-scroll-enabled .orb-wrap,
+  html.nubo-single-finger-scroll-enabled .nubo-energy-orb,
+  html.nubo-single-finger-scroll-enabled .nubo-energy-orb canvas {
+    touch-action: pan-y !important;
+  }
+
+  html.nubo-single-finger-scroll-enabled .shell {
+    overflow: visible !important;
+  }
+
+  html.nubo-single-finger-scroll-enabled .nubo-energy-orb,
+  html.nubo-single-finger-scroll-enabled .nubo-energy-orb canvas {
+    pointer-events: none !important;
+  }
+}
