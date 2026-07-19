@@ -1,0 +1,1 @@
+Checkpoint before changing the automatic standby timeout from 45 seconds to 25 seconds.
