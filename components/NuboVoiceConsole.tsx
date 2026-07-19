@@ -107,6 +107,9 @@ export function NuboVoiceConsole() {
     } as typeof window.dispatchEvent;
 
     window.dispatchEvent = mobileSafeDispatchEvent;
+    console.info(
+      "[NUBO mobile wake] 25-second hard close disabled; Gemini microphone remains active",
+    );
 
     return () => {
       if (window.dispatchEvent === mobileSafeDispatchEvent) {
