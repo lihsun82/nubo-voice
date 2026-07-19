@@ -6,18 +6,13 @@ umask 077
 PORT="${PORT:-8080}"
 PUBLIC_URL="${XIAOZHI_PUBLIC_URL:-https://xiaozhi.ainubo.com}"
 PUBLIC_URL="${PUBLIC_URL%/}"
-LLM_MODEL="${XIAOZHI_LLM_MODEL:-gemini-2.5-flash}"
-ASR_MODEL="${XIAOZHI_ASR_MODEL:-gpt-4o-mini-transcribe}"
+LLM_MODEL="${XIAOZHI_LLM_MODEL:-gemini-3.5-flash}"
+ASR_MODEL="${XIAOZHI_ASR_MODEL:-${LLM_MODEL}}"
 TTS_VOICE="${XIAOZHI_TTS_VOICE:-zh-TW-HsiaoChenNeural}"
 NO_VOICE_SECONDS="${XIAOZHI_NO_VOICE_SECONDS:-90}"
 
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
-  echo "[NUBO Xiaozhi] GEMINI_API_KEY is required." >&2
-  exit 1
-fi
-
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "[NUBO Xiaozhi] OPENAI_API_KEY is required for speech recognition." >&2
+  echo "[NUBO Xiaozhi] GEMINI_API_KEY is required for speech recognition and responses." >&2
   exit 1
 fi
 
@@ -66,18 +61,18 @@ config = {
     "delete_audio": True,
     "selected_module": {
         "VAD": "SileroVAD",
-        "ASR": "OpenaiASR",
+        "ASR": "GeminiASR",
         "LLM": "GeminiLLM",
         "TTS": "EdgeTTS",
         "Memory": "nomem",
         "Intent": "nointent",
     },
     "ASR": {
-        "OpenaiASR": {
-            "type": "openai",
-            "api_key": os.environ["OPENAI_API_KEY"],
-            "base_url": "https://api.openai.com/v1/audio/transcriptions",
+        "GeminiASR": {
+            "type": "gemini_asr",
+            "api_key": os.environ["GEMINI_API_KEY"],
             "model_name": os.environ["ASR_MODEL"],
+            "timeout": 60,
             "output_dir": "tmp/",
         }
     },
