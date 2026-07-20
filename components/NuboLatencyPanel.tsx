@@ -103,14 +103,14 @@ function buildDiagnosis(result: Omit<LatencyResult, "diagnosis">) {
     result.tokenServerMs < 150
   ) {
     notes.push(
-      `Token伺服器只處理${Math.round(result.tokenServerMs)}ms，但手機往返共${Math.round(result.tokenRoundTripMs)}ms，主要是網路延遲。`,
+      `工作階段伺服器只處理${Math.round(result.tokenServerMs)}ms，但手機往返共${Math.round(result.tokenRoundTripMs)}ms，主要是網路延遲。`,
     );
   } else if (
     result.tokenServerMs !== null &&
     result.tokenServerMs >= 800
   ) {
     notes.push(
-      `Gemini Token建立耗時${Math.round(result.tokenServerMs)}ms，Google API或Railway對外連線偏慢。`,
+      `語音工作階段建立耗時${Math.round(result.tokenServerMs)}ms，外部語音服務或Railway對外連線偏慢。`,
     );
   }
 
@@ -128,7 +128,7 @@ function buildDiagnosis(result: Omit<LatencyResult, "diagnosis">) {
 
   if (notes.length === 0) {
     notes.push(
-      "頁面、Railway與瀏覽器基礎延遲正常；剩餘問題較可能在手機到Gemini WebSocket的上傳品質或語音斷句偵測。",
+      "頁面、Railway與瀏覽器基礎延遲正常；剩餘問題較可能在手機到即時語音WebSocket的上傳品質或語音斷句偵測。",
     );
   }
 
@@ -155,7 +155,7 @@ export function NuboLatencyPanel() {
       const [providers, token, fps, eventLoopLagMs] =
         await Promise.all([
           timedJson("/api/providers"),
-          timedJson("/api/gemini-token?warm=1"),
+          timedJson("/api/voice-session?warm=1"),
           measureFps(),
           measureEventLoopLag(),
         ]);
@@ -202,7 +202,7 @@ export function NuboLatencyPanel() {
     <details className="nubo-latency-panel">
       <summary>手機延遲診斷</summary>
       <p>
-        按下後會測試手機到Railway的往返、Gemini Token處理、畫面FPS與瀏覽器主執行緒負載。
+        按下後會測試手機到Railway的往返、語音工作階段處理、畫面FPS與瀏覽器主執行緒負載。
       </p>
       <button
         type="button"
@@ -218,8 +218,8 @@ export function NuboLatencyPanel() {
       {result ? (
         <div className="nubo-latency-result">
           <p>
-            Railway設定：{Math.round(result.providersMs)} ms｜Token往返：
-            {Math.round(result.tokenRoundTripMs)} ms｜Token伺服器：
+            Railway設定：{Math.round(result.providersMs)} ms｜工作階段往返：
+            {Math.round(result.tokenRoundTripMs)} ms｜工作階段伺服器：
             {result.tokenServerMs === null
               ? "未知"
               : `${Math.round(result.tokenServerMs)} ms`}
