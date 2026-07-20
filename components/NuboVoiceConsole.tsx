@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
+import { GeminiVoiceConsole as NuboPrimaryVoiceConsole } from "@/components/GeminiVoiceConsole";
 import { NuboLiveLatencyTuner } from "@/components/NuboLiveLatencyTuner";
 
 function isMobileBrowser() {
@@ -28,9 +28,9 @@ export function NuboVoiceConsole() {
 
   useEffect(() => {
     /*
-     * NUBO_GEMINI_ONLY_V1
-     * 語音核心固定使用Gemini Live，並清除舊的OpenAI語音偏好。
-     * OpenAI文字模型與其他工作鏈設定不受影響。
+     * NUBO_PRIMARY_VOICE_ONLY_V1
+     * 語音核心固定使用NUBO即時語音，並清除舊的備援語音偏好。
+     * 文字工作鏈與其他後端設定不受影響。
      */
     window.localStorage.setItem(
       "nubo_voice_provider_v1",
@@ -50,14 +50,9 @@ export function NuboVoiceConsole() {
     }
 
     /*
-     * 真正原因有兩層：
-     * 1. 25秒事件會先抵達手機背景監聽器，監聽器直接按下「結束對話」。
-     * 2. Gemini子元件比父層effect更早掛載時，可能已把舊的靜音旗標
-     *    讀入silentUntilWakeRef；父層稍後只清localStorage也無法改掉ref。
-     *
-     * 因此手機先清除所有舊旗標、安裝事件入口保護，完成後才掛載
-     * GeminiVoiceConsole。這樣25秒後保留Gemini單一麥克風，不啟用會
-     * 嘟嘟響的Web Speech，也不會殘留無法喚醒的靜音ref。
+     * 手機必須先清除舊待命旗標並安裝事件入口保護，
+     * 再掛載唯一的即時語音連線，避免25秒事件關閉收音來源，
+     * 也避免舊的瀏覽器語音監聽器造成提示音或無法喚醒。
      */
     window.localStorage.removeItem(
       "nubo_voice_auto_resume_v1",
@@ -113,7 +108,7 @@ export function NuboVoiceConsole() {
 
     window.dispatchEvent = mobileSafeDispatchEvent;
     console.info(
-      "[NUBO mobile wake] protection installed before Gemini voice mount",
+      "[NUBO mobile wake] protection installed before primary voice mount",
     );
     setVoiceReady(true);
 
@@ -127,7 +122,7 @@ export function NuboVoiceConsole() {
   return (
     <>
       <NuboLiveLatencyTuner />
-      {voiceReady ? <GeminiVoiceConsole /> : null}
+      {voiceReady ? <NuboPrimaryVoiceConsole /> : null}
     </>
   );
 }
