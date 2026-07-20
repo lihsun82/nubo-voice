@@ -20,6 +20,15 @@ function formatTime(value) {
   });
 }
 
+function sanitizeDiagnosticText(value) {
+  if (!value) return "";
+  return String(value)
+    .replace(/Gemini\s*Live/gi, "NUBO即時語音")
+    .replace(/Gemini/gi, "NUBO語音核心")
+    .replace(/Google\s*WebSocket/gi, "即時語音WebSocket")
+    .replace(/Google\s*API/gi, "外部語音服務");
+}
+
 function buildDiagnosis(snapshot) {
   const notes = [];
 
@@ -28,7 +37,7 @@ function buildDiagnosis(snapshot) {
     snapshot.tokenRoundTripMs >= 800
   ) {
     notes.push(
-      `Token往返${Math.round(snapshot.tokenRoundTripMs)}ms，手機到Railway的連線仍偏慢。`,
+      `工作階段往返${Math.round(snapshot.tokenRoundTripMs)}ms，手機到Railway的連線仍偏慢。`,
     );
   }
 
@@ -37,7 +46,7 @@ function buildDiagnosis(snapshot) {
     snapshot.websocketOpenMs >= 1000
   ) {
     notes.push(
-      `手機直接連到Google Gemini WebSocket花了${Math.round(snapshot.websocketOpenMs)}ms，主要瓶頸在手機或Wi-Fi到Google的網路路由。`,
+      `手機建立即時語音WebSocket花了${Math.round(snapshot.websocketOpenMs)}ms，主要瓶頸在手機或Wi-Fi的網路路由。`,
     );
   }
 
@@ -46,7 +55,7 @@ function buildDiagnosis(snapshot) {
     snapshot.setupHandshakeMs >= 1000
   ) {
     notes.push(
-      `Gemini收到設定後花了${Math.round(snapshot.setupHandshakeMs)}ms才完成語音工作階段，連線設定或Google端回應偏慢。`,
+      `語音核心收到設定後花了${Math.round(snapshot.setupHandshakeMs)}ms才完成工作階段，連線設定或外部服務回應偏慢。`,
     );
   }
 
@@ -55,7 +64,7 @@ function buildDiagnosis(snapshot) {
     snapshot.microphoneReadyMs >= 800
   ) {
     notes.push(
-      `Gemini設定完成後，手機麥克風與第一包音訊又花了${Math.round(snapshot.microphoneReadyMs)}ms才就緒。`,
+      `語音設定完成後，手機麥克風與第一包音訊又花了${Math.round(snapshot.microphoneReadyMs)}ms才就緒。`,
     );
   }
 
@@ -75,7 +84,7 @@ function buildDiagnosis(snapshot) {
       );
     } else {
       notes.push(
-        `Gemini辨識到使用者文字後，等了${Math.round(snapshot.transcriptToFirstAudioMs)}ms才收到第一段AI語音；瓶頸較可能是語音斷句、模型生成或手機到Google的WebSocket品質。`,
+        `語音核心辨識到使用者文字後，等了${Math.round(snapshot.transcriptToFirstAudioMs)}ms才收到第一段AI語音；瓶頸較可能是語音斷句、內容生成或即時連線品質。`,
       );
     }
   }
@@ -85,7 +94,7 @@ function buildDiagnosis(snapshot) {
     snapshot.toolResponseToFirstAudioMs >= 1500
   ) {
     notes.push(
-      `工具已回傳後，Gemini又花了${Math.round(snapshot.toolResponseToFirstAudioMs)}ms才開始說話，延遲在Gemini恢復生成而不是NUBO工具。`,
+      `工具已回傳後，語音核心又花了${Math.round(snapshot.toolResponseToFirstAudioMs)}ms才開始說話，延遲在語音恢復生成而不是NUBO工具。`,
     );
   }
 
@@ -94,7 +103,7 @@ function buildDiagnosis(snapshot) {
     snapshot.websocketCloseCode !== 1000
   ) {
     notes.push(
-      `WebSocket曾以代碼${snapshot.websocketCloseCode}中斷，原因：${snapshot.websocketCloseReason || "未提供"}。`,
+      `WebSocket曾以代碼${snapshot.websocketCloseCode}中斷，原因：${sanitizeDiagnosticText(snapshot.websocketCloseReason) || "未提供"}。`,
     );
   }
 
@@ -145,9 +154,9 @@ export function NuboLiveLatencyPanel() {
 
   return (
     <details className="nubo-latency-panel" open>
-      <summary>Gemini Live 全鏈路診斷</summary>
+      <summary>NUBO 即時語音全鏈路診斷</summary>
       <p>
-        這裡直接量測手機、Railway Token、Google WebSocket、麥克風、語音辨識、工具執行與第一段AI聲音。
+        這裡直接量測手機、Railway工作階段、即時語音WebSocket、麥克風、語音辨識、工具執行與第一段AI聲音。
       </p>
 
       <button
@@ -160,11 +169,11 @@ export function NuboLiveLatencyPanel() {
 
       <div className="nubo-latency-result">
         <p>
-          Token往返：{ms(snapshot.tokenRoundTripMs)}｜Token伺服器：
+          工作階段往返：{ms(snapshot.tokenRoundTripMs)}｜工作階段伺服器：
           {ms(snapshot.tokenServerMs)}
         </p>
         <p>
-          Google WebSocket開啟：{ms(snapshot.websocketOpenMs)}｜Gemini設定完成：
+          即時語音WebSocket開啟：{ms(snapshot.websocketOpenMs)}｜語音設定完成：
           {ms(snapshot.setupHandshakeMs)}
         </p>
         <p>
@@ -192,11 +201,11 @@ export function NuboLiveLatencyPanel() {
         {snapshot.websocketCloseCode !== null ? (
           <p>
             最近斷線：{snapshot.websocketCloseCode}／
-            {snapshot.websocketCloseReason || "未提供原因"}
+            {sanitizeDiagnosticText(snapshot.websocketCloseReason) || "未提供原因"}
           </p>
         ) : null}
         {snapshot.error ? (
-          <div className="error">{snapshot.error}</div>
+          <div className="error">{sanitizeDiagnosticText(snapshot.error)}</div>
         ) : null}
         <ul>
           {diagnosis.map((item) => (
