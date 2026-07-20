@@ -8,11 +8,10 @@ declare global {
   }
 }
 
-const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
+const PRIMARY_VOICE_HOST = "generativelanguage.googleapis.com";
 
 /**
- * Applies a conservative low-latency Gemini Live VAD profile without touching
- * the stable voice-console state machine.
+ * 套用保守的低延遲語音偵測設定，不改動既有語音狀態機。
  */
 export function NuboLiveLatencyTuner() {
   useEffect(() => {
@@ -27,7 +26,7 @@ export function NuboLiveLatencyTuner() {
 
         if (
           typeof data === "string" &&
-          this.url.includes(GEMINI_LIVE_HOST)
+          this.url.includes(PRIMARY_VOICE_HOST)
         ) {
           try {
             const payload = JSON.parse(data) as {
@@ -51,7 +50,7 @@ export function NuboLiveLatencyTuner() {
               nextData = JSON.stringify(payload);
             }
           } catch {
-            // Non-setup Gemini messages pass through unchanged.
+            // 非設定訊息維持原樣送出。
           }
         }
 
@@ -64,7 +63,7 @@ export function NuboLiveLatencyTuner() {
     }
 
     void Promise.allSettled([
-      fetch("/api/gemini-token?warm=1", {
+      fetch("/api/voice-session?warm=1", {
         cache: "no-store",
       }),
       fetch("/api/weather?location=" + encodeURIComponent("台南"), {
