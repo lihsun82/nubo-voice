@@ -45,7 +45,7 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY 尚未設定");
+    throw new Error("NUBO語音服務尚未完成設定");
   }
 
   const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview";
@@ -73,8 +73,11 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok || typeof payload?.name !== "string") {
-    const message = payload?.error?.message ?? `Gemini Token 建立失敗：${response.status}`;
-    throw new Error(message);
+    console.error("[NUBO voice session] upstream token failure", {
+      status: response.status,
+      code: payload?.error?.code,
+    });
+    throw new Error(`NUBO語音工作階段建立失敗：${response.status}`);
   }
 
   return {
@@ -137,9 +140,10 @@ export async function GET(request: NextRequest) {
       elapsedMs,
     });
   } catch (error) {
+    console.error("[NUBO voice session] create failed", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Gemini Token 建立失敗",
+        error: "NUBO語音工作階段建立失敗，請稍後再試。",
       },
       { status: 502 },
     );
