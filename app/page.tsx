@@ -28,7 +28,7 @@ export default function HomePage() {
         <NuboCompactSection
           id="voice-studio"
           title="語音設定"
-          subtitle="Gemini Live 聲線與個性"
+          subtitle="NUBO 聲線與個性"
         >
           <NuboVoiceStudio />
         </NuboCompactSection>
@@ -36,7 +36,7 @@ export default function HomePage() {
         <NuboCompactSection
           id="diagnostics"
           title="系統診斷"
-          subtitle="網路、Gemini Live 與延遲數據"
+          subtitle="網路、即時語音與延遲數據"
         >
           <NuboLatencyPanel />
           <NuboLiveLatencyPanel />
@@ -53,7 +53,7 @@ export default function HomePage() {
 
       <footer>
         <span>v0.5.1 System Control</span>
-        <span>Gemini Live 語音優先模式</span>
+        <span>NUBO 即時語音優先模式</span>
       </footer>
     </main>
   );
