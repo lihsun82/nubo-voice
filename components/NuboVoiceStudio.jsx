@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import styles from "@/components/NuboVoiceStudio.module.css";
 
 const STORAGE_KEYS = {
-  geminiVoice: "nubo_gemini_voice_v1",
+  voice: "nubo_gemini_voice_v1",
   personality: "nubo_voice_personality_v1",
 };
 
-const GEMINI_VOICES = [
+const NUBO_VOICES = [
   ["Achird", "Achird｜親切自然"],
   ["Puck", "Puck｜活潑俏皮"],
   ["Sadachbia", "Sadachbia｜生動有戲"],
@@ -27,20 +27,20 @@ const PERSONALITIES = [
 function readStoredProfile() {
   if (typeof window === "undefined") {
     return {
-      geminiVoice: "Achird",
+      voice: "Achird",
       personality: "companion",
     };
   }
 
   return {
-    geminiVoice:
-      window.localStorage.getItem(STORAGE_KEYS.geminiVoice) || "Achird",
+    voice:
+      window.localStorage.getItem(STORAGE_KEYS.voice) || "Achird",
     personality:
       window.localStorage.getItem(STORAGE_KEYS.personality) || "companion",
   };
 }
 
-function forceGeminiOnly() {
+function forcePrimaryVoice() {
   window.localStorage.setItem("nubo_voice_provider_v1", "gemini");
   window.localStorage.setItem("nubo_voice_provider_choice_v1", "gemini");
   window.localStorage.removeItem("nubo_openai_voice_v1");
@@ -51,31 +51,31 @@ export function NuboVoiceStudio() {
   const [status, setStatus] = useState("");
 
   useEffect(() => {
-    forceGeminiOnly();
+    forcePrimaryVoice();
     setProfile(readStoredProfile());
   }, []);
 
   const currentLabel = useMemo(() => {
     const voice =
-      GEMINI_VOICES.find((item) => item[0] === profile.geminiVoice)?.[1] ||
-      profile.geminiVoice;
+      NUBO_VOICES.find((item) => item[0] === profile.voice)?.[1] ||
+      profile.voice;
     const personality =
       PERSONALITIES.find((item) => item[0] === profile.personality)?.[1] ||
       profile.personality;
-    return `Gemini Live／${voice}／${personality}`;
+    return `NUBO／${voice}／${personality}`;
   }, [profile]);
 
   const apply = () => {
     window.localStorage.setItem(
-      STORAGE_KEYS.geminiVoice,
-      profile.geminiVoice,
+      STORAGE_KEYS.voice,
+      profile.voice,
     );
     window.localStorage.setItem(
       STORAGE_KEYS.personality,
       profile.personality,
     );
-    forceGeminiOnly();
-    setStatus("設定已儲存，正在重新啟動Gemini Live…");
+    forcePrimaryVoice();
+    setStatus("設定已儲存，正在重新啟動NUBO即時語音…");
     window.setTimeout(() => window.location.reload(), 350);
   };
 
@@ -84,12 +84,12 @@ export function NuboVoiceStudio() {
       <div className={styles.heading}>
         <div>
           <div className="provider-label">NUBO VOICE STUDIO</div>
-          <strong>Gemini Live 聲線與個性</strong>
+          <strong>NUBO 聲線與個性</strong>
           <small>目前選擇：{currentLabel}</small>
         </div>
         <div className="provider-buttons">
           <button type="button" className="selected" disabled>
-            Gemini Live
+            NUBO 即時語音
           </button>
         </div>
       </div>
@@ -98,15 +98,15 @@ export function NuboVoiceStudio() {
         <label className={styles.field}>
           <span>聲線</span>
           <select
-            value={profile.geminiVoice}
+            value={profile.voice}
             onChange={(event) =>
               setProfile((current) => ({
                 ...current,
-                geminiVoice: event.target.value,
+                voice: event.target.value,
               }))
             }
           >
-            {GEMINI_VOICES.map(([id, label]) => (
+            {NUBO_VOICES.map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
               </option>
@@ -143,7 +143,7 @@ export function NuboVoiceStudio() {
         <button type="button" className="primary" onClick={apply}>
           套用語音設定
         </button>
-        <small>套用時會重新載入頁面；下一次啟動NUBO使用新的Gemini聲線與個性。</small>
+        <small>套用時會重新載入頁面；下一次啟動NUBO會使用新的聲線與個性。</small>
       </div>
       {status ? <div className="status-note">{status}</div> : null}
     </section>
