@@ -24,8 +24,10 @@ async function checkOllama(): Promise<boolean> {
 function chooseVoiceProvider() {
   const requested = (process.env.NUBO_VOICE_PROVIDER ?? "gemini").toLowerCase();
   if (requested === "gemini" && process.env.GEMINI_API_KEY) return "gemini";
+  if (requested === "grok" && process.env.XAI_API_KEY) return "grok";
   if (requested === "openai" && process.env.OPENAI_API_KEY) return "openai";
   if (process.env.GEMINI_API_KEY) return "gemini";
+  if (process.env.XAI_API_KEY) return "grok";
   if (process.env.OPENAI_API_KEY) return "openai";
   return "none";
 }
@@ -45,6 +47,12 @@ export async function GET() {
             ? process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile"
             : process.env.OPENAI_WORK_MODEL ?? process.env.NUBO_WORK_MODEL ?? "gpt-5.4-mini",
   }));
+
+  providers.push({
+    name: "grok" as EngineName,
+    configured: Boolean(process.env.XAI_API_KEY),
+    model: process.env.XAI_VOICE_MODEL ?? "grok-voice-latest",
+  });
 
   return NextResponse.json({
     workChain: getEngineChain(false),
