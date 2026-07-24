@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
+import { GrokVoiceConsole } from "@/components/GrokVoiceConsole";
 import { OpenAIVoiceConsole } from "@/components/OpenAIVoiceConsole";
 
-type VoiceProvider = "gemini" | "openai" | "none";
+type VoiceProvider = "gemini" | "grok" | "openai" | "none";
 
 type ProviderData = {
   voiceProvider: VoiceProvider;
@@ -71,18 +72,30 @@ export function NuboVoiceConsole() {
   if (!data) return <section className="console">正在等待NUBO後端啟動…</section>;
 
   const geminiReady = data.providers.some((item) => item.name === "gemini" && item.configured);
+  const grokReady = data.providers.some((item) => item.name === "grok" && item.configured);
   const openaiReady = data.providers.some((item) => item.name === "openai" && item.configured);
+
+  const providerLabel = selected === "gemini"
+    ? "Gemini Live"
+    : selected === "grok"
+      ? "Grok Voice"
+      : selected === "openai"
+        ? "OpenAI Realtime"
+        : "尚未設定";
 
   return (
     <>
       <div className="provider-switcher">
         <div>
           <span className="provider-label">語音引擎</span>
-          <strong>{selected === "gemini" ? "Gemini Live" : selected === "openai" ? "OpenAI Realtime" : "尚未設定"}</strong>
+          <strong>{providerLabel}</strong>
         </div>
         <div className="provider-buttons">
           <button className={selected === "gemini" ? "selected" : ""} disabled={!geminiReady} onClick={() => setSelected("gemini")}>
             Gemini優先
+          </button>
+          <button className={selected === "grok" ? "selected" : ""} disabled={!grokReady} onClick={() => setSelected("grok")}>
+            Grok語音
           </button>
           <button className={selected === "openai" ? "selected" : ""} disabled={!openaiReady} onClick={() => setSelected("openai")}>
             OpenAI備援
@@ -92,11 +105,13 @@ export function NuboVoiceConsole() {
       </div>
       {selected === "gemini" ? (
         <GeminiVoiceConsole />
+      ) : selected === "grok" ? (
+        <GrokVoiceConsole />
       ) : selected === "openai" ? (
         <OpenAIVoiceConsole />
       ) : (
         <section className="console">
-          <div className="error">請先設定GEMINI_API_KEY，或保留OPENAI_API_KEY作為語音備援。</div>
+          <div className="error">請先設定 GEMINI_API_KEY、XAI_API_KEY，或保留 OPENAI_API_KEY 作為語音備援。</div>
         </section>
       )}
     </>
