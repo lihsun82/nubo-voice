@@ -57,7 +57,8 @@ export class MicrophonePcmStream {
     this.context = new AudioContext({ latencyHint: "interactive" });
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
-    this.processor = this.context.createScriptProcessor(2048, 1, 1);
+    // 1024 samples at 16 kHz is about 64 ms after resampling, inside Gemini's 20–100 ms guidance.
+    this.processor = this.context.createScriptProcessor(1024, 1, 1);
     this.mute = this.context.createGain();
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
