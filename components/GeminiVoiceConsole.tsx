@@ -15,11 +15,19 @@ import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
-async function requestJson(url: string, init?: RequestInit) {
+type GeminiTokenData = {
+  token: string;
+  model: string;
+  expiresAt?: string;
+  websocketUrl?: string;
+  wsVersion?: string;
+};
+
+async function requestJson<T = unknown>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error ?? "NUBO工具執行失敗");
-  return payload;
+  return payload as T;
 }
 
 async function parseSocketMessage(data: unknown) {
@@ -47,6 +55,8 @@ export function GeminiVoiceConsole() {
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const sessionHandleRef = useRef<string | null>(null);
+  const tokenDataRef = useRef<GeminiTokenData | null>(null);
+  const setupCompleteRef = useRef(false);
   const lastUserTextRef = useRef("");
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
@@ -107,6 +117,9 @@ export function GeminiVoiceConsole() {
     closingRef.current = true;
     clearReconnectTimer();
     reconnectAttemptsRef.current = 0;
+    sessionHandleRef.current = null;
+    tokenDataRef.current = null;
+    setupCompleteRef.current = false;
     socketRef.current?.close();
     socketRef.current = null;
     await microphoneRef.current?.stop();
@@ -117,21 +130,39 @@ export function GeminiVoiceConsole() {
     setError("");
   };
 
+  const getTokenForConnection = async (isReconnect: boolean) => {
+    const cached = tokenDataRef.current;
+    const expiresAtMs = cached?.expiresAt ? Date.parse(cached.expiresAt) : Number.NaN;
+    const cachedStillValid = cached && (!Number.isFinite(expiresAtMs) || expiresAtMs > Date.now() + 30_000);
+
+    // Session resumption must reuse the original short-lived token while it is valid.
+    if (isReconnect && sessionHandleRef.current && cachedStillValid) return cached;
+
+    // If the previous token cannot be resumed, start a clean session with a fresh token.
+    if (isReconnect) sessionHandleRef.current = null;
+    const fresh = await requestJson<GeminiTokenData>("/api/gemini-token", { cache: "no-store" });
+    tokenDataRef.current = fresh;
+    return fresh;
+  };
+
   const connect = async (isReconnect = false) => {
     clearReconnectTimer();
     setError("");
     if (!isReconnect) {
       sessionHandleRef.current = null;
+      tokenDataRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
     }
+    setupCompleteRef.current = false;
     setState("connecting");
     closingRef.current = false;
 
     try {
-      const tokenData = await requestJson("/api/gemini-token", { cache: "no-store" });
+      const tokenData = await getTokenForConnection(isReconnect);
       const endpoint =
-        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
+        tokenData.websocketUrl ??
+        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
       socket.binaryType = "arraybuffer";
       socketRef.current = socket;
@@ -166,12 +197,14 @@ export function GeminiVoiceConsole() {
 
           const goAway = message.goAway ?? message.go_away;
           if (goAway && !closingRef.current) {
-            setTranscript("Gemini即將重置連線，NUBO正在自動續接…");
+            const timeLeft = goAway?.timeLeft ?? goAway?.time_left;
+            setTranscript(`Gemini即將更新連線${timeLeft ? `（剩餘 ${timeLeft}）` : ""}，NUBO正在無縫續接…`);
             socket.close(1000, "Gemini GoAway reconnect");
             return;
           }
 
           if (message.setupComplete) {
+            setupCompleteRef.current = true;
             reconnectAttemptsRef.current = 0;
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
@@ -266,14 +299,16 @@ export function GeminiVoiceConsole() {
         setTranscript("Gemini Live連線異常，NUBO準備自動重連…");
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         void microphoneRef.current?.stop();
         void playbackRef.current?.close();
         microphoneRef.current = null;
         playbackRef.current = null;
         socketRef.current = null;
         if (!closingRef.current) {
-          scheduleReconnect("Gemini Live連線被重置");
+          const closeDetail = `代碼 ${event.code}${event.reason ? `：${event.reason}` : ""}`;
+          const phase = setupCompleteRef.current ? "通話中斷" : "啟動階段失敗";
+          scheduleReconnect(`Gemini Live ${phase}（${closeDetail}）`);
         }
       };
     } catch (cause) {
