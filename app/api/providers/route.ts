@@ -31,19 +31,21 @@ function chooseVoiceProvider() {
 }
 
 export async function GET() {
-  const names: EngineName[] = ["gemini", "ollama", "groq", "openai"];
+  const names: EngineName[] = ["omniroute", "gemini", "ollama", "groq", "openai"];
   const ollamaOnline = await checkOllama();
   const providers = names.map((name) => ({
     name,
     configured: name === "ollama" ? ollamaOnline : isEngineConfigured(name),
     model:
-      name === "gemini"
-        ? process.env.GEMINI_TEXT_MODEL ?? "gemini-3.5-flash"
-        : name === "ollama"
-          ? process.env.OLLAMA_MODEL ?? "qwen3:4b"
-          : name === "groq"
-            ? process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile"
-            : process.env.OPENAI_WORK_MODEL ?? process.env.NUBO_WORK_MODEL ?? "gpt-5.4-mini",
+      name === "omniroute"
+        ? process.env.OMNIROUTE_MODEL ?? "auto"
+        : name === "gemini"
+          ? process.env.GEMINI_TEXT_MODEL ?? "gemini-3.5-flash"
+          : name === "ollama"
+            ? process.env.OLLAMA_MODEL ?? "qwen3:4b"
+            : name === "groq"
+              ? process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile"
+              : process.env.OPENAI_WORK_MODEL ?? process.env.NUBO_WORK_MODEL ?? "gpt-5.4-mini",
   }));
 
   return NextResponse.json({
