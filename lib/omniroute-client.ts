@@ -16,10 +16,20 @@ export type OmniRouteChatResult = {
   raw: unknown;
 };
 
+export function getOmniRouteBaseUrl() {
+  const explicit = process.env.OMNIROUTE_BASE_URL?.trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+
+  const hostport = process.env.OMNIROUTE_HOSTPORT?.trim();
+  if (hostport) return `http://${hostport}/v1`;
+
+  return "http://127.0.0.1:20128/v1";
+}
+
 function getOmniRouteConfig() {
   return {
     enabled: process.env.NUBO_OMNIROUTE_ENABLED === "1",
-    baseUrl: (process.env.OMNIROUTE_BASE_URL ?? "http://127.0.0.1:20128/v1").replace(/\/$/, ""),
+    baseUrl: getOmniRouteBaseUrl(),
     apiKey: process.env.OMNIROUTE_API_KEY ?? "",
     model: process.env.OMNIROUTE_MODEL ?? "auto",
   };
