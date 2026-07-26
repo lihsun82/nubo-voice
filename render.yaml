@@ -2,17 +2,13 @@ services:
   - type: web
     name: nubo-cloud
     runtime: node
-    plan: starter
+    plan: free
     region: singapore
     branch: feat/mobile-agent-omniroute-v6
     buildCommand: npm ci && npm run build
     startCommand: npm run start:cloud
     healthCheckPath: /
     autoDeployTrigger: "off"
-    disk:
-      name: nubo-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -22,26 +18,22 @@ services:
         value: auto
       - key: NUBO_AI_PROVIDER_CHAIN
         value: omniroute,gemini,groq,openai
-      - key: OMNIROUTE_HOSTPORT
+      - key: OMNIROUTE_PUBLIC_URL
         fromService:
           name: nubo-omniroute
           type: web
-          property: hostport
+          envVarKey: RENDER_EXTERNAL_URL
       - key: GEMINI_API_KEY
         sync: false
 
   - type: web
     name: nubo-omniroute
     runtime: image
-    plan: starter
+    plan: free
     region: singapore
     image:
       url: docker.io/diegosouzapw/omniroute:3.8.48
     healthCheckPath: /
-    disk:
-      name: omniroute-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: "10000"
@@ -50,7 +42,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
-        value: /app/data
+        value: /tmp/omniroute-data
       - key: AUTH_COOKIE_SECURE
         value: "true"
       - key: REQUIRE_API_KEY
@@ -58,7 +50,7 @@ services:
       - key: ALLOW_API_KEY_REVEAL
         value: "false"
       - key: OMNIROUTE_MEMORY_MB
-        value: "1024"
+        value: "512"
       - key: JWT_SECRET
         generateValue: true
       - key: API_KEY_SECRET
