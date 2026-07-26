@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: nubo-omniroute
+    runtime: image
+    plan: starter
+    region: singapore
+    image:
+      url: docker.io/diegosouzapw/omniroute:3.8.48
+    healthCheckPath: /api/monitoring/health
+    maxShutdownDelaySeconds: 40
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "20128"
+      - key: HOSTNAME
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /app/data
+      - key: OMNIROUTE_MEMORY_MB
+        value: "512"
+      - key: REQUIRE_API_KEY
+        value: "true"
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: APP_LOG_TO_FILE
+        value: "false"
+      - key: CLI_COMPAT_ALL
+        value: "1"
+      - key: CORS_ORIGIN
+        value: https://nubo.ainubo.com
+      - key: JWT_SECRET
+        generateValue: true
+      - key: API_KEY_SECRET
+        generateValue: true
+      - key: STORAGE_ENCRYPTION_KEY
+        generateValue: true
+      - key: INITIAL_PASSWORD
+        sync: false
+    disk:
+      name: omniroute-data
+      mountPath: /app/data
+      sizeGB: 1
