@@ -10,6 +10,10 @@ export async function GET() {
   }
 
   const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview";
+  // 2026-07 官方 WebSocket quickstart 使用 v1beta；保留環境變數可快速切回 v1alpha。
+  const wsVersion = process.env.GEMINI_LIVE_WS_VERSION ?? "v1beta";
+  const websocketUrl =
+    `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${wsVersion}.GenerativeService.BidiGenerateContentConstrained`;
   const now = Date.now();
   const response = await fetch(
     "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
@@ -37,6 +41,8 @@ export async function GET() {
   return NextResponse.json({
     token: payload.name,
     model,
-    expiresAt: payload.expireTime,
+    expiresAt: payload.expireTime ?? new Date(now + 30 * 60_000).toISOString(),
+    websocketUrl,
+    wsVersion,
   });
 }
