@@ -8,7 +8,7 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run start:cloud
     healthCheckPath: /
-    autoDeployTrigger: off
+    autoDeployTrigger: "off"
     disk:
       name: nubo-data
       mountPath: /opt/render/project/src/data
@@ -37,7 +37,6 @@ services:
     region: singapore
     image:
       url: docker.io/diegosouzapw/omniroute:3.8.48
-    autoDeployTrigger: off
     healthCheckPath: /
     disk:
       name: omniroute-data
