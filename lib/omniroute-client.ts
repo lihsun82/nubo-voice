@@ -16,9 +16,17 @@ export type OmniRouteChatResult = {
   raw: unknown;
 };
 
+function withV1(baseUrl: string) {
+  const normalized = baseUrl.replace(/\/$/, "");
+  return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
+}
+
 export function getOmniRouteBaseUrl() {
   const explicit = process.env.OMNIROUTE_BASE_URL?.trim();
-  if (explicit) return explicit.replace(/\/$/, "");
+  if (explicit) return withV1(explicit);
+
+  const publicUrl = process.env.OMNIROUTE_PUBLIC_URL?.trim();
+  if (publicUrl) return withV1(publicUrl);
 
   const hostport = process.env.OMNIROUTE_HOSTPORT?.trim();
   if (hostport) return `http://${hostport}/v1`;
