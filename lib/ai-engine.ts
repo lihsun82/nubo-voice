@@ -1,7 +1,8 @@
 import { runGroqEngine } from "@/lib/groq-engine";
+import { omniRouteChat, isOmniRouteEnabled } from "@/lib/omniroute-client";
 import { runOpenAIEngine } from "@/lib/openai-engine";
 
-export type EngineName = "gemini" | "ollama" | "groq" | "openai";
+export type EngineName = "omniroute" | "gemini" | "ollama" | "groq" | "openai";
 
 export type EngineResult = {
   text: string;
@@ -14,11 +15,11 @@ type GenerateOptions = {
   needsCurrentSources?: boolean;
 };
 
-const DEFAULT_CHAIN: EngineName[] = ["gemini", "ollama", "groq", "openai"];
-const WEB_CHAIN: EngineName[] = ["gemini", "groq", "openai", "ollama"];
+const DEFAULT_CHAIN: EngineName[] = ["omniroute", "gemini", "ollama", "groq", "openai"];
+const WEB_CHAIN: EngineName[] = ["omniroute", "gemini", "groq", "openai", "ollama"];
 
 function parseChain(value: string | undefined): EngineName[] {
-  const allowed = new Set<EngineName>(["gemini", "ollama", "groq", "openai"]);
+  const allowed = new Set<EngineName>(["omniroute", "gemini", "ollama", "groq", "openai"]);
   const parsed = (value ?? "")
     .split(",")
     .map((item) => item.trim().toLowerCase())
@@ -39,6 +40,7 @@ export function getEngineChain(needsCurrentSources = false): EngineName[] {
 }
 
 export function isEngineConfigured(provider: EngineName): boolean {
+  if (provider === "omniroute") return isOmniRouteEnabled();
   if (provider === "gemini") return Boolean(process.env.GEMINI_API_KEY);
   if (provider === "ollama") return true;
   if (provider === "groq") return Boolean(process.env.GROQ_API_KEY);
@@ -152,6 +154,23 @@ async function runOllama(prompt: string) {
   return { text, model };
 }
 
+async function runOmniRoute(prompt: string) {
+  const result = await omniRouteChat({
+    messages: [
+      {
+        role: "system",
+        content: "你是 NUBO 的 Agent 工作引擎。使用繁體中文、直接交付可執行成果，不得捏造已完成的外部操作。",
+      },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.2,
+  });
+  return {
+    text: result.text,
+    model: result.model ?? process.env.OMNIROUTE_MODEL ?? "auto",
+  };
+}
+
 export async function generateWithFallback(
   prompt: string,
   options: GenerateOptions = {},
@@ -167,13 +186,15 @@ export async function generateWithFallback(
     }
     try {
       const result =
-        provider === "gemini"
-          ? await runGemini(prompt, needsCurrentSources)
-          : provider === "ollama"
-            ? await runOllama(prompt)
-            : provider === "groq"
-              ? await runGroqEngine(prompt, needsCurrentSources)
-              : await runOpenAIEngine(prompt, needsCurrentSources);
+        provider === "omniroute"
+          ? await runOmniRoute(prompt)
+          : provider === "gemini"
+            ? await runGemini(prompt, needsCurrentSources)
+            : provider === "ollama"
+              ? await runOllama(prompt)
+              : provider === "groq"
+                ? await runGroqEngine(prompt, needsCurrentSources)
+                : await runOpenAIEngine(prompt, needsCurrentSources);
       attempts.push({ provider });
       return { ...result, provider, attempts };
     } catch (error) {
