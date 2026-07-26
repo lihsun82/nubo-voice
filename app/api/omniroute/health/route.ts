@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { getOmniRouteBaseUrl } from "@/lib/omniroute-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const enabled = process.env.NUBO_OMNIROUTE_ENABLED === "1";
-  const baseUrl = (process.env.OMNIROUTE_BASE_URL ?? "http://127.0.0.1:20128/v1").replace(/\/$/, "");
+  const baseUrl = getOmniRouteBaseUrl();
 
   if (!enabled) {
     return NextResponse.json({
