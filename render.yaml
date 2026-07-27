@@ -33,7 +33,7 @@ services:
     region: singapore
     repo: https://github.com/diegosouzapw/OmniRoute.git
     branch: release/v3.8.49
-    buildCommand: npm ci && npm run build
+    buildCommand: npm install --include=dev --no-audit --no-fund && npm run build
     startCommand: npm run start
     healthCheckPath: /
     autoDeployTrigger: "off"
