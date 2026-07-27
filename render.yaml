@@ -20,26 +20,34 @@ services:
         value: omniroute,gemini,groq,openai
       - key: OMNIROUTE_PUBLIC_URL
         fromService:
-          name: nubo-omniroute
+          name: nubo-omniroute-source
           type: web
           envVarKey: RENDER_EXTERNAL_URL
       - key: GEMINI_API_KEY
         sync: false
 
   - type: web
-    name: nubo-omniroute
-    runtime: image
+    name: nubo-omniroute-source
+    runtime: node
     plan: free
     region: singapore
-    image:
-      url: docker.io/diegosouzapw/omniroute:latest
+    repo: https://github.com/diegosouzapw/OmniRoute.git
+    branch: release/v3.8.49
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
     healthCheckPath: /
     autoDeployTrigger: "off"
     envVars:
+      - key: NODE_ENV
+        value: production
       - key: PORT
         value: "10000"
+      - key: HOSTNAME
+        value: 0.0.0.0
       - key: DATA_DIR
         value: /tmp/omniroute-data
+      - key: NEXT_PUBLIC_BASE_URL
+        value: https://nubo-omniroute-source.onrender.com
       - key: AUTH_COOKIE_SECURE
         value: "true"
       - key: REQUIRE_API_KEY
@@ -48,6 +56,8 @@ services:
         value: "false"
       - key: OMNIROUTE_MEMORY_MB
         value: "256"
+      - key: APP_LOG_TO_FILE
+        value: "false"
       - key: JWT_SECRET
         generateValue: true
       - key: API_KEY_SECRET
