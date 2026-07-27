@@ -20,12 +20,49 @@ services:
         value: omniroute,gemini,groq,openai
       - key: OMNIROUTE_PUBLIC_URL
         fromService:
-          name: nubo-omniroute-source
+          name: nubo-omniroute-img
           type: web
           envVarKey: RENDER_EXTERNAL_URL
       - key: GEMINI_API_KEY
         sync: false
 
+  # Preferred Free test path: prebuilt official GHCR image, no Render-side Next.js build.
+  - type: web
+    name: nubo-omniroute-img
+    runtime: image
+    plan: free
+    region: singapore
+    image:
+      url: ghcr.io/diegosouzapw/omniroute:3.8.48
+    healthCheckPath: /api/monitoring/health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: HOSTNAME
+        value: 0.0.0.0
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      - key: DATA_DIR
+        value: /app/data
+      - key: AUTH_COOKIE_SECURE
+        value: "true"
+      - key: REQUIRE_API_KEY
+        value: "true"
+      - key: ALLOW_API_KEY_REVEAL
+        value: "false"
+      - key: APP_LOG_TO_FILE
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: API_KEY_SECRET
+        generateValue: true
+      - key: STORAGE_ENCRYPTION_KEY
+        generateValue: true
+      - key: INITIAL_PASSWORD
+        sync: false
+
+  # Kept for comparison only. This source build currently exceeds Render Free build memory.
   - type: web
     name: nubo-omniroute-source
     runtime: node
@@ -35,7 +72,7 @@ services:
     branch: release/v3.8.49
     buildCommand: npm install --include=dev --no-audit --no-fund && npm run build
     startCommand: npm run start
-    healthCheckPath: /
+    healthCheckPath: /api/monitoring/health
     autoDeployTrigger: "off"
     envVars:
       - key: NODE_ENV
