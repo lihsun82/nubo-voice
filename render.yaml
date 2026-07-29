@@ -13,20 +13,15 @@ services:
       - key: NODE_ENV
         value: production
       - key: NUBO_OMNIROUTE_ENABLED
-        value: "1"
+        value: "0"
       - key: OMNIROUTE_MODEL
         value: auto
       - key: NUBO_AI_PROVIDER_CHAIN
-        value: omniroute,gemini,groq,openai
-      - key: OMNIROUTE_PUBLIC_URL
-        fromService:
-          name: nubo-omniroute-img
-          type: web
-          envVarKey: RENDER_EXTERNAL_URL
+        value: gemini,groq,openai
       - key: GEMINI_API_KEY
         sync: false
 
-  # Preferred Free test path: prebuilt official GHCR image, no Render-side Next.js build.
+  # Diagnostic-only service. It currently runs a temporary "ok" server in Render.
   - type: web
     name: nubo-omniroute-img
     runtime: image
@@ -62,7 +57,7 @@ services:
       - key: INITIAL_PASSWORD
         sync: false
 
-  # Kept for comparison only. This source build currently exceeds Render Free build memory.
+  # Kept for comparison only. This source build exceeds Render Free build memory.
   - type: web
     name: nubo-omniroute-source
     runtime: node
