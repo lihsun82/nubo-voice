@@ -3,10 +3,24 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://nubo.ainubo.com",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Cache-Control": "no-store",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+}
+
 export async function GET() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ error: "GEMINI_API_KEY 尚未設定" }, { status: 503 });
+    return NextResponse.json(
+      { error: "GEMINI_API_KEY 尚未設定" },
+      { status: 503, headers: corsHeaders },
+    );
   }
 
   const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview";
@@ -31,12 +45,18 @@ export async function GET() {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || typeof payload?.name !== "string") {
     const message = payload?.error?.message ?? `Gemini Token 錯誤：${response.status}`;
-    return NextResponse.json({ error: message }, { status: response.status || 502 });
+    return NextResponse.json(
+      { error: message },
+      { status: response.status || 502, headers: corsHeaders },
+    );
   }
 
-  return NextResponse.json({
-    token: payload.name,
-    model,
-    expiresAt: payload.expireTime,
-  });
+  return NextResponse.json(
+    {
+      token: payload.name,
+      model,
+      expiresAt: payload.expireTime,
+    },
+    { headers: corsHeaders },
+  );
 }
