@@ -20,14 +20,6 @@ services:
         value: gemini,groq,openai
       - key: GEMINI_API_KEY
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
-      - key: GOOGLE_REDIRECT_URI
-        value: https://nubo.ainubo.com/api/google/oauth/callback
-      - key: YOUTUBE_API_KEY
-        sync: false
 
   # Diagnostic-only service. It currently runs a temporary "ok" server in Render.
   - type: web
