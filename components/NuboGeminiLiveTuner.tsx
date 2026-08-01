@@ -18,10 +18,35 @@ NUBO真人感對話模式：
 - 保持誠實，不要假裝自己是人類，也不要主動強調自己是AI。
 `;
 
+const MOBILE_PHONE_AGENT_INSTRUCTION = `
+NUBO Phone Agent V2手機模式（高優先）：
+- 目前這個工作階段是在手機或觸控行動裝置執行。
+- 使用者說打開、開啟或啟動LINE、Facebook、FB、Instagram、IG、Google Maps、地圖、YouTube、YouTube Music、Gmail、Google或Spotify時，必須呼叫open_mobile_app。
+- 使用者說導航、帶我去、怎麼走或地圖搜尋時，呼叫open_mobile_app，app使用maps，query保留完整目的地。
+- 使用者要求播放歌曲或影片時，呼叫open_youtube；不得改成Windows工具。
+- 手機模式禁止回答「只能在Windows開啟」「只能開啟Windows網頁」「目前只支援Windows」或任何同義內容。
+- 手機模式禁止把LINE、Facebook、Instagram、地圖或YouTube路由到open_desktop_app。
+- 工具完成後只簡短說正在開啟對應App，不要再解釋Windows限制。
+`;
+
 type JsonRecord = Record<string, unknown>;
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isMobileRuntime() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+
+  const userAgent = navigator.userAgent || "";
+  const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+  const coarsePointer = window
+    .matchMedia("(pointer: coarse) and (max-width: 1100px)")
+    .matches;
+
+  return mobileUserAgent || coarsePointer;
 }
 
 function tuneSetupMessage(raw: string) {
@@ -109,12 +134,18 @@ function tuneSetupMessage(raw: string) {
   const existingParts = Array.isArray(existingInstruction.parts)
     ? existingInstruction.parts
     : [];
+  const runtimeInstructions = isMobileRuntime()
+    ? [
+        { text: HUMAN_DIALOG_INSTRUCTION },
+        { text: MOBILE_PHONE_AGENT_INSTRUCTION },
+      ]
+    : [{ text: HUMAN_DIALOG_INSTRUCTION }];
 
   setup.systemInstruction = {
     ...existingInstruction,
     parts: [
       ...existingParts,
-      { text: HUMAN_DIALOG_INSTRUCTION },
+      ...runtimeInstructions,
     ],
   };
 
