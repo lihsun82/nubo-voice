@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const BUILD_ID = "mobile-web-open-v16-20260801";
+const BUILD_ID = "mobile-web-open-v17-20260802";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 const QUESTION_EVENT = "nubo-question-record";
@@ -234,6 +234,7 @@ export function NuboPublicWebNavigationBridge() {
   const [pending, setPending] = useState<PendingNavigation | null>(null);
   const [warning, setWarning] = useState("");
   const lastNavigationRef = useRef("");
+  const lastQuestionRef = useRef("");
 
   useEffect(() => {
     const hostname = window.location.hostname.toLowerCase();
@@ -265,7 +266,11 @@ export function NuboPublicWebNavigationBridge() {
 
     const handleQuestion = (event: Event) => {
       const questionEvent = event as CustomEvent<{ text?: string }>;
-      const destination = destinationFromCommand(questionEvent.detail?.text);
+      const text = String(questionEvent.detail?.text ?? "").trim();
+      if (!text || text === lastQuestionRef.current) return;
+
+      lastQuestionRef.current = text;
+      const destination = destinationFromCommand(text);
 
       if (destination) {
         navigate(destination);
@@ -331,30 +336,13 @@ export function NuboPublicWebNavigationBridge() {
       return window;
     }) as typeof window.open;
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        const node = mutation.target;
-
-        if (
-          node instanceof Element &&
-          node.closest("[data-nubo-mobile-open-card='true']")
-        ) {
-          continue;
-        }
-
-        const destination = destinationFromCommand(node.textContent);
-        if (destination) {
-          navigate(destination);
-          return;
-        }
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
+    /*
+     * V16 曾用 MutationObserver 掃描整個畫面文字。
+     * 問題紀錄在頁面初始化時重新載入，舊的「開啟 Gmail」文字
+     * 也會被誤認成新語音指令，造成開頁即自動跳轉。
+     * V17 僅接受即時語音事件、明確工具 API 或 window.open 呼叫，
+     * 不再掃描歷史紀錄與靜態畫面文字。
+     */
 
     void originalFetch(`/api/health?ts=${Date.now()}`, {
       cache: "no-store",
@@ -379,7 +367,6 @@ export function NuboPublicWebNavigationBridge() {
         window.fetch = originalFetch;
       }
       window.open = originalOpen;
-      observer.disconnect();
     };
   }, []);
 
