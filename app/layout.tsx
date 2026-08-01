@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { NuboMobileExternalOpenGuard } from "@/components/NuboMobileExternalOpenGuard";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -41,6 +42,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboMobileExternalOpenGuard />
         {children}
         <PwaInstallPrompt />
       </body>
