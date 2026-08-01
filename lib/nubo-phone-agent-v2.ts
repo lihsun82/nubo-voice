@@ -324,11 +324,11 @@ export function resolveWebsiteTargetAsPhoneApp(targetValue: unknown) {
     const host = url.hostname.toLowerCase();
     if (host.includes("facebook.com")) return { app: "facebook", query: raw };
     if (host.includes("instagram.com")) return { app: "instagram", query: raw };
-    if (host.includes("youtube.com") || host === "youtu.be") {
-      return { app: "youtube", query: raw };
-    }
     if (host.includes("music.youtube.com")) {
       return { app: "youtube_music", query: raw };
+    }
+    if (host.includes("youtube.com") || host === "youtu.be") {
+      return { app: "youtube", query: raw };
     }
     if (host.includes("google.com") && url.pathname.includes("maps")) {
       return { app: "maps", query: raw };
@@ -349,11 +349,19 @@ export function launchNuboPhoneActionV2(
     throw new Error("目前不是瀏覽器環境");
   }
 
-  const launchUrl =
+  /*
+   * 語音工具是由WebSocket非同步觸發，不具備瀏覽器認定的手指點擊事件。
+   * Android Chrome/PWA會攔截這種情境下的intent://跳轉，因此自動執行
+   * 必須使用HTTPS通用連結；系統支援App Links時仍會交給原生App，否則
+   * 至少能可靠開啟網站。畫面上的手動按鈕則保留intent://，由真實點擊
+   * 強制交給Android App。
+   */
+  const automaticLaunchUrl = action.universalUrl || action.fallbackUrl;
+  const manualLaunchUrl =
     isAndroidRuntime() && action.androidIntentUrl
       ? action.androidIntentUrl
       : action.universalUrl;
-  const signature = `${action.app}:${launchUrl}`;
+  const signature = `${action.app}:${automaticLaunchUrl}`;
   const now = Date.now();
 
   window.localStorage.setItem(AUTO_RESUME_KEY, "true");
@@ -369,11 +377,9 @@ export function launchNuboPhoneActionV2(
   );
 
   const launchMode: NuboPhoneLaunchResult["launchMode"] =
-    isAndroidRuntime() && action.androidIntentUrl
-      ? "android-intent"
-      : isHttpUrl(action.universalUrl)
-        ? "universal-link"
-        : "web-fallback";
+    isHttpUrl(automaticLaunchUrl)
+      ? "universal-link"
+      : "web-fallback";
 
   if (signature !== lastLaunchSignature || now - lastLaunchAt > LAUNCH_DEDUP_MS) {
     lastLaunchSignature = signature;
@@ -381,9 +387,11 @@ export function launchNuboPhoneActionV2(
 
     window.setTimeout(() => {
       try {
-        window.location.assign(launchUrl);
+        window.location.assign(automaticLaunchUrl);
       } catch {
-        window.location.assign(action.fallbackUrl);
+        if (automaticLaunchUrl !== action.fallbackUrl) {
+          window.location.assign(action.fallbackUrl);
+        }
       }
     }, 120);
   }
@@ -392,7 +400,7 @@ export function launchNuboPhoneActionV2(
     ok: true,
     opened: true,
     phoneAgentV2: true,
-    mobileUrl: action.fallbackUrl,
+    mobileUrl: manualLaunchUrl,
     mobileLabel: action.label,
     autoOpen: false,
     launchMode,
