@@ -7,7 +7,10 @@ const noStoreHeaders = [
   },
   { key: "Pragma", value: "no-cache" },
   { key: "Expires", value: "0" },
-  { key: "X-NUBO-Build", value: "mobile-direct-navigation-v3-20260801" },
+  {
+    key: "X-NUBO-Build",
+    value: "public-web-navigation-v4-20260801",
+  },
 ];
 
 const nextConfig: NextConfig = {
