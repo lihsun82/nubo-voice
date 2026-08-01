@@ -52,8 +52,8 @@ export default function HomePage() {
       </div>
 
       <footer>
-        <span>Mobile Web Open V16</span>
-        <span>手機語音直接開啟 FB、IG、YouTube</span>
+        <span>Mobile Web Open V17</span>
+        <span>只執行新的語音開頁指令，不讀取歷史紀錄</span>
       </footer>
     </main>
   );
