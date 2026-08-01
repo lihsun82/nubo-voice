@@ -28,7 +28,21 @@
 }
 
 .hero {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 2px 0 4px;
+  text-align: center;
+}
+
+.hero :global(.eyebrow),
+.hero :global(h1),
+.hero :global(.subtitle) {
+  width: 100%;
+  margin-inline: auto;
+  text-align: center;
 }
 
 .hero :global(h1) {
@@ -97,6 +111,14 @@
   .shell {
     gap: 10px;
     padding-top: 14px;
+  }
+
+  .hero {
+    width: 100%;
+    margin-inline: auto;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
   }
 
   .hero :global(.eyebrow) {
