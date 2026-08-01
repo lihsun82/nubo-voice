@@ -124,6 +124,18 @@ if (-not $SkipInstall) {
   }
 }
 
+$staleTypeDirectories = @(
+  (Join-Path $repoRoot ".next\dev\types"),
+  (Join-Path $repoRoot ".next\types")
+)
+
+foreach ($staleTypeDirectory in $staleTypeDirectories) {
+  if (Test-Path -LiteralPath $staleTypeDirectory) {
+    Write-Host ("Removing stale Next.js type cache: " + $staleTypeDirectory) -ForegroundColor DarkGray
+    Remove-Item -LiteralPath $staleTypeDirectory -Recurse -Force -ErrorAction Stop
+  }
+}
+
 Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "typecheck")
 Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "build")
 
