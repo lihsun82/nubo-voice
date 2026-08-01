@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BUILD_ID = "public-web-navigation-v4-20260801";
+const BUILD_ID = "public-web-navigation-v6-20260801";
 
 export async function GET(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
