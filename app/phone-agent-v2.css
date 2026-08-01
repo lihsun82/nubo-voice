@@ -1,0 +1,56 @@
+/* NUBO Phone Agent V2 mobile stability and orb centering fixes. */
+
+@media (max-width: 820px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .console {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .console .orb-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 100%;
+    min-height: min(78vw, 420px);
+    margin-inline: auto;
+    overflow: hidden;
+  }
+
+  .console .orb-wrap > * {
+    position: relative;
+    left: auto !important;
+    right: auto !important;
+    margin-inline: auto !important;
+    transform: none !important;
+    max-width: min(82vw, 390px) !important;
+  }
+
+  .console .orb-wrap canvas,
+  .console .orb-wrap svg,
+  .console .orb-wrap img {
+    display: block;
+    width: min(82vw, 390px) !important;
+    max-width: 100% !important;
+    height: auto !important;
+    margin-inline: auto !important;
+    object-fit: contain;
+    object-position: center;
+  }
+
+  .provider-switcher,
+  .console,
+  .nubo-panel,
+  .integration-center {
+    box-sizing: border-box;
+    max-width: calc(100vw - 24px);
+    margin-inline: auto;
+  }
+}
