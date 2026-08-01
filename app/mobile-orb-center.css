@@ -1,36 +1,54 @@
 /*
- * NUBO_MOBILE_ORB_CENTER_V2
- * 僅修正手機版科技球體位置；不影響桌面版、LINE、Agent 或語音核心。
+ * NUBO_MOBILE_ORB_CENTER_V3
+ * 使用絕對定位鎖定科技球體幾何中心，避免Canvas內建560px尺寸、
+ * Android DPR、Flex/Grid最小內容寬度或舊transform讓球體偏到右側。
  */
 @media (max-width: 680px) {
   .console .orb-wrap {
+    --nubo-mobile-orb-size: min(calc(100vw - 50px), 390px);
+    position: relative !important;
+    display: block !important;
     width: 100% !important;
     max-width: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin-inline: auto !important;
-    padding-inline: 0 !important;
-    overflow: visible !important;
+    height: var(--nubo-mobile-orb-size) !important;
+    min-height: var(--nubo-mobile-orb-size) !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    contain: layout paint !important;
   }
 
   .console .orb-wrap > .nubo-energy-orb {
-    position: relative !important;
-    left: auto !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
     right: auto !important;
-    flex: 0 0 auto !important;
-    width: min(86vw, 390px) !important;
-    height: min(86vw, 390px) !important;
-    max-width: calc(100vw - 40px) !important;
-    margin: 0 auto !important;
-    transform: none !important;
+    bottom: auto !important;
+    width: var(--nubo-mobile-orb-size) !important;
+    height: var(--nubo-mobile-orb-size) !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%) !important;
+    transform-origin: center center !important;
+    overflow: hidden !important;
   }
 
   .console .orb-wrap > .nubo-energy-orb > canvas {
+    position: absolute !important;
+    inset: 0 !important;
     display: block !important;
     width: 100% !important;
     height: 100% !important;
-    max-width: 100% !important;
-    margin: 0 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    transform: none !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .console .orb-wrap {
+    --nubo-mobile-orb-size: min(calc(100vw - 38px), 350px);
   }
 }
