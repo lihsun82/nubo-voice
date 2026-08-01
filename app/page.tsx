@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Android Native Launch V8 2026-08-02</span>
-        <span>Android App原生直接開啟外部App；科技球體置於首頁最上方</span>
+        <span>v0.5.1 Mobile Web Plan B V9 2026-08-02</span>
+        <span>科技球體置頂；網頁直接呼叫外部App，Android系統提示依裝置政策顯示</span>
       </footer>
     </main>
   );
