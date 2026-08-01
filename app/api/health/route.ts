@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const BUILD_ID = "public-web-navigation-v3-20260801";
+const BUILD_ID = "public-web-navigation-v4-20260801";
 
 export async function GET(request: NextRequest) {
   const forwardedHost = request.headers.get("x-forwarded-host");
@@ -15,14 +15,21 @@ export async function GET(request: NextRequest) {
       ok: true,
       build: BUILD_ID,
       host,
-      protocol: forwardedProto || request.nextUrl.protocol.replace(":", ""),
-      provider: process.env.RAILWAY_ENVIRONMENT_NAME ? "railway" : "unknown",
-      railwayEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME || undefined,
+      protocol:
+        forwardedProto ||
+        request.nextUrl.protocol.replace(":", ""),
+      provider: process.env.RAILWAY_ENVIRONMENT_NAME
+        ? "railway"
+        : "unknown",
+      railwayEnvironment:
+        process.env.RAILWAY_ENVIRONMENT_NAME || undefined,
+      serverPlatform: process.platform,
       timestamp: new Date().toISOString(),
     },
     {
       headers: {
-        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        "Cache-Control":
+          "no-store, no-cache, must-revalidate, proxy-revalidate",
         Pragma: "no-cache",
         Expires: "0",
         "X-NUBO-Build": BUILD_ID,
