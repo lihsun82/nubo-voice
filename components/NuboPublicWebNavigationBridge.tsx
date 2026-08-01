@@ -2,322 +2,402 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const BUILD_ID = "public-web-navigation-v6-20260801";
+const BUILD_ID = "mobile-web-open-v16-20260801";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 
-type PendingNavigation = {
+type Destination = {
+  key: string;
   url: string;
-  relayUrl: string;
   label: string;
 };
 
-type ExternalNavigationDetail = {
-  url?: string;
-  label?: string;
+type PendingNavigation = Destination & {
+  relayUrl: string;
 };
 
-function normalizeKey(value: unknown) {
+const DESTINATIONS: Record<string, Destination> = {
+  facebook: {
+    key: "facebook",
+    url: "https://m.facebook.com/",
+    label: "Facebook",
+  },
+  instagram: {
+    key: "instagram",
+    url: "https://www.instagram.com/",
+    label: "Instagram",
+  },
+  youtube: {
+    key: "youtube",
+    url: "https://www.youtube.com/",
+    label: "YouTube",
+  },
+  gmail: {
+    key: "gmail",
+    url: "https://mail.google.com/",
+    label: "Gmail",
+  },
+  maps: {
+    key: "maps",
+    url: "https://www.google.com/maps/",
+    label: "Google Maps",
+  },
+  google: {
+    key: "google",
+    url: "https://www.google.com/",
+    label: "Google",
+  },
+  line: {
+    key: "line",
+    url: "https://line.me/R/nv/chat",
+    label: "LINE",
+  },
+};
+
+function normalizeText(value: unknown) {
   return String(value ?? "")
-    .trim()
     .toLowerCase()
-    .replace(/[\s_-]+/g, "");
+    .replace(/[\s　，。！？、：:；;（）()「」『』【】\[\]…]/g, "");
 }
 
-function knownDestination(value: unknown) {
-  const key = normalizeKey(value);
+function destinationFromName(value: unknown) {
+  const key = normalizeText(value).replace(/[_-]/g, "");
 
   if (["facebook", "fb", "臉書"].includes(key)) {
-    return {
-      url: "https://m.facebook.com/",
-      label: "Facebook",
-    };
+    return DESTINATIONS.facebook;
   }
-
   if (["instagram", "ig"].includes(key)) {
-    return {
-      url: "https://www.instagram.com/",
-      label: "Instagram",
-    };
+    return DESTINATIONS.instagram;
   }
-
   if (["youtube", "yt", "油管"].includes(key)) {
-    return {
-      url: "https://www.youtube.com/",
-      label: "YouTube",
-    };
+    return DESTINATIONS.youtube;
   }
-
   if (["gmail", "googlemail"].includes(key)) {
-    return {
-      url: "https://mail.google.com/",
-      label: "Gmail",
-    };
+    return DESTINATIONS.gmail;
   }
-
-  if (
-    [
-      "maps",
-      "googlemaps",
-      "地圖",
-      "google地圖",
-    ].includes(key)
-  ) {
-    return {
-      url: "https://www.google.com/maps/",
-      label: "Google Maps",
-    };
+  if (["maps", "googlemaps", "google地圖", "地圖"].includes(key)) {
+    return DESTINATIONS.maps;
   }
-
+  if (["google", "chrome", "browser", "瀏覽器"].includes(key)) {
+    return DESTINATIONS.google;
+  }
   if (["line", "賴"].includes(key)) {
-    return {
-      url: "https://line.me/R/nv/chat",
-      label: "LINE",
-    };
+    return DESTINATIONS.line;
   }
 
   return null;
 }
 
-function destinationFromText(text: string) {
-  const normalized = text
-    .toLowerCase()
-    .replace(/[\s，。！？、:：…]+/g, "");
-
-  const wantsOpen =
-    /(開啟|打開|啟動|幫我開|開facebook|開fb|開臉書|開instagram|開ig|開youtube)/.test(
-      normalized,
-    );
-
-  if (!wantsOpen) return null;
-
-  if (/(facebook|臉書|fb)/.test(normalized)) {
-    return knownDestination("facebook");
-  }
-
-  if (/(instagram|ig)/.test(normalized)) {
-    return knownDestination("instagram");
-  }
-
-  if (/(youtube|油管)/.test(normalized)) {
-    return knownDestination("youtube");
-  }
-
-  if (/gmail/.test(normalized)) {
-    return knownDestination("gmail");
-  }
-
-  if (/(googlemaps|google地圖|地圖)/.test(normalized)) {
-    return knownDestination("maps");
-  }
-
-  return null;
-}
-
-function normalizeExternalUrl(rawValue: string) {
-  const raw = rawValue.trim();
+function destinationFromUrl(rawValue: unknown) {
+  const raw = String(rawValue ?? "").trim();
   if (!raw) return null;
-
-  if (/^(tel|sms|mailto):/i.test(raw)) {
-    return raw;
-  }
 
   try {
     const parsed = new URL(raw, window.location.origin);
+    const host = parsed.hostname.toLowerCase();
 
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      return null;
+    if (host.includes("facebook.com") || host === "fb.com") {
+      return DESTINATIONS.facebook;
+    }
+    if (host.includes("instagram.com")) {
+      return DESTINATIONS.instagram;
+    }
+    if (host.includes("youtube.com") || host === "youtu.be") {
+      return DESTINATIONS.youtube;
+    }
+    if (host === "mail.google.com") {
+      return DESTINATIONS.gmail;
+    }
+    if (host.includes("google.com") && parsed.pathname.includes("maps")) {
+      return DESTINATIONS.maps;
+    }
+    if (host.includes("google.com")) {
+      return DESTINATIONS.google;
+    }
+    if (host.includes("line.me")) {
+      return DESTINATIONS.line;
     }
 
-    if (parsed.origin === window.location.origin) {
-      return null;
+    if (["http:", "https:"].includes(parsed.protocol)) {
+      return {
+        key: "external",
+        url: parsed.toString(),
+        label: "網頁",
+      } satisfies Destination;
     }
-
-    if (parsed.hostname === "www.facebook.com") {
-      parsed.hostname = "m.facebook.com";
-    }
-
-    return parsed.toString();
   } catch {
     return null;
   }
+
+  return null;
 }
 
-function labelForUrl(url: string) {
-  if (/facebook\.com/i.test(url)) return "Facebook";
-  if (/instagram\.com/i.test(url)) return "Instagram";
-  if (/youtube\.com|youtu\.be/i.test(url)) return "YouTube";
-  if (/mail\.google\.com/i.test(url)) return "Gmail";
-  if (/google\.com\/maps/i.test(url)) return "Google Maps";
-  if (/line\.me/i.test(url)) return "LINE";
-  return "外部網頁";
+function destinationFromCommand(value: unknown) {
+  const text = normalizeText(value);
+  if (!text) return null;
+
+  const wantsOpen = /(開啟|打開|幫我開|替我開|啟動|進入|開facebook|開fb|開臉書|開instagram|開ig|開youtube)/.test(
+    text,
+  );
+
+  if (!wantsOpen) return null;
+
+  if (/(facebook|臉書|fb)/.test(text)) {
+    return DESTINATIONS.facebook;
+  }
+  if (/(instagram|ig)/.test(text)) {
+    return DESTINATIONS.instagram;
+  }
+  if (/(youtube|油管)/.test(text)) {
+    return DESTINATIONS.youtube;
+  }
+  if (/gmail/.test(text)) {
+    return DESTINATIONS.gmail;
+  }
+  if (/(googlemaps|google地圖|地圖)/.test(text)) {
+    return DESTINATIONS.maps;
+  }
+  if (/(google|chrome|瀏覽器)/.test(text)) {
+    return DESTINATIONS.google;
+  }
+  if (/(line|賴)/.test(text)) {
+    return DESTINATIONS.line;
+  }
+
+  return null;
 }
 
-function buildRelayUrl(url: string) {
+function buildRelayUrl(destination: Destination) {
   const relay = new URL("/open", window.location.origin);
-  relay.searchParams.set("url", url);
+
+  if (destination.key !== "external") {
+    relay.searchParams.set("target", destination.key);
+  } else {
+    relay.searchParams.set("url", destination.url);
+  }
+
+  relay.searchParams.set("build", BUILD_ID);
   relay.searchParams.set("ts", String(Date.now()));
   return relay.toString();
 }
 
-function isMobileBrowser() {
-  const userAgent = navigator.userAgent || "";
-  const mobileAgent =
-    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
-  const coarsePointer = window.matchMedia(
-    "(pointer: coarse) and (max-width: 1100px)",
-  ).matches;
+function readRequestBody(input: RequestInfo | URL, init?: RequestInit) {
+  if (typeof init?.body === "string") {
+    try {
+      return JSON.parse(init.body) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
 
-  return mobileAgent || coarsePointer;
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return input
+      .clone()
+      .json()
+      .then((value) =>
+        value && typeof value === "object"
+          ? (value as Record<string, unknown>)
+          : {},
+      )
+      .catch(() => ({}));
+  }
+
+  return {};
+}
+
+function successResponse(destination: Destination) {
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      opened: true,
+      mobileUrl: destination.url,
+      mobileLabel: destination.label,
+      autoOpen: false,
+      executionTarget: "client-browser",
+      build: BUILD_ID,
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-NUBO-Mobile-Open": BUILD_ID,
+      },
+    },
+  );
+}
+
+function parseSocketPayload(data: unknown) {
+  if (typeof data === "string") {
+    try {
+      return Promise.resolve(JSON.parse(data));
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  if (data instanceof Blob) {
+    return data
+      .text()
+      .then((text) => JSON.parse(text))
+      .catch(() => null);
+  }
+
+  if (data instanceof ArrayBuffer) {
+    try {
+      return Promise.resolve(
+        JSON.parse(new TextDecoder().decode(data)),
+      );
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    try {
+      return Promise.resolve(
+        JSON.parse(new TextDecoder().decode(data)),
+      );
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+
+  return Promise.resolve(null);
 }
 
 export function NuboPublicWebNavigationBridge() {
-  const [pending, setPending] =
-    useState<PendingNavigation | null>(null);
+  const [pending, setPending] = useState<PendingNavigation | null>(null);
   const [warning, setWarning] = useState("");
   const lastNavigationRef = useRef("");
 
   useEffect(() => {
     const hostname = window.location.hostname.toLowerCase();
+    const publicWeb = !["localhost", "127.0.0.1", "::1"].includes(hostname);
 
-    if (
-      [
-        "localhost",
-        "127.0.0.1",
-        "::1",
-      ].includes(hostname)
-    ) {
-      return;
-    }
+    if (!publicWeb) return;
 
     const originalOpen = window.open.bind(window);
-    const mobile = isMobileBrowser();
+    const originalFetch = window.fetch.bind(window);
+    const NativeWebSocket = window.WebSocket;
 
-    const prepareNavigation = (
-      rawUrl: string,
-      suppliedLabel?: string,
-      autoNavigate = true,
-    ) => {
-      const externalUrl = normalizeExternalUrl(rawUrl);
-
-      if (!externalUrl) {
-        if (rawUrl.startsWith(window.location.origin + "/open")) {
-          if (autoNavigate) {
-            window.location.assign(rawUrl);
-          }
-        }
-        return;
-      }
-
-      const label = suppliedLabel || labelForUrl(externalUrl);
-      const relayUrl = buildRelayUrl(externalUrl);
-      const token = `${externalUrl}:${Math.floor(Date.now() / 4000)}`;
-
-      if (lastNavigationRef.current === token) {
-        return;
-      }
-
+    const navigate = (destination: Destination) => {
+      const token = `${destination.key}:${Math.floor(Date.now() / 3000)}`;
+      if (lastNavigationRef.current === token) return;
       lastNavigationRef.current = token;
 
-      window.localStorage.setItem(
-        AUTO_RESUME_KEY,
-        "true",
-      );
-      window.localStorage.setItem(
-        EXTERNAL_RETURN_KEY,
-        "true",
-      );
+      const relayUrl = buildRelayUrl(destination);
 
-      setPending({
-        url: externalUrl,
-        relayUrl,
-        label,
-      });
+      window.localStorage.setItem(AUTO_RESUME_KEY, "true");
+      window.localStorage.setItem(EXTERNAL_RETURN_KEY, "true");
+      window.sessionStorage.setItem("nubo_mobile_open_build", BUILD_ID);
 
-      if (!autoNavigate) return;
+      setPending({ ...destination, relayUrl });
+      setWarning("");
 
       window.setTimeout(() => {
         window.location.assign(relayUrl);
       }, 0);
     };
 
-    if (mobile) {
-      window.open = ((
-        url?: string | URL,
-        target?: string,
-        features?: string,
-      ) => {
-        const raw =
-          typeof url === "string"
-            ? url
-            : url?.toString() ?? "";
-        const externalUrl = normalizeExternalUrl(raw);
+    const inspectSocketMessage = (data: unknown) => {
+      void parseSocketPayload(data).then((payload) => {
+        const serverContent =
+          payload?.serverContent ?? payload?.server_content;
+        const transcription =
+          serverContent?.inputTranscription?.text ??
+          serverContent?.input_transcription?.text;
+        const destination = destinationFromCommand(transcription);
 
-        if (!externalUrl) {
-          if (raw.startsWith(window.location.origin + "/open")) {
-            window.location.assign(raw);
-            return window;
-          }
-
-          return originalOpen(url, target, features);
+        if (destination) {
+          navigate(destination);
         }
-
-        prepareNavigation(
-          externalUrl,
-          labelForUrl(externalUrl),
-          true,
-        );
-
-        /*
-         * 回傳目前window作為成功結果，避免既有主控台誤判popup失敗，
-         * 再執行第二條衝突路徑或朗讀「系統限制」。
-         */
-        return window;
-      }) as typeof window.open;
-    }
-
-    const handleExternalNavigation = (event: Event) => {
-      const detail = (
-        event as CustomEvent<ExternalNavigationDetail>
-      ).detail;
-      const rawUrl = String(detail?.url ?? "").trim();
-
-      if (rawUrl) {
-        prepareNavigation(
-          rawUrl,
-          detail?.label,
-          true,
-        );
-      }
+      });
     };
 
-    window.addEventListener(
-      "nubo-open-external",
-      handleExternalNavigation,
-    );
+    const WrappedWebSocket = new Proxy(NativeWebSocket, {
+      construct(target, args) {
+        const socket = Reflect.construct(target, args) as WebSocket;
+        socket.addEventListener("message", (event) => {
+          inspectSocketMessage(event.data);
+        });
+        return socket;
+      },
+    });
+
+    window.WebSocket = WrappedWebSocket as typeof WebSocket;
+
+    const wrappedFetch: typeof window.fetch = async (input, init) => {
+      const rawUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      let requestUrl: URL;
+      try {
+        requestUrl = new URL(rawUrl, window.location.origin);
+      } catch {
+        return originalFetch(input, init);
+      }
+
+      if (requestUrl.origin !== window.location.origin) {
+        return originalFetch(input, init);
+      }
+
+      if (
+        requestUrl.pathname === "/api/system/open-app" ||
+        requestUrl.pathname === "/api/system/open-website"
+      ) {
+        const body = await readRequestBody(input, init);
+
+        if (String(body.action ?? "open") !== "close") {
+          const destination =
+            requestUrl.pathname === "/api/system/open-app"
+              ? destinationFromName(body.app)
+              : destinationFromName(body.target) ||
+                destinationFromUrl(body.target);
+
+          if (destination) {
+            queueMicrotask(() => navigate(destination));
+            return successResponse(destination);
+          }
+        }
+      }
+
+      return originalFetch(input, init);
+    };
+
+    window.fetch = wrappedFetch;
+
+    window.open = ((url?: string | URL, target?: string, features?: string) => {
+      const raw =
+        typeof url === "string" ? url : url?.toString() ?? "";
+      const destination = destinationFromUrl(raw);
+
+      if (!destination) {
+        return originalOpen(url, target, features);
+      }
+
+      navigate(destination);
+      return window;
+    }) as typeof window.open;
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        const target = mutation.target;
+        const node = mutation.target;
 
         if (
-          target instanceof Element &&
-          target.closest(
-            "[data-nubo-navigation-card='true']",
-          )
+          node instanceof Element &&
+          node.closest("[data-nubo-mobile-open-card='true']")
         ) {
           continue;
         }
 
-        const text = target.textContent ?? "";
-        const destination = destinationFromText(text);
-
+        const destination = destinationFromCommand(node.textContent);
         if (destination) {
-          prepareNavigation(
-            destination.url,
-            destination.label,
-            true,
-          );
+          navigate(destination);
           return;
         }
       }
@@ -329,93 +409,83 @@ export function NuboPublicWebNavigationBridge() {
       characterData: true,
     });
 
-    void fetch(`/api/health?ts=${Date.now()}`, {
+    void originalFetch(`/api/health?ts=${Date.now()}`, {
       cache: "no-store",
     })
       .then((response) => response.json())
       .then((health) => {
         if (health?.build !== BUILD_ID) {
           setWarning(
-            `目前網域仍載入舊版：${String(
+            `部署版本不一致：目前是 ${String(
               health?.build ?? "unknown",
-            )}`,
+            )}，需要 ${BUILD_ID}`,
           );
         }
       })
       .catch(() => {
-        setWarning("無法確認網域部署版本");
+        setWarning("無法讀取NUBO部署版本");
       });
 
     return () => {
-      if (mobile) {
-        window.open = originalOpen;
+      if (window.WebSocket === WrappedWebSocket) {
+        window.WebSocket = NativeWebSocket;
       }
-      window.removeEventListener(
-        "nubo-open-external",
-        handleExternalNavigation,
-      );
+      if (window.fetch === wrappedFetch) {
+        window.fetch = originalFetch;
+      }
+      window.open = originalOpen;
       observer.disconnect();
     };
   }, []);
 
-  if (!pending && !warning) {
-    return null;
-  }
+  if (!pending && !warning) return null;
 
   return (
     <div
-      data-nubo-navigation-card="true"
+      data-nubo-mobile-open-card="true"
       style={{
         position: "fixed",
         left: 12,
         right: 12,
         bottom: 12,
         zIndex: 2147483647,
-        display: "flex",
+        display: "grid",
         gap: 8,
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 12px",
-        borderRadius: 14,
-        background: "rgba(8,10,22,.96)",
-        border: "1px solid rgba(130,120,255,.45)",
+        padding: "12px",
+        borderRadius: 16,
+        background: "rgba(8,10,22,.97)",
+        border: "1px solid rgba(130,120,255,.5)",
         color: "white",
-        boxShadow: "0 10px 34px rgba(0,0,0,.45)",
+        boxShadow: "0 12px 40px rgba(0,0,0,.5)",
       }}
     >
-      <span style={{ fontSize: 13 }}>
-        {warning ||
-          `正在開啟${pending?.label ?? "網頁"}；若未跳轉，請按右側。`}
+      <span style={{ fontSize: 13, textAlign: "center" }}>
+        {warning || `正在開啟${pending?.label ?? "網頁"}…`}
       </span>
 
       {pending ? (
         <a
           href={pending.relayUrl}
           target="_self"
-          onClick={() => {
-            window.localStorage.setItem(
-              AUTO_RESUME_KEY,
-              "true",
-            );
-            window.localStorage.setItem(
-              EXTERNAL_RETURN_KEY,
-              "true",
-            );
-          }}
           style={{
-            flex: "0 0 auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            background:
-              "linear-gradient(135deg,#59d8ff,#8c5cff)",
+            display: "block",
+            minHeight: 50,
+            padding: "14px 16px",
+            borderRadius: 999,
+            background: "linear-gradient(135deg,#59d8ff,#8c5cff)",
             color: "#07101b",
             fontWeight: 800,
+            textAlign: "center",
             textDecoration: "none",
           }}
         >
-          開啟{pending.label}
+          點我開啟{pending.label}
         </a>
       ) : null}
+
+      <small style={{ opacity: 0.65, textAlign: "center" }}>
+        {BUILD_ID}
+      </small>
     </div>
   );
 }
