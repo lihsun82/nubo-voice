@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Open Fix 2026-08-01 16:48</span>
-        <span>應用程式採固定白名單；手機開頁含強制備援按鈕</span>
+        <span>v0.5.1 Mobile Direct App V4 2026-08-02</span>
+        <span>手機直接開啟App；未安裝時自動降級官方網頁</span>
       </footer>
     </main>
   );
