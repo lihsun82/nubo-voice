@@ -9,12 +9,37 @@ import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 
 export type { FunctionCall };
 
-function forceSameTabMobileOpen(result: unknown) {
+function getMobileOpenLabel(targetUrl: string, callName: string) {
+  const normalizedUrl = targetUrl.toLowerCase();
+
+  if (normalizedUrl.includes("facebook.com") || normalizedUrl.includes("fb.com")) {
+    return "Facebook";
+  }
+  if (normalizedUrl.includes("instagram.com")) {
+    return "Instagram";
+  }
+  if (normalizedUrl.includes("youtube.com") || normalizedUrl.includes("youtu.be")) {
+    return "YouTube";
+  }
+  if (normalizedUrl.includes("maps.google.") || normalizedUrl.includes("google.com/maps")) {
+    return "Google Maps";
+  }
+  if (normalizedUrl.includes("mail.google.com")) {
+    return "Gmail";
+  }
+  if (callName === "open_website") {
+    return "網站";
+  }
+  return "手機工具";
+}
+
+function forceSameTabMobileOpen(result: unknown, callName: string) {
   if (typeof window === "undefined") return result;
   if (!result || typeof result !== "object") return result;
 
   const payload = result as {
     mobileUrl?: unknown;
+    mobileLabel?: unknown;
     url?: unknown;
   };
   const targetUrl =
@@ -41,6 +66,11 @@ function forceSameTabMobileOpen(result: unknown) {
     opened: true,
     mode: "same-tab",
     forcedSameTab: true,
+    mobileUrl: targetUrl,
+    mobileLabel:
+      typeof payload.mobileLabel === "string"
+        ? payload.mobileLabel
+        : getMobileOpenLabel(targetUrl, callName),
   };
 }
 
@@ -125,7 +155,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     call.name === "open_youtube" ||
     call.name === "open_website"
   ) {
-    return forceSameTabMobileOpen(await executeBaseTool(call));
+    return forceSameTabMobileOpen(await executeBaseTool(call), call.name);
   }
   return executeBaseTool(call);
 }
