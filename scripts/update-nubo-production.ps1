@@ -17,43 +17,44 @@ function Invoke-NativeChecked {
     [string[]]$Arguments
   )
 
-  Write-Host "`n> $Command $($Arguments -join ' ')" -ForegroundColor Cyan
+  Write-Host ""
+  Write-Host ("> " + $Command + " " + ($Arguments -join " ")) -ForegroundColor Cyan
   & $Command @Arguments
 
   if ($LASTEXITCODE -ne 0) {
-    throw "$Command 執行失敗，結束碼：$LASTEXITCODE"
+    throw ($Command + " failed with exit code " + $LASTEXITCODE)
   }
 }
 
 Write-Host "========================================" -ForegroundColor DarkCyan
-Write-Host " NUBO 正式主機更新與重啟" -ForegroundColor Cyan
-Write-Host " Repo: $repoRoot" -ForegroundColor Gray
+Write-Host " NUBO production update and restart" -ForegroundColor Cyan
+Write-Host (" Repo: " + $repoRoot) -ForegroundColor Gray
 Write-Host "========================================" -ForegroundColor DarkCyan
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-  throw "找不到 Git。請先安裝 Git for Windows。"
+  throw "Git was not found. Install Git for Windows first."
 }
 
 if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
-  throw "找不到 npm.cmd。請先安裝 Node.js 22 或更新 PATH。"
+  throw "npm.cmd was not found. Install Node.js 22 or fix PATH first."
 }
 
-$trackedChanges = (& git status --porcelain --untracked-files=no) -join "`n"
+$trackedChanges = (& git status --porcelain --untracked-files=no) -join [Environment]::NewLine
 if ($LASTEXITCODE -ne 0) {
-  throw "目前資料夾不是可用的 Git 儲存庫。"
+  throw "The current folder is not a valid Git repository."
 }
 
 if ($trackedChanges.Trim()) {
-  Write-Host "偵測到尚未提交的程式修改，為避免覆蓋而停止更新：" -ForegroundColor Yellow
+  Write-Host "Tracked local changes were found. Update stopped to prevent data loss:" -ForegroundColor Yellow
   Write-Host $trackedChanges -ForegroundColor Yellow
-  throw "請先保存或還原本機程式修改後再更新。未追蹤檔案與 .env.local 不會被此檢查阻擋。"
+  throw "Commit, stash, or restore tracked local changes before updating. Untracked files and .env.local are not blocked."
 }
 
 Invoke-NativeChecked -Command "git" -Arguments @("fetch", "origin", "main")
 
 $currentBranch = (& git rev-parse --abbrev-ref HEAD).Trim()
 if ($LASTEXITCODE -ne 0) {
-  throw "無法讀取目前 Git 分支。"
+  throw "Unable to read the current Git branch."
 }
 
 if ($currentBranch -ne "main") {
@@ -74,18 +75,18 @@ if (-not $SkipInstall) {
 Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "typecheck")
 Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "build")
 
-Write-Host "`n正在停止此 NUBO 專案的舊 Node 程序……" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Stopping old Node processes for this NUBO repository..." -ForegroundColor Cyan
 $escapedRepoRoot = [Regex]::Escape($repoRoot)
 $nuboNodeProcesses = @(
   Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
     Where-Object {
-      $_.CommandLine -and
-      $_.CommandLine -match $escapedRepoRoot
+      $_.CommandLine -and ($_.CommandLine -match $escapedRepoRoot)
     }
 )
 
 foreach ($process in $nuboNodeProcesses) {
-  Write-Host "停止 PID $($process.ProcessId)" -ForegroundColor DarkGray
+  Write-Host ("Stopping PID " + $process.ProcessId) -ForegroundColor DarkGray
   Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
@@ -96,13 +97,15 @@ if ($LASTEXITCODE -ne 0) {
   $commit = "unknown"
 }
 
-Write-Host "`nNUBO 已更新至 main / $commit" -ForegroundColor Green
-Write-Host "正在啟動 127.0.0.1:3000；請保持此視窗開啟。" -ForegroundColor Green
-Write-Host "Cloudflare Tunnel 不會被此腳本關閉。" -ForegroundColor Gray
-Write-Host "========================================`n" -ForegroundColor DarkCyan
+Write-Host ""
+Write-Host ("NUBO is updated to main / " + $commit) -ForegroundColor Green
+Write-Host "Starting NUBO on 127.0.0.1:3000. Keep this window open." -ForegroundColor Green
+Write-Host "This script does not stop Cloudflare Tunnel." -ForegroundColor Gray
+Write-Host "========================================" -ForegroundColor DarkCyan
+Write-Host ""
 
 & npm.cmd start
 
 if ($LASTEXITCODE -ne 0) {
-  throw "NUBO 啟動失敗，結束碼：$LASTEXITCODE"
+  throw ("NUBO startup failed with exit code " + $LASTEXITCODE)
 }
