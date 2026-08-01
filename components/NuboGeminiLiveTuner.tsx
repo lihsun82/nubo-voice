@@ -40,7 +40,46 @@ function rewritePrivateVoiceRoute(value: string) {
   );
 }
 
-function tuneSetupMessage(raw: string) {
+function detectClientPlatform() {
+  const userAgent = navigator.userAgent || "";
+  const touchPoints = navigator.maxTouchPoints || 0;
+
+  if (/Android/i.test(userAgent)) return "Android手機或平板";
+  if (/iPhone|iPod/i.test(userAgent)) return "iPhone";
+  if (/iPad/i.test(userAgent)) return "iPad";
+  if (/Macintosh|Mac OS X/i.test(userAgent) && touchPoints > 1) {
+    return "iPadOS裝置";
+  }
+  if (/Windows/i.test(userAgent)) return "Windows裝置";
+  if (/Macintosh|Mac OS X/i.test(userAgent)) return "macOS裝置";
+  if (/Linux/i.test(userAgent)) return "Linux或Android相容裝置";
+  return "一般網頁瀏覽器裝置";
+}
+
+function buildRuntimeDeviceInstruction() {
+  const hostname = window.location.hostname.toLowerCase();
+  const publicWeb = ![
+    "localhost",
+    "127.0.0.1",
+    "::1",
+  ].includes(hostname);
+  const platform = detectClientPlatform();
+
+  return `
+NUBO目前裝置與工具路由（最高優先）：
+- 目前實際使用者端平台是「${platform}」，目前網址主機是「${hostname}」。
+- ${publicWeb ? "目前是公開網頁／手機瀏覽器模式，不是本機Windows桌面控制模式。" : "目前是本機網址模式。"}
+- 不得把Android、iPhone、iPad或一般公開網頁說成macOS，也不得自行猜測使用者是Mac。
+- 在公開網頁模式，開啟Facebook、Instagram、YouTube、Gmail、Google、LINE或Google Maps時，只能使用open_mobile_app或open_website。
+- 在公開網頁模式，禁止使用open_desktop_app來開啟Facebook、Instagram、YouTube或任何網站，也禁止回答「只支援Windows」或「因為是Mac所以無法開啟」。
+- 工具回傳mobileUrl時代表必須交給目前手機瀏覽器開啟；工具成功後只簡短說正在開啟，不得改口說開啟失敗。
+`;
+}
+
+function tuneSetupMessage(
+  raw: string,
+  runtimeDeviceInstruction: string,
+) {
   let payload: JsonRecord;
 
   try {
@@ -130,6 +169,7 @@ function tuneSetupMessage(raw: string) {
       ...existingParts,
       { text: HUMAN_DIALOG_INSTRUCTION },
       { text: CONFIDENTIALITY_INSTRUCTION },
+      { text: runtimeDeviceInstruction },
     ],
   };
 
@@ -140,6 +180,8 @@ export function NuboGeminiLiveTuner() {
   useEffect(() => {
     const originalSend = WebSocket.prototype.send;
     const originalFetch = window.fetch;
+    const runtimeDeviceInstruction =
+      buildRuntimeDeviceInstruction();
     type SendPayload = Parameters<WebSocket["send"]>[0];
 
     const privateFetch: typeof window.fetch = (input, init) => {
@@ -180,7 +222,10 @@ export function NuboGeminiLiveTuner() {
       const nextData =
         typeof data === "string" &&
         this.url.includes(PRIMARY_VOICE_HOST)
-          ? tuneSetupMessage(data)
+          ? tuneSetupMessage(
+              data,
+              runtimeDeviceInstruction,
+            )
           : data;
 
       return Reflect.apply(originalSend, this, [nextData]);
