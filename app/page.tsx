@@ -14,8 +14,8 @@ export default function HomePage() {
       <IntegrationCenter />
       <TaskCenter />
       <footer>
-        <span>v0.5.1 System Control</span>
-        <span>應用程式採固定白名單；音量限制0–100</span>
+        <span>v0.5.1 Mobile Fallback Fix branch mobile-pwa-integration-20260713 2026-08-01 17:12</span>
+        <span>手機開頁含強制備援按鈕；音量限制0–100</span>
       </footer>
     </main>
   );
