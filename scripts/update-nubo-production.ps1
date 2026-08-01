@@ -26,6 +26,34 @@ function Invoke-NativeChecked {
   }
 }
 
+function Get-NuboListenerProcessIds {
+  $processIds = @()
+  $tcpCommand = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue
+
+  if ($tcpCommand) {
+    $connections = @(
+      Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue
+    )
+
+    foreach ($connection in $connections) {
+      if ($connection.OwningProcess) {
+        $processIds += [int]$connection.OwningProcess
+      }
+    }
+  }
+  else {
+    $netstatLines = @(& netstat.exe -ano -p tcp 2>$null)
+
+    foreach ($line in $netstatLines) {
+      if ($line -match '^\s*TCP\s+\S+:3000\s+\S+\s+LISTENING\s+(\d+)\s*$') {
+        $processIds += [int]$Matches[1]
+      }
+    }
+  }
+
+  return @($processIds | Sort-Object -Unique)
+}
+
 Write-Host "========================================" -ForegroundColor DarkCyan
 Write-Host " NUBO production update and restart" -ForegroundColor Cyan
 Write-Host (" Repo: " + $repoRoot) -ForegroundColor Gray
@@ -76,21 +104,31 @@ Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "typecheck")
 Invoke-NativeChecked -Command "npm.cmd" -Arguments @("run", "build")
 
 Write-Host ""
-Write-Host "Stopping old Node processes for this NUBO repository..." -ForegroundColor Cyan
-$escapedRepoRoot = [Regex]::Escape($repoRoot)
-$nuboNodeProcesses = @(
-  Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
-    Where-Object {
-      $_.CommandLine -and ($_.CommandLine -match $escapedRepoRoot)
-    }
-)
+Write-Host "Stopping the Node process listening on port 3000..." -ForegroundColor Cyan
+$listenerProcessIds = @(Get-NuboListenerProcessIds)
 
-foreach ($process in $nuboNodeProcesses) {
-  Write-Host ("Stopping PID " + $process.ProcessId) -ForegroundColor DarkGray
-  Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+foreach ($processId in $listenerProcessIds) {
+  $processInfo = Get-CimInstance Win32_Process -Filter ("ProcessId = " + $processId) -ErrorAction SilentlyContinue
+
+  if (-not $processInfo) {
+    continue
+  }
+
+  $processName = [string]$processInfo.Name
+  if ($processName.ToLowerInvariant() -ne "node.exe") {
+    throw ("Port 3000 is used by non-Node process PID " + $processId + " (" + $processName + "). Stop it manually.")
+  }
+
+  Write-Host ("Stopping NUBO Node PID " + $processId) -ForegroundColor DarkGray
+  Stop-Process -Id $processId -Force -ErrorAction Stop
 }
 
 Start-Sleep -Seconds 2
+
+$remainingProcessIds = @(Get-NuboListenerProcessIds)
+if ($remainingProcessIds.Count -gt 0) {
+  throw ("Port 3000 is still in use by PID(s): " + ($remainingProcessIds -join ", "))
+}
 
 $commit = (& git rev-parse --short HEAD).Trim()
 if ($LASTEXITCODE -ne 0) {
