@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { NuboGeminiLiveTuner } from "@/components/NuboGeminiLiveTuner";
 import { NuboMobileActionBridge } from "@/components/NuboMobileActionBridge";
+import { NuboPhoneAgentV2Bridge } from "@/components/NuboPhoneAgentV2Bridge";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -8,6 +9,7 @@ import "./integration-center.css";
 import "./youtube-player.css";
 import "./orb-theme.css";
 import "./mobile-pwa.css";
+import "./phone-agent-v2.css";
 
 export const metadata: Metadata = {
   title: {
@@ -44,6 +46,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-Hant-TW">
       <body>
         <NuboMobileActionBridge />
+        <NuboPhoneAgentV2Bridge />
         <NuboGeminiLiveTuner />
         {children}
         <PwaInstallPrompt />
