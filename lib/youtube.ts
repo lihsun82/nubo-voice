@@ -37,6 +37,16 @@ export class YouTubeApiError extends Error {
   }
 }
 
+export function getYouTubeApiKey() {
+  return (
+    process.env.YOUTUBE_API_KEY?.trim() ||
+    process.env.GOOGLE_YOUTUBE_API_KEY?.trim() ||
+    process.env.YOUTUBE_DATA_API_KEY?.trim() ||
+    process.env.GOOGLE_API_KEY?.trim() ||
+    ""
+  );
+}
+
 function classifyGoogleError(payload: any, status: number) {
   const googleReason =
     payload?.error?.errors?.[0]?.reason ??
@@ -83,12 +93,12 @@ function classifyGoogleError(payload: any, status: number) {
 }
 
 export function youtubeErrorSuggestion(reason: YouTubeApiReason) {
-  if (reason === "missing_key") return "請在 .env.local 設定 YOUTUBE_API_KEY，然後重新啟動NUBO。";
+  if (reason === "missing_key") return "請在伺服器設定 YOUTUBE_API_KEY、GOOGLE_YOUTUBE_API_KEY 或 YOUTUBE_DATA_API_KEY，然後重新部署NUBO。";
   if (reason === "invalid_key") return "請確認Google Cloud API Key完整、未刪除，且沒有多餘空白。";
   if (reason === "api_not_enabled") return "請在同一個Google Cloud專案啟用 YouTube Data API v3。";
-  if (reason === "key_restriction") return "此請求由本機Next.js後端送出；請勿使用網站HTTP參照網址限制。可先取消應用程式限制測試，API限制只保留 YouTube Data API v3。";
+  if (reason === "key_restriction") return "此請求由Next.js後端送出；請勿使用網站HTTP參照網址限制。API限制可只保留 YouTube Data API v3。";
   if (reason === "quota_exceeded") return "YouTube搜尋配額已用完，請到Google Cloud配額頁查看，或等待每日配額重置。";
-  if (reason === "network_error") return "請確認電腦可連線到 googleapis.com，且防火牆或防毒軟體沒有阻擋Node.js。";
+  if (reason === "network_error") return "請確認伺服器可連線到 googleapis.com，且防火牆沒有阻擋Node.js。";
   if (reason === "no_results") return "搜尋成功，但沒有找到符合可嵌入與站外播放條件的影片。";
   return "請開啟 /api/youtube/status 查看Google回傳的詳細原因。";
 }
@@ -96,9 +106,9 @@ export function youtubeErrorSuggestion(reason: YouTubeApiReason) {
 export async function searchYouTubeVideo(
   query: string,
 ): Promise<YouTubeSearchResult> {
-  const apiKey = process.env.YOUTUBE_API_KEY?.trim();
+  const apiKey = getYouTubeApiKey();
   if (!apiKey) {
-    throw new YouTubeApiError("YOUTUBE_API_KEY 尚未設定", {
+    throw new YouTubeApiError("YouTube API Key 尚未設定", {
       status: 503,
       reason: "missing_key",
     });
