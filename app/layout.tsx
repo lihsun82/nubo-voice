@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { NuboGeminiLiveTuner } from "@/components/NuboGeminiLiveTuner";
+import { NuboMobileActionBridge } from "@/components/NuboMobileActionBridge";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboMobileActionBridge />
         <NuboGeminiLiveTuner />
         {children}
         <PwaInstallPrompt />
