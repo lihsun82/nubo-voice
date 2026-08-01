@@ -4,14 +4,14 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const websiteAliases: Record<string, string> = {
-  fb: "https://www.facebook.com/",
-  facebook: "https://www.facebook.com/",
-  臉書: "https://www.facebook.com/",
+  fb: "https://m.facebook.com/",
+  facebook: "https://m.facebook.com/",
+  臉書: "https://m.facebook.com/",
   ig: "https://www.instagram.com/",
   instagram: "https://www.instagram.com/",
   google: "https://www.google.com/",
   gmail: "https://mail.google.com/",
-  youtube: "https://www.youtube.com/",
+  youtube: "https://m.youtube.com/",
   "youtube music": "https://music.youtube.com/",
   youtubemusic: "https://music.youtube.com/",
   chatgpt: "https://chatgpt.com/",
@@ -116,11 +116,17 @@ export function resolveWebsite(target: string): string {
 }
 
 export function openWebsite(target: string) {
+  const url = resolveWebsite(target);
+
   if (process.platform !== "win32") {
-    throw new Error("目前自動開啟網頁只支援Windows版NUBO");
+    return {
+      opened: false,
+      url,
+      clientAction: "open_url" as const,
+      message: "已準備在目前裝置開啟網頁",
+    };
   }
 
-  const url = resolveWebsite(target);
   const child = spawn(
     "rundll32.exe",
     ["url.dll,FileProtocolHandler", url],
