@@ -52,8 +52,8 @@ export default function HomePage() {
       </div>
 
       <footer>
-        <span>v0.5.1 System Control</span>
-        <span>NUBO 即時語音優先模式</span>
+        <span>v0.5.1 Mobile Fallback Fix branch stable-2026-08-01-mobile-web-open-relay-v6 2026-08-01 17:12</span>
+        <span>NUBO 即時語音優先模式；手機開頁含強制備援按鈕</span>
       </footer>
     </main>
   );
