@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  isNuboMobileRuntime,
+  launchNuboPhoneActionV2,
+  resolveNuboPhoneActionV2,
+} from "@/lib/nubo-phone-agent-v2";
+
 const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
 const NUBO_TOKEN_STANDBY_STORAGE_KEY = "nubo_token_saver_standby_v1";
 
@@ -20,7 +26,10 @@ async function postSetting(url: string, action: string, value = 10) {
   return result;
 }
 
-async function postJson(url: string, body: Record<string, unknown> = {}) {
+async function postJson(
+  url: string,
+  body: Record<string, unknown> = {},
+) {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -87,6 +96,94 @@ function enterTokenSaverStandby() {
   );
 }
 
+function hasMobileLaunchIntent(text: string) {
+  return (
+    /(開啟|打开|打開|啟動|启动|前往|進入|进入|切到|幫我開|帮我开)/.test(
+      text,
+    ) ||
+    /(播放|搜尋|搜索).*(youtube|yt|油管|youtube音樂|youtubemusic)/.test(
+      text,
+    )
+  );
+}
+
+function resolveMobileVoiceTarget(text: string) {
+  if (!hasMobileLaunchIntent(text)) return null;
+
+  if (
+    text.includes("youtube音樂") ||
+    text.includes("youtubemusic") ||
+    text.includes("ytmusic")
+  ) {
+    return { app: "youtube_music", query: "" };
+  }
+
+  if (
+    text.includes("facebook") ||
+    text.includes("臉書") ||
+    /(^|[^a-z])fb([^a-z]|$)/i.test(text)
+  ) {
+    return { app: "facebook", query: "" };
+  }
+
+  if (
+    text.includes("instagram") ||
+    /(^|[^a-z])ig([^a-z]|$)/i.test(text)
+  ) {
+    return { app: "instagram", query: "" };
+  }
+
+  if (
+    text.includes("youtube") ||
+    text.includes("油管") ||
+    /(^|[^a-z])yt([^a-z]|$)/i.test(text)
+  ) {
+    return { app: "youtube", query: "" };
+  }
+
+  if (
+    text.includes("google地圖") ||
+    text.includes("googlemaps") ||
+    text.includes("地圖") ||
+    text.includes("導航")
+  ) {
+    return { app: "maps", query: "" };
+  }
+
+  if (text.includes("gmail")) {
+    return { app: "gmail", query: "" };
+  }
+
+  if (text.includes("spotify")) {
+    return { app: "spotify", query: "" };
+  }
+
+  if (text.includes("line") || text.includes("賴")) {
+    return { app: "line", query: "" };
+  }
+
+  return null;
+}
+
+function runMobileLaunchCommand(normalized: string) {
+  if (!isNuboMobileRuntime()) return null;
+
+  const target = resolveMobileVoiceTarget(normalized);
+  if (!target) return null;
+
+  const action = resolveNuboPhoneActionV2(
+    target.app,
+    target.query,
+  );
+  const result = launchNuboPhoneActionV2(action);
+
+  return {
+    handled: true as const,
+    type: "phone-agent-v2",
+    result,
+  };
+}
+
 export async function runLocalVoiceCommand(text: string) {
   const normalized = text.replace(/\s+/g, "").toLowerCase();
 
@@ -117,11 +214,20 @@ export async function runLocalVoiceCommand(text: string) {
     };
   }
 
-  if (normalized.includes("解除靜音") || normalized.includes("取消靜音")) {
+  const mobileLaunch = runMobileLaunchCommand(normalized);
+  if (mobileLaunch) return mobileLaunch;
+
+  if (
+    normalized.includes("解除靜音") ||
+    normalized.includes("取消靜音")
+  ) {
     return {
       handled: true,
       type: "audio",
-      result: await postSetting("/api/device/audio", "unmute"),
+      result: await postSetting(
+        "/api/device/audio",
+        "unmute",
+      ),
     };
   }
 
@@ -129,7 +235,10 @@ export async function runLocalVoiceCommand(text: string) {
     return {
       handled: true,
       type: "audio",
-      result: await postSetting("/api/device/audio", "mute"),
+      result: await postSetting(
+        "/api/device/audio",
+        "mute",
+      ),
     };
   }
 
