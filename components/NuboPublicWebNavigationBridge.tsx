@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 const BUILD_ID = "mobile-web-open-v16-20260801";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
+const QUESTION_EVENT = "nubo-question-record";
 
 type Destination = {
   key: string;
@@ -123,7 +124,7 @@ function destinationFromUrl(rawValue: unknown) {
         key: "external",
         url: parsed.toString(),
         label: "網頁",
-      } satisfies Destination;
+      };
     }
   } catch {
     return null;
@@ -170,10 +171,10 @@ function destinationFromCommand(value: unknown) {
 function buildRelayUrl(destination: Destination) {
   const relay = new URL("/open", window.location.origin);
 
-  if (destination.key !== "external") {
-    relay.searchParams.set("target", destination.key);
-  } else {
+  if (destination.key === "external") {
     relay.searchParams.set("url", destination.url);
+  } else {
+    relay.searchParams.set("target", destination.key);
   }
 
   relay.searchParams.set("build", BUILD_ID);
@@ -181,7 +182,10 @@ function buildRelayUrl(destination: Destination) {
   return relay.toString();
 }
 
-function readRequestBody(input: RequestInfo | URL, init?: RequestInit) {
+async function readRequestBody(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Record<string, unknown>> {
   if (typeof init?.body === "string") {
     try {
       return JSON.parse(init.body) as Record<string, unknown>;
@@ -191,15 +195,14 @@ function readRequestBody(input: RequestInfo | URL, init?: RequestInit) {
   }
 
   if (typeof Request !== "undefined" && input instanceof Request) {
-    return input
-      .clone()
-      .json()
-      .then((value) =>
-        value && typeof value === "object"
-          ? (value as Record<string, unknown>)
-          : {},
-      )
-      .catch(() => ({}));
+    try {
+      const value = await input.clone().json();
+      return value && typeof value === "object"
+        ? (value as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
   }
 
   return {};
@@ -227,45 +230,6 @@ function successResponse(destination: Destination) {
   );
 }
 
-function parseSocketPayload(data: unknown) {
-  if (typeof data === "string") {
-    try {
-      return Promise.resolve(JSON.parse(data));
-    } catch {
-      return Promise.resolve(null);
-    }
-  }
-
-  if (data instanceof Blob) {
-    return data
-      .text()
-      .then((text) => JSON.parse(text))
-      .catch(() => null);
-  }
-
-  if (data instanceof ArrayBuffer) {
-    try {
-      return Promise.resolve(
-        JSON.parse(new TextDecoder().decode(data)),
-      );
-    } catch {
-      return Promise.resolve(null);
-    }
-  }
-
-  if (ArrayBuffer.isView(data)) {
-    try {
-      return Promise.resolve(
-        JSON.parse(new TextDecoder().decode(data)),
-      );
-    } catch {
-      return Promise.resolve(null);
-    }
-  }
-
-  return Promise.resolve(null);
-}
-
 export function NuboPublicWebNavigationBridge() {
   const [pending, setPending] = useState<PendingNavigation | null>(null);
   const [warning, setWarning] = useState("");
@@ -279,7 +243,6 @@ export function NuboPublicWebNavigationBridge() {
 
     const originalOpen = window.open.bind(window);
     const originalFetch = window.fetch.bind(window);
-    const NativeWebSocket = window.WebSocket;
 
     const navigate = (destination: Destination) => {
       const token = `${destination.key}:${Math.floor(Date.now() / 3000)}`;
@@ -300,32 +263,16 @@ export function NuboPublicWebNavigationBridge() {
       }, 0);
     };
 
-    const inspectSocketMessage = (data: unknown) => {
-      void parseSocketPayload(data).then((payload) => {
-        const serverContent =
-          payload?.serverContent ?? payload?.server_content;
-        const transcription =
-          serverContent?.inputTranscription?.text ??
-          serverContent?.input_transcription?.text;
-        const destination = destinationFromCommand(transcription);
+    const handleQuestion = (event: Event) => {
+      const questionEvent = event as CustomEvent<{ text?: string }>;
+      const destination = destinationFromCommand(questionEvent.detail?.text);
 
-        if (destination) {
-          navigate(destination);
-        }
-      });
+      if (destination) {
+        navigate(destination);
+      }
     };
 
-    const WrappedWebSocket = new Proxy(NativeWebSocket, {
-      construct(target, args) {
-        const socket = Reflect.construct(target, args) as WebSocket;
-        socket.addEventListener("message", (event) => {
-          inspectSocketMessage(event.data);
-        });
-        return socket;
-      },
-    });
-
-    window.WebSocket = WrappedWebSocket as typeof WebSocket;
+    window.addEventListener(QUESTION_EVENT, handleQuestion);
 
     const wrappedFetch: typeof window.fetch = async (input, init) => {
       const rawUrl =
@@ -427,9 +374,7 @@ export function NuboPublicWebNavigationBridge() {
       });
 
     return () => {
-      if (window.WebSocket === WrappedWebSocket) {
-        window.WebSocket = NativeWebSocket;
-      }
+      window.removeEventListener(QUESTION_EVENT, handleQuestion);
       if (window.fetch === wrappedFetch) {
         window.fetch = originalFetch;
       }
