@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  getYouTubeApiKey,
   searchYouTubeVideo,
   YouTubeApiError,
   youtubeErrorSuggestion,
@@ -9,15 +10,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const configured = Boolean(process.env.YOUTUBE_API_KEY?.trim());
+  const configured = Boolean(getYouTubeApiKey());
 
   if (!configured) {
     return NextResponse.json({
       ok: false,
       configured: false,
       reason: "missing_key",
-      message: "YOUTUBE_API_KEY 尚未設定",
+      message: "YouTube API Key 尚未設定",
       suggestion: youtubeErrorSuggestion("missing_key"),
+      mobileFallbackAvailable: true,
     });
   }
 
@@ -28,6 +30,7 @@ export async function GET() {
       configured: true,
       apiReachable: true,
       message: "YouTube Data API v3連線正常",
+      mobileFallbackAvailable: true,
       sample: {
         videoId: result.videoId,
         title: result.title,
@@ -44,6 +47,7 @@ export async function GET() {
         googleReason: error.googleReason,
         message: error.message,
         suggestion: youtubeErrorSuggestion(error.reason),
+        mobileFallbackAvailable: true,
       });
     }
 
@@ -54,6 +58,7 @@ export async function GET() {
       reason: "unknown",
       message: error instanceof Error ? error.message : "YouTube診斷失敗",
       suggestion: youtubeErrorSuggestion("unknown"),
+      mobileFallbackAvailable: true,
     });
   }
 }
