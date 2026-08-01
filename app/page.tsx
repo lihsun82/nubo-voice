@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile YouTube Playback V6 2026-08-02</span>
-        <span>YouTube直接開啟指定歌曲影片；NUBO保留於背景</span>
+        <span>v0.5.1 YouTube Routing V7 2026-08-02</span>
+        <span>指定歌曲強制搜尋videoId後開啟YouTube；不再只開首頁</span>
       </footer>
     </main>
   );

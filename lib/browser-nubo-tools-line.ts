@@ -13,6 +13,57 @@ import {
 
 export type { FunctionCall };
 
+const YOUTUBE_APP_NAMES = new Set([
+  "youtube",
+  "yt",
+  "油管",
+  "youtubemusic",
+  "ytmusic",
+  "youtube音樂",
+]);
+
+function normalizeAppName(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+}
+
+function routeYouTubePlayback(call: FunctionCall): FunctionCall {
+  const args = call.args ?? {};
+
+  if (call.name === "open_youtube") {
+    return {
+      name: "open_youtube",
+      args: {
+        ...args,
+        query: String(args.query ?? "").trim(),
+        service: "youtube",
+      },
+    };
+  }
+
+  if (call.name !== "open_mobile_app") return call;
+
+  const app = normalizeAppName(args.app);
+  const query = String(args.query ?? "").trim();
+
+  if (!YOUTUBE_APP_NAMES.has(app) || !query) return call;
+
+  /*
+   * Gemini偶爾會把「播放某首歌」誤選成open_mobile_app。
+   * open_mobile_app只產生YouTube搜尋頁，沒有videoId，Android因此只開首頁。
+   * 只要YouTube指令帶有歌曲/影片查詢，就強制改走YouTube Data API搜尋。
+   */
+  return {
+    name: "open_youtube",
+    args: {
+      query,
+      service: "youtube",
+    },
+  };
+}
+
 async function postSetting(
   target: "audio" | "brightness",
   action: string,
@@ -53,15 +104,12 @@ async function delegatedWorkStatus(args: Record<string, unknown>) {
   const query = runId
     ? `?id=${encodeURIComponent(runId)}`
     : `?limit=${limit}`;
-  const response = await fetch(
-    `/api/agents/delegate${query}`,
-    { cache: "no-store" },
-  );
+  const response = await fetch(`/api/agents/delegate${query}`, {
+    cache: "no-store",
+  });
   const payload = await response.json();
   if (!response.ok) {
-    throw new Error(
-      payload.error ?? "讀取NUBO Agent交辦紀錄失敗",
-    );
+    throw new Error(payload.error ?? "讀取NUBO Agent交辦紀錄失敗");
   }
   return payload;
 }
@@ -76,74 +124,70 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       Number(args.value ?? 10),
     );
   }
+
   if (call.name === "delegate_work") {
     return delegateWork(call.args ?? {});
   }
+
   if (call.name === "delegated_work_status") {
     return delegatedWorkStatus(call.args ?? {});
   }
+
   if (call.name === "research_now") {
     const args = call.args ?? {};
-    return runVoiceResearchWithTimeout(
-      args.question,
-      args.title,
-    );
+    return runVoiceResearchWithTimeout(args.question, args.title);
   }
+
   if (call.name === "open_website") {
     return forceDirectMobileOpen(
       resolveWebsiteMobileResult(call),
       call.name,
     );
   }
+
   if (
     call.name === "open_mobile_app" ||
     call.name === "open_youtube"
   ) {
-    return forceDirectMobileOpen(await executeBaseTool(call), call.name);
+    const routedCall = routeYouTubePlayback(call);
+    const result = await executeBaseTool(routedCall);
+    return forceDirectMobileOpen(result, routedCall.name ?? call.name);
   }
+
   return executeBaseTool(call);
 }
 
-/*
- * NUBO_MOBILE_DIRECT_APP_V4
- * Gemini Live 每次建立連線都要傳送完整系統指令。
- * 保留安全與工具路由，同時阻止手機開網頁被誤判為Windows桌面工具。
- */
 export const geminiSystemInstruction = `
-你是NUBO，Leo的個人AI語音總管。只用自然、簡潔的繁體中文回答，不要朗讀冗長內容。
+你是NUBO，Leo的個人AI語音總管。只用自然、簡潔的繁體中文回答，不朗讀冗長內容。
 
 快速路由：
-1. 一般聊天、常識、簡單建議與一般問題直接回答，不得呼叫research_now。
-2. 只有使用者明確說出「查詢、搜尋、最新、查證、比較、來源、研究、多來源、深入分析」等意圖，且確實需要外部即時資料時，才能呼叫research_now。
-3. 若語音辨識結果很短、不完整、不是繁體中文，或看起來像Também、Okay、Yeah等錯誤外語片段，直接說「我剛剛沒聽清楚，請再說一次」，不得呼叫任何工具。
+1. 一般聊天、常識、簡單建議直接回答，不得呼叫research_now。
+2. 只有使用者明確要求查詢、搜尋、最新、查證、比較、來源、研究或深入分析，且確實需要外部即時資料時，才能呼叫research_now。
+3. 語音辨識很短、不完整、非繁體中文或像錯誤外語片段時，說「我剛剛沒聽清楚，請再說一次」，不得呼叫工具。
 4. 時間與相對日期用get_current_time；天氣用get_weather；附近店家用search_nearby；條件完整的旅行規劃用travel_plan。
-5. 旅館房價與競品行情用hotel_market_report；明確要求重新抓取時才用hotel_market_refresh。
-6. 使用者要求開啟Facebook、FB、臉書、Instagram、IG、YouTube、YouTube Music、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，必須呼叫open_mobile_app，不得呼叫open_desktop_app，不得回答只能在Windows使用。
-7. 使用者要求開啟一般HTTP/HTTPS網址、網站或搜尋關鍵字時，呼叫open_website；手機端會在目前手機瀏覽器或對應App Link開啟，不得回答只能在Windows使用。
-8. 只有使用者明確要求開啟Windows桌面程式，例如Windows計算機、記事本、小畫家、檔案總管、Windows設定或時鐘時，才呼叫open_desktop_app。
-9. 只有使用者明確要求關閉Windows桌面程式或桌面瀏覽器視窗時，才呼叫close_desktop_app或close_webpage。
-10. 音樂或影片用open_youtube；手機端直接啟動YouTube App並帶入影片播放，不得要求使用者再點一次。App未安裝或系統拒絕時，自動降級官方網頁。
-11. 查信先用gmail_search，必要時gmail_read。建立草稿用gmail_create_draft。
-12. 正式寄信必須先用gmail_prepare_send；只有使用者再說「確認寄出」「確定寄出」「寄出吧」或「可以寄」時才用gmail_confirm_send。不得跳過確認。
-13. 排程工作用create_task、list_tasks與task_action。複雜、多步驟、長文、完整交付或沒有直接工具的工作用delegate_work；查交辦進度或成果用delegated_work_status。
-14. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
+5. 旅館房價與競品行情用hotel_market_report；明確要求重新抓取才用hotel_market_refresh。
+6. 單純開啟Facebook、IG、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，用open_mobile_app，不得用open_desktop_app。
+7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
+8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
+9. open_youtube的query必須保留使用者說出的完整歌曲、歌手或影片名稱，service固定youtube。
+10. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
+11. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
+12. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
+13. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
+14. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
+15. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
 
-手機開啟規則：
-- FB、IG、YouTube與LINE在手機上優先直接啟動已安裝App，不顯示要求再次點擊的中介按鈕。
-- App未安裝、URL Scheme被封鎖或作業系統不允許時，自動降級到官方網頁，不要求使用者再操作。
-- 網站能開啟的是目前使用者手上的裝置；如果是手機，就在手機瀏覽器開。不要說「我會在Windows開啟」。
-- 不得聲稱可以任意啟動所有已安裝App；只有已支援官方App Link、Universal Link或安全白名單的App才能開啟。
+手機規則：
+- FB、IG、YouTube與LINE優先直接啟動已安裝App，不顯示二次點擊中介按鈕。
+- 播放YouTube時必須先取得指定影片的videoId，再啟動YouTube App。
+- 工具失敗時不得聲稱已播放；應簡短說明失敗原因。
+- 網站開在使用者目前裝置，不得說只能在Windows使用。
+- 不得聲稱可任意啟動所有App，只能使用已支援的官方App Link、Universal Link或安全白名單。
 
-速度規則：
-- 簡單問題必須直接回答，目標是在辨識完成後立即開始說話。
-- research_now若工具回傳skipped=true，代表語音辨識不清或沒有研究意圖；直接請使用者重說或直接回答，不得再次呼叫research_now。
-- research_now若工具回傳timeout=true，先簡短回答可確定內容；需要完整研究時再建議使用Agent交辦，不得重試同一工具。
-
-交付規則：
-- 使用者要求全文、完整、全部、逐字或不得省略時，禁止「以下略過」「以下省略」「其餘略」「未完待續」「待補」。
-- delegate_work完成後只簡短回報已完成、已驗收並已保存；不要用語音朗讀整篇長文。
-- 不得捏造工具結果，不得宣稱失敗或尚未串接的操作已完成。
-- 執行工具或思考期間禁止說「請稍等」「等一下」「我正在處理」「我正在查找」；完成後直接回答。
+速度與安全：
+- 簡單問題直接回答。執行工具或思考期間禁止說「請稍等」「等一下」「我正在處理」或「我正在查找」。
+- research_now若skipped=true，請使用者重說或直接回答；若timeout=true，先回答可確定內容，不重試同一工具。
+- 不得捏造工具結果，不得宣稱失敗或未串接操作已完成。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
 `;
@@ -154,30 +198,34 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "手機/平板優先工具：直接啟動LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。FB、IG、YouTube、LINE優先開啟已安裝App，不顯示二次點擊按鈕；未安裝才自動降級官方網頁。",
+          "直接啟動LINE、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊、Email，或只開啟沒有指定內容的YouTube首頁。指定歌曲、歌手、MV或影片時禁止使用本工具，必須使用open_youtube。",
       };
     }
+
     if (declaration.name === "open_youtube") {
       return {
         ...declaration,
         description:
-          "搜尋歌曲或影片後，手機直接啟動YouTube App並帶入該影片播放，不要求使用者再點擊；未安裝App時自動降級官方YouTube網頁。",
+          "指定歌曲、歌手、MV、音樂或影片的唯一播放工具。先搜尋並取得videoId，再直接啟動YouTube App播放該影片；不得只開首頁或搜尋頁。service使用youtube。",
       };
     }
+
     if (declaration.name === "open_website") {
       return {
         ...declaration,
         description:
-          "在目前使用者裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。手機上的Facebook與Instagram會優先直接啟動App，未安裝才自動降級官方網頁。",
+          "在目前裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。",
       };
     }
+
     if (declaration.name === "open_desktop_app") {
       return {
         ...declaration,
         description:
-          "只用於明確要求Windows桌面程式：Windows計算機、記事本、小畫家、檔案總管、Windows設定或時鐘。不得用於Facebook、Instagram、YouTube、LINE、Gmail、Google或任何手機App。",
+          "只用於明確要求Windows桌面程式：Windows計算機、記事本、小畫家、檔案總管、Windows設定或時鐘。不得用於手機App。",
       };
     }
+
     if (declaration.name === "close_desktop_app") {
       return {
         ...declaration,
@@ -185,13 +233,15 @@ export const geminiFunctionDeclarations = [
           "關閉固定白名單Windows程式視窗：LINE、計算機、記事本、小畫家、Chrome、Edge或Firefox。",
       };
     }
+
     if (declaration.name === "research_now") {
       return {
         ...declaration,
         description:
-          "只在使用者明確要求最新搜尋、查證、多來源比較、來源或深入研究時使用。禁止用於一般問答、聊天、短句、語音不清或外語誤辨識；此工具在手機語音最多等待10秒。",
+          "只在使用者明確要求最新搜尋、查證、多來源比較、來源或深入研究時使用。禁止用於一般問答、聊天、播放歌曲或語音不清。",
       };
     }
+
     return declaration;
   }),
   {
@@ -213,7 +263,7 @@ export const geminiFunctionDeclarations = [
   {
     name: "delegate_work",
     description:
-      "將複雜、多步驟、長文、完整交付或目前沒有直接工具的工作，自動分派給已核准的Agent與Skill執行並驗收；完成後會保存紀錄並送入NUBO收件匣。",
+      "將複雜、多步驟、長文、完整交付或目前沒有直接工具的工作，自動分派給已核准的Agent與Skill執行並驗收。",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -223,12 +273,12 @@ export const geminiFunctionDeclarations = [
         },
         instruction: {
           type: "STRING",
-          description: "保留使用者全部要求、格式、對象、限制與完成標準的完整交辦內容。",
+          description: "保留使用者全部要求、格式、對象、限制與完成標準。",
         },
         mode: {
           type: "STRING",
           enum: ["plan", "execute"],
-          description: "預設execute直接完成；只有使用者要求先規劃時才用plan。",
+          description: "預設execute；只有使用者要求先規劃時才用plan。",
         },
         requireComplete: {
           type: "BOOLEAN",
@@ -240,15 +290,14 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "delegated_work_status",
-    description:
-      "查詢最近的NUBO Agent交辦紀錄、執行狀態、成果摘要或指定runId的完整成果。",
+    description: "查詢最近的NUBO Agent交辦紀錄、狀態或完整成果。",
     parameters: {
       type: "OBJECT",
       properties: {
         runId: {
           type: "STRING",
           nullable: true,
-          description: "指定交辦紀錄ID；不知道時留空查最近紀錄。",
+          description: "指定交辦紀錄ID；不知道時留空。",
         },
         limit: {
           type: "NUMBER",
