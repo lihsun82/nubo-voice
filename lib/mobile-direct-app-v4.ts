@@ -10,7 +10,7 @@ type MobileLaunchPlan = {
 };
 
 const LEGACY_MOBILE_OPEN_STYLE_ID =
-  "nubo-hide-legacy-mobile-open-v5";
+  "nubo-hide-legacy-mobile-open-v6";
 
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalizedUrl = targetUrl.toLowerCase();
@@ -136,7 +136,9 @@ function androidNativeIntent(
 ) {
   return (
     `intent://${intentPath}` +
-    `#Intent;scheme=${scheme};package=${packageName};end`
+    `#Intent;scheme=${scheme};package=${packageName};` +
+    "action=android.intent.action.VIEW;" +
+    "category=android.intent.category.BROWSABLE;end"
   );
 }
 
@@ -144,6 +146,19 @@ function canonicalYouTubeUrl(videoId: string) {
   return videoId
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&autoplay=1`
     : "https://www.youtube.com/";
+}
+
+function androidYouTubeWatchIntent(videoId: string) {
+  const watchPath =
+    "www.youtube.com/watch?v=" +
+    encodeURIComponent(videoId) +
+    "&autoplay=1";
+
+  return androidNativeIntent(
+    watchPath,
+    "https",
+    "com.google.android.youtube",
+  );
 }
 
 function buildMobileLaunchPlan(
@@ -194,11 +209,7 @@ function buildMobileLaunchPlan(
     return {
       primaryUrl: android
         ? videoId
-          ? androidNativeIntent(
-              encodeURIComponent(videoId),
-              "vnd.youtube",
-              "com.google.android.youtube",
-            )
+          ? androidYouTubeWatchIntent(videoId)
           : androidNativeIntent(
               "www.youtube.com/",
               "https",
@@ -334,9 +345,9 @@ function launchMobileTarget(
   if (plan.appLink) {
     try {
       /*
-       * App Scheme/Android Intent 成功時，Chrome會進入背景，
-       * NUBO頁面仍保留在原分頁與返回堆疊。
-       * 不再設定 browser_fallback_url，也不以HTTPS覆蓋NUBO。
+       * Android YouTube 使用完整 watch?v=影片ID Intent，
+       * 不再使用會只開首頁的 vnd.youtube 路徑。
+       * App切換後NUBO仍保留在Chrome背景與返回堆疊。
        */
       window.location.href = plan.primaryUrl;
     } catch {
@@ -382,7 +393,7 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     ...(result as Record<string, unknown>),
     autoOpen: false,
     opened: true,
-    mode: "native-app-preserve-nubo-v5",
+    mode: "native-youtube-watch-v6",
     forcedSameTab: false,
     appLinkAttempted: launchPlan.appLink,
     launchedUrl: launchPlan.primaryUrl,
@@ -392,6 +403,6 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     playerUrl: undefined,
     mobileLabel:
       label === "YouTube Music" ? "YouTube" : label,
-    build: "mobile-native-open-v5-20260802",
+    build: "mobile-youtube-watch-v6-20260802",
   };
 }
