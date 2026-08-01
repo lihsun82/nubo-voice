@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Native Open V5 2026-08-02</span>
-        <span>YouTube指定影片直達；FB、IG、LINE開啟後保留NUBO背景</span>
+        <span>v0.5.1 Mobile YouTube Playback V6 2026-08-02</span>
+        <span>YouTube直接開啟指定歌曲影片；NUBO保留於背景</span>
       </footer>
     </main>
   );
