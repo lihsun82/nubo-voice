@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 System Control</span>
-        <span>應用程式採固定白名單；音量限制0–100</span>
+        <span>v0.5.1 Mobile Open Fix 2026-08-01 16:48</span>
+        <span>應用程式採固定白名單；手機開頁含強制備援按鈕</span>
       </footer>
     </main>
   );
