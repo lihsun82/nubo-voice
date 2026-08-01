@@ -1,8 +1,13 @@
 import path from "node:path";
 import { readJson, writeJson } from "@/lib/json-store";
 
-const tokenFile = path.join(process.cwd(), "data", "google-auth.json");
-const stateFile = path.join(process.cwd(), "data", "google-oauth-state.json");
+function getGoogleDataDirectory() {
+  const configured = process.env.NUBO_DATA_DIR?.trim();
+  return configured ? path.resolve(configured) : path.join(process.cwd(), "data");
+}
+
+const tokenFile = path.join(getGoogleDataDirectory(), "google-auth.json");
+const stateFile = path.join(getGoogleDataDirectory(), "google-oauth-state.json");
 
 const GOOGLE_SCOPES = [
   "openid",
@@ -26,17 +31,53 @@ type OAuthStateStore = {
   expiresAt: string;
 };
 
+function optionalEnv(name: string) {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
+function getRedirectUri() {
+  const explicit = optionalEnv("GOOGLE_REDIRECT_URI");
+  if (explicit) return explicit;
+
+  const publicUrl = optionalEnv("NUBO_PUBLIC_URL");
+  if (publicUrl) {
+    return new URL("/api/google/oauth/callback", publicUrl).toString();
+  }
+
+  const railwayDomain = optionalEnv("RAILWAY_PUBLIC_DOMAIN");
+  if (railwayDomain) {
+    return `https://${railwayDomain}/api/google/oauth/callback`;
+  }
+
+  return "http://127.0.0.1:3000/api/google/oauth/callback";
+}
+
 function getConfig() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri =
-    process.env.GOOGLE_REDIRECT_URI ??
-    "http://127.0.0.1:3000/api/google/oauth/callback";
+  const clientId = optionalEnv("GOOGLE_CLIENT_ID");
+  const clientSecret = optionalEnv("GOOGLE_CLIENT_SECRET");
+  const redirectUri = getRedirectUri();
 
   if (!clientId || !clientSecret) {
     throw new Error("GOOGLE_CLIENT_ID 或 GOOGLE_CLIENT_SECRET 尚未設定");
   }
   return { clientId, clientSecret, redirectUri };
+}
+
+async function readTokenStore(): Promise<GoogleTokenStore> {
+  const stored = await readJson<GoogleTokenStore>(tokenFile, {});
+
+  return {
+    ...stored,
+    accessToken: stored.accessToken || optionalEnv("GOOGLE_ACCESS_TOKEN"),
+    refreshToken: stored.refreshToken || optionalEnv("GOOGLE_REFRESH_TOKEN"),
+    email: stored.email || optionalEnv("GOOGLE_ACCOUNT_EMAIL"),
+    scope: stored.scope || optionalEnv("GOOGLE_TOKEN_SCOPE"),
+  };
+}
+
+async function writeTokenStore(value: GoogleTokenStore) {
+  await writeJson(tokenFile, value);
 }
 
 export async function createGoogleAuthUrl(): Promise<string> {
@@ -82,7 +123,7 @@ async function fetchGoogleEmail(accessToken: string): Promise<string | undefined
 export async function exchangeGoogleCode(code: string, state: string) {
   await validateState(state);
   const { clientId, clientSecret, redirectUri } = getConfig();
-  const previous = await readJson<GoogleTokenStore>(tokenFile, {});
+  const previous = await readTokenStore();
 
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -110,12 +151,12 @@ export async function exchangeGoogleCode(code: string, state: string) {
     tokenType: payload.token_type,
     email: email ?? previous.email,
   };
-  await writeJson(tokenFile, store);
+  await writeTokenStore(store);
   return store;
 }
 
 export async function getGoogleAccessToken(): Promise<string> {
-  const store = await readJson<GoogleTokenStore>(tokenFile, {});
+  const store = await readTokenStore();
   const expiresAt = store.expiresAt ? new Date(store.expiresAt).getTime() : 0;
   if (store.accessToken && expiresAt > Date.now() + 60_000) {
     return store.accessToken;
@@ -146,7 +187,7 @@ export async function getGoogleAccessToken(): Promise<string> {
     scope: payload.scope ?? store.scope,
     tokenType: payload.token_type ?? store.tokenType,
   };
-  await writeJson(tokenFile, updated);
+  await writeTokenStore(updated);
   return payload.access_token;
 }
 
@@ -161,12 +202,18 @@ export async function googleApiFetch(url: string, init: RequestInit = {}) {
 }
 
 export async function getGoogleConnectionStatus() {
-  const configured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-  const store = await readJson<GoogleTokenStore>(tokenFile, {});
+  const configured = Boolean(
+    optionalEnv("GOOGLE_CLIENT_ID") && optionalEnv("GOOGLE_CLIENT_SECRET"),
+  );
+  const store = await readTokenStore();
   return {
     configured,
     connected: Boolean(store.refreshToken || store.accessToken),
     email: store.email ?? null,
     scopes: store.scope?.split(" ").filter(Boolean) ?? [],
+    redirectUri: getRedirectUri(),
+    persistentStorage: Boolean(
+      optionalEnv("NUBO_DATA_DIR") || optionalEnv("GOOGLE_REFRESH_TOKEN"),
+    ),
   };
 }
