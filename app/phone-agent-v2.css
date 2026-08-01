@@ -1,9 +1,90 @@
 /* NUBO Phone Agent V2 mobile stability and orb centering fixes. */
 
+.nubo-phone-launch-card {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 2147483000;
+  width: min(92vw, 460px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  color: #f6f7fb;
+  background: rgba(10, 13, 19, 0.96);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(22px);
+}
+
+.nubo-phone-launch-copy {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.nubo-phone-launch-copy strong {
+  font-size: 15px;
+}
+
+.nubo-phone-launch-copy span {
+  color: #aeb7c5;
+  font-size: 12px;
+}
+
+.nubo-phone-launch-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.nubo-phone-launch-actions a {
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 9px 14px;
+  border-radius: 999px;
+  color: #111;
+  background: linear-gradient(135deg, #f5c26b, #ff8a3d);
+  font-weight: 800;
+  text-align: center;
+  text-decoration: none;
+}
+
+.nubo-phone-launch-actions a.secondary {
+  color: #f6f7fb;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  font-weight: 700;
+}
+
+.nubo-phone-launch-actions button {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: #f6f7fb;
+  background: transparent;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
 @media (max-width: 820px) {
   html,
   body {
     overflow-x: hidden;
+  }
+
+  .hero,
+  .hero .eyebrow,
+  .hero h1,
+  .hero .subtitle {
+    width: 100%;
+    margin-inline: auto;
+    text-align: center;
   }
 
   .console {
@@ -52,5 +133,21 @@
     box-sizing: border-box;
     max-width: calc(100vw - 24px);
     margin-inline: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .nubo-phone-launch-card {
+    width: calc(100vw - 20px);
+    padding: 12px;
+  }
+
+  .nubo-phone-launch-actions {
+    grid-template-columns: 1fr auto;
+  }
+
+  .nubo-phone-launch-actions a.secondary {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }
