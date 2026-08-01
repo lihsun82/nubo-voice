@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Direct App V4 2026-08-02</span>
-        <span>手機直接開啟App；未安裝時自動降級官方網頁</span>
+        <span>v0.5.1 Mobile Native Open V5 2026-08-02</span>
+        <span>YouTube指定影片直達；FB、IG、LINE開啟後保留NUBO背景</span>
       </footer>
     </main>
   );
