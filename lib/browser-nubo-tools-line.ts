@@ -9,6 +9,8 @@ import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 
 export type { FunctionCall };
 
+const NUBO_MOBILE_OPEN_FALLBACK_ID = "nubo-mobile-open-fallback";
+
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalizedUrl = targetUrl.toLowerCase();
 
@@ -33,6 +35,70 @@ function getMobileOpenLabel(targetUrl: string, callName: string) {
   return "手機工具";
 }
 
+function showHardMobileOpenFallback(targetUrl: string, label: string) {
+  if (typeof document === "undefined" || typeof window === "undefined") return;
+
+  document.getElementById(NUBO_MOBILE_OPEN_FALLBACK_ID)?.remove();
+
+  const wrapper = document.createElement("div");
+  wrapper.id = NUBO_MOBILE_OPEN_FALLBACK_ID;
+  wrapper.setAttribute("role", "dialog");
+  wrapper.setAttribute("aria-live", "assertive");
+  wrapper.style.position = "fixed";
+  wrapper.style.left = "10px";
+  wrapper.style.right = "10px";
+  wrapper.style.bottom = "calc(env(safe-area-inset-bottom, 0px) + 12px)";
+  wrapper.style.zIndex = "2147483647";
+  wrapper.style.display = "grid";
+  wrapper.style.gap = "10px";
+  wrapper.style.padding = "14px";
+  wrapper.style.border = "1px solid rgba(255,255,255,.22)";
+  wrapper.style.borderRadius = "18px";
+  wrapper.style.background = "rgba(7, 9, 13, .96)";
+  wrapper.style.boxShadow = "0 18px 60px rgba(0,0,0,.5)";
+  wrapper.style.backdropFilter = "blur(18px)";
+
+  const title = document.createElement("div");
+  title.textContent = `手機瀏覽器已擋住自動開啟，請點下方按鈕開啟 ${label}`;
+  title.style.color = "#f6f7fb";
+  title.style.fontSize = "14px";
+  title.style.lineHeight = "1.45";
+  title.style.textAlign = "center";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = `點我開啟 ${label}`;
+  button.style.width = "100%";
+  button.style.minHeight = "54px";
+  button.style.border = "0";
+  button.style.borderRadius = "999px";
+  button.style.color = "#111";
+  button.style.background = "linear-gradient(135deg, #f5c26b, #ff8a3d)";
+  button.style.font = "inherit";
+  button.style.fontWeight = "800";
+  button.style.cursor = "pointer";
+  button.onclick = () => {
+    window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
+    window.localStorage.setItem("nubo_external_app_return_v1", "true");
+    window.location.href = targetUrl;
+  };
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "先不要開啟";
+  close.style.width = "100%";
+  close.style.minHeight = "40px";
+  close.style.border = "1px solid rgba(255,255,255,.18)";
+  close.style.borderRadius = "999px";
+  close.style.color = "#f6f7fb";
+  close.style.background = "transparent";
+  close.style.font = "inherit";
+  close.onclick = () => wrapper.remove();
+
+  wrapper.append(title, button, close);
+  document.body.appendChild(wrapper);
+}
+
 function forceSameTabMobileOpen(result: unknown, callName: string) {
   if (typeof window === "undefined") return result;
   if (!result || typeof result !== "object") return result;
@@ -51,8 +117,14 @@ function forceSameTabMobileOpen(result: unknown, callName: string) {
 
   if (!targetUrl) return result;
 
+  const label =
+    typeof payload.mobileLabel === "string"
+      ? payload.mobileLabel
+      : getMobileOpenLabel(targetUrl, callName);
+
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
   window.localStorage.setItem("nubo_external_app_return_v1", "true");
+  showHardMobileOpenFallback(targetUrl, label);
 
   try {
     window.location.href = targetUrl;
@@ -67,10 +139,7 @@ function forceSameTabMobileOpen(result: unknown, callName: string) {
     mode: "same-tab",
     forcedSameTab: true,
     mobileUrl: targetUrl,
-    mobileLabel:
-      typeof payload.mobileLabel === "string"
-        ? payload.mobileLabel
-        : getMobileOpenLabel(targetUrl, callName),
+    mobileLabel: label,
   };
 }
 
