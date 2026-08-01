@@ -32,10 +32,12 @@ function isLocalHost(request: Request) {
 function labelForUrl(url: string) {
   if (/facebook\.com/i.test(url)) return "Facebook";
   if (/instagram\.com/i.test(url)) return "Instagram";
-  if (/youtube\.com|youtu\.be/i.test(url)) return "YouTube";
   if (/music\.youtube\.com/i.test(url)) return "YouTube Music";
+  if (/youtube\.com|youtu\.be/i.test(url)) return "YouTube";
   if (/mail\.google\.com/i.test(url)) return "Gmail";
-  if (/google\.com\/maps|maps\.google\.com/i.test(url)) return "Google Maps";
+  if (/google\.com\/maps|maps\.google\.com/i.test(url)) {
+    return "Google Maps";
+  }
   if (/google\.com/i.test(url)) return "Google";
   return "網頁";
 }
@@ -43,17 +45,30 @@ function labelForUrl(url: string) {
 function normalizePublicUrl(url: string) {
   try {
     const parsed = new URL(url);
+
     if (parsed.hostname === "www.facebook.com") {
       parsed.hostname = "m.facebook.com";
     }
+
     return parsed.toString();
   } catch {
     return url;
   }
 }
 
+function buildRelayUrl(
+  request: Request,
+  destination: string,
+) {
+  const relay = new URL("/open", request.url);
+  relay.searchParams.set("url", destination);
+  relay.searchParams.set("ts", String(Date.now()));
+  return relay.toString();
+}
+
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
+
   if (!parsed.success) {
     return NextResponse.json(
       { error: "缺少要開啟的網站" },
@@ -66,25 +81,31 @@ export async function POST(request: Request) {
       resolveWebsite(parsed.data.target),
     );
 
-    /*
-     * Railway 執行環境不是使用者的電腦。
-     * 公開網域或非 Windows 主機不可在伺服器端呼叫 rundll32；
-     * 應把網址回傳給手機／瀏覽器，由前端直接開啟。
-     */
-    if (!isLocalHost(request) || process.platform !== "win32") {
+    if (
+      !isLocalHost(request) ||
+      process.platform !== "win32"
+    ) {
+      const relayUrl = buildRelayUrl(
+        request,
+        resolvedUrl,
+      );
+
       return NextResponse.json(
         {
           ok: true,
-          mobileUrl: resolvedUrl,
+          mobileUrl: relayUrl,
+          finalUrl: resolvedUrl,
           mobileLabel: labelForUrl(resolvedUrl),
           autoOpen: true,
           publicWeb: true,
           executionTarget: "client-browser",
+          navigationMode: "same-origin-redirect",
         },
         {
           headers: {
             "Cache-Control": "no-store",
-            "X-NUBO-Open-Mode": "client-browser",
+            "X-NUBO-Open-Mode":
+              "same-origin-redirect",
           },
         },
       );
