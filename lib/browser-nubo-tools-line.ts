@@ -6,142 +6,12 @@ import {
   type FunctionCall,
 } from "@/lib/browser-nubo-tools";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
+import {
+  forceDirectMobileOpen,
+  resolveWebsiteMobileResult,
+} from "@/lib/mobile-direct-app-v4";
 
 export type { FunctionCall };
-
-const NUBO_MOBILE_OPEN_FALLBACK_ID = "nubo-mobile-open-fallback";
-
-function getMobileOpenLabel(targetUrl: string, callName: string) {
-  const normalizedUrl = targetUrl.toLowerCase();
-
-  if (normalizedUrl.includes("facebook.com") || normalizedUrl.includes("fb.com")) {
-    return "Facebook";
-  }
-  if (normalizedUrl.includes("instagram.com")) {
-    return "Instagram";
-  }
-  if (normalizedUrl.includes("youtube.com") || normalizedUrl.includes("youtu.be")) {
-    return "YouTube";
-  }
-  if (normalizedUrl.includes("maps.google.") || normalizedUrl.includes("google.com/maps")) {
-    return "Google Maps";
-  }
-  if (normalizedUrl.includes("mail.google.com")) {
-    return "Gmail";
-  }
-  if (callName === "open_website") {
-    return "網站";
-  }
-  return "手機工具";
-}
-
-function showHardMobileOpenFallback(targetUrl: string, label: string) {
-  if (typeof document === "undefined" || typeof window === "undefined") return;
-
-  document.getElementById(NUBO_MOBILE_OPEN_FALLBACK_ID)?.remove();
-
-  const wrapper = document.createElement("div");
-  wrapper.id = NUBO_MOBILE_OPEN_FALLBACK_ID;
-  wrapper.setAttribute("role", "dialog");
-  wrapper.setAttribute("aria-live", "assertive");
-  wrapper.style.position = "fixed";
-  wrapper.style.left = "10px";
-  wrapper.style.right = "10px";
-  wrapper.style.bottom = "calc(env(safe-area-inset-bottom, 0px) + 12px)";
-  wrapper.style.zIndex = "2147483647";
-  wrapper.style.display = "grid";
-  wrapper.style.gap = "10px";
-  wrapper.style.padding = "14px";
-  wrapper.style.border = "1px solid rgba(255,255,255,.22)";
-  wrapper.style.borderRadius = "18px";
-  wrapper.style.background = "rgba(7, 9, 13, .96)";
-  wrapper.style.boxShadow = "0 18px 60px rgba(0,0,0,.5)";
-  wrapper.style.backdropFilter = "blur(18px)";
-
-  const title = document.createElement("div");
-  title.textContent = `手機瀏覽器已擋住自動開啟，請點下方按鈕開啟 ${label}`;
-  title.style.color = "#f6f7fb";
-  title.style.fontSize = "14px";
-  title.style.lineHeight = "1.45";
-  title.style.textAlign = "center";
-
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = `點我開啟 ${label}`;
-  button.style.width = "100%";
-  button.style.minHeight = "54px";
-  button.style.border = "0";
-  button.style.borderRadius = "999px";
-  button.style.color = "#111";
-  button.style.background = "linear-gradient(135deg, #f5c26b, #ff8a3d)";
-  button.style.font = "inherit";
-  button.style.fontWeight = "800";
-  button.style.cursor = "pointer";
-  button.onclick = () => {
-    window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
-    window.localStorage.setItem("nubo_external_app_return_v1", "true");
-    window.location.href = targetUrl;
-  };
-
-  const close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "先不要開啟";
-  close.style.width = "100%";
-  close.style.minHeight = "40px";
-  close.style.border = "1px solid rgba(255,255,255,.18)";
-  close.style.borderRadius = "999px";
-  close.style.color = "#f6f7fb";
-  close.style.background = "transparent";
-  close.style.font = "inherit";
-  close.onclick = () => wrapper.remove();
-
-  wrapper.append(title, button, close);
-  document.body.appendChild(wrapper);
-}
-
-function forceSameTabMobileOpen(result: unknown, callName: string) {
-  if (typeof window === "undefined") return result;
-  if (!result || typeof result !== "object") return result;
-
-  const payload = result as {
-    mobileUrl?: unknown;
-    mobileLabel?: unknown;
-    url?: unknown;
-  };
-  const targetUrl =
-    typeof payload.mobileUrl === "string"
-      ? payload.mobileUrl
-      : typeof payload.url === "string"
-        ? payload.url
-        : "";
-
-  if (!targetUrl) return result;
-
-  const label =
-    typeof payload.mobileLabel === "string"
-      ? payload.mobileLabel
-      : getMobileOpenLabel(targetUrl, callName);
-
-  window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
-  window.localStorage.setItem("nubo_external_app_return_v1", "true");
-  showHardMobileOpenFallback(targetUrl, label);
-
-  try {
-    window.location.href = targetUrl;
-  } catch {
-    window.location.assign(targetUrl);
-  }
-
-  return {
-    ...(result as Record<string, unknown>),
-    autoOpen: false,
-    opened: true,
-    mode: "same-tab",
-    forcedSameTab: true,
-    mobileUrl: targetUrl,
-    mobileLabel: label,
-  };
-}
 
 async function postSetting(
   target: "audio" | "brightness",
@@ -219,18 +89,23 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       args.title,
     );
   }
+  if (call.name === "open_website") {
+    return forceDirectMobileOpen(
+      resolveWebsiteMobileResult(call),
+      call.name,
+    );
+  }
   if (
     call.name === "open_mobile_app" ||
-    call.name === "open_youtube" ||
-    call.name === "open_website"
+    call.name === "open_youtube"
   ) {
-    return forceSameTabMobileOpen(await executeBaseTool(call), call.name);
+    return forceDirectMobileOpen(await executeBaseTool(call), call.name);
   }
   return executeBaseTool(call);
 }
 
 /*
- * NUBO_MOBILE_FAST_PROMPT_V3
+ * NUBO_MOBILE_DIRECT_APP_V4
  * Gemini Live 每次建立連線都要傳送完整系統指令。
  * 保留安全與工具路由，同時阻止手機開網頁被誤判為Windows桌面工具。
  */
@@ -247,16 +122,16 @@ export const geminiSystemInstruction = `
 7. 使用者要求開啟一般HTTP/HTTPS網址、網站或搜尋關鍵字時，呼叫open_website；手機端會在目前手機瀏覽器或對應App Link開啟，不得回答只能在Windows使用。
 8. 只有使用者明確要求開啟Windows桌面程式，例如Windows計算機、記事本、小畫家、檔案總管、Windows設定或時鐘時，才呼叫open_desktop_app。
 9. 只有使用者明確要求關閉Windows桌面程式或桌面瀏覽器視窗時，才呼叫close_desktop_app或close_webpage。
-10. 音樂或影片用open_youtube；手機瀏覽器限制自動播放時，提供可點擊連結，不要宣稱Windows限制。
+10. 音樂或影片用open_youtube；手機端直接啟動YouTube App並帶入影片播放，不得要求使用者再點一次。App未安裝或系統拒絕時，自動降級官方網頁。
 11. 查信先用gmail_search，必要時gmail_read。建立草稿用gmail_create_draft。
 12. 正式寄信必須先用gmail_prepare_send；只有使用者再說「確認寄出」「確定寄出」「寄出吧」或「可以寄」時才用gmail_confirm_send。不得跳過確認。
 13. 排程工作用create_task、list_tasks與task_action。複雜、多步驟、長文、完整交付或沒有直接工具的工作用delegate_work；查交辦進度或成果用delegated_work_status。
 14. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
 
 手機開啟規則：
-- FB、IG、YouTube、Google Maps、Gmail、Google與LINE不是Windows工具；在手機上要用open_mobile_app或open_website開啟官方網頁/App Link。
+- FB、IG、YouTube與LINE在手機上優先直接啟動已安裝App，不顯示要求再次點擊的中介按鈕。
+- App未安裝、URL Scheme被封鎖或作業系統不允許時，自動降級到官方網頁，不要求使用者再操作。
 - 網站能開啟的是目前使用者手上的裝置；如果是手機，就在手機瀏覽器開。不要說「我會在Windows開啟」。
-- 手機是否跳轉到App由iOS/Android決定；NUBO只負責開啟安全網址或官方App Link。
 - 不得聲稱可以任意啟動所有已安裝App；只有已支援官方App Link、Universal Link或安全白名單的App才能開啟。
 
 速度規則：
@@ -279,14 +154,21 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "手機/平板優先工具：開啟LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。使用者在手機要求開FB、IG、YouTube或LINE時必須使用此工具；不得改用Windows工具。",
+          "手機/平板優先工具：直接啟動LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。FB、IG、YouTube、LINE優先開啟已安裝App，不顯示二次點擊按鈕；未安裝才自動降級官方網頁。",
+      };
+    }
+    if (declaration.name === "open_youtube") {
+      return {
+        ...declaration,
+        description:
+          "搜尋歌曲或影片後，手機直接啟動YouTube App並帶入該影片播放，不要求使用者再點擊；未安裝App時自動降級官方YouTube網頁。",
       };
     }
     if (declaration.name === "open_website") {
       return {
         ...declaration,
         description:
-          "在目前使用者裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。手機會在手機瀏覽器或App Link開啟；不得回答只能在Windows使用。",
+          "在目前使用者裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。手機上的Facebook與Instagram會優先直接啟動App，未安裝才自動降級官方網頁。",
       };
     }
     if (declaration.name === "open_desktop_app") {
