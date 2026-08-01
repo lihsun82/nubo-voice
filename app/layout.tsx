@@ -9,6 +9,7 @@ import "./integration-center.css";
 import "./youtube-player.css";
 import "./orb-theme.css";
 import "./mobile-pwa.css";
+import "./mobile-orb-center.css";
 
 export const metadata: Metadata = {
   title: {
