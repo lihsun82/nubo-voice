@@ -9,6 +9,32 @@ import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 
 export type { FunctionCall };
 
+function forceSameTabMobileOpen(result: unknown) {
+  if (typeof window === "undefined") return result;
+  if (!result || typeof result !== "object") return result;
+
+  const payload = result as {
+    mobileUrl?: unknown;
+    autoOpen?: unknown;
+  };
+
+  if (typeof payload.mobileUrl !== "string") return result;
+
+  window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
+  window.localStorage.setItem("nubo_external_app_return_v1", "true");
+
+  window.setTimeout(() => {
+    window.location.assign(payload.mobileUrl as string);
+  }, 120);
+
+  return {
+    ...(result as Record<string, unknown>),
+    autoOpen: false,
+    opened: true,
+    mode: "same-tab",
+  };
+}
+
 async function postSetting(
   target: "audio" | "brightness",
   action: string,
@@ -84,6 +110,9 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       args.question,
       args.title,
     );
+  }
+  if (call.name === "open_mobile_app" || call.name === "open_youtube") {
+    return forceSameTabMobileOpen(await executeBaseTool(call));
   }
   return executeBaseTool(call);
 }
