@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type GeminiApiVersion = "v1alpha" | "v1beta";
+
 type GeminiTokenCache = {
   token: string;
   model: string;
@@ -10,7 +12,8 @@ type GeminiTokenCache = {
   newSessionExpiresAt: number;
   usesRemaining: number;
   createdAt: number;
-  apiVersion: string;
+  apiVersion: GeminiApiVersion;
+  requestMode: "timed" | "minimal";
 };
 
 type GeminiTokenGlobal = typeof globalThis & {
@@ -19,17 +22,29 @@ type GeminiTokenGlobal = typeof globalThis & {
 };
 
 type UpstreamFailure = {
-  endpoint: string;
+  apiVersion: GeminiApiVersion;
+  requestMode: "timed" | "minimal";
   status: number;
   code?: string;
   message?: string;
 };
 
+class AuthTokenCreationError extends Error {
+  failures: UpstreamFailure[];
+
+  constructor(failures: UpstreamFailure[]) {
+    super("GEMINI_AUTH_TOKEN_FAILED");
+    this.name = "AuthTokenCreationError";
+    this.failures = failures;
+  }
+}
+
 const geminiGlobal = globalThis as GeminiTokenGlobal;
 
-const DEFAULT_TOKEN_USES = 10;
-const DEFAULT_NEW_SESSION_MS = 5 * 60_000;
 const CACHE_SAFETY_MS = 15_000;
+const TOKEN_EXPIRE_MS = 30 * 60_000;
+const CONFIGURED_NEW_SESSION_MS = 5 * 60_000;
+const MINIMAL_NEW_SESSION_MS = 55_000;
 
 function getGeminiApiKey() {
   return (
@@ -41,19 +56,15 @@ function getGeminiApiKey() {
   ).trim();
 }
 
-function getTokenUses() {
-  const raw = Number(
-    process.env.GEMINI_AUTH_TOKEN_USES ?? DEFAULT_TOKEN_USES,
-  );
-  if (!Number.isFinite(raw) || raw < 1) return DEFAULT_TOKEN_USES;
-  return Math.min(Math.floor(raw), 50);
-}
-
 function getNewSessionMs() {
   const raw = Number(
     process.env.GEMINI_AUTH_TOKEN_NEW_SESSION_SECONDS ?? 300,
   );
-  if (!Number.isFinite(raw) || raw < 60) return DEFAULT_NEW_SESSION_MS;
+
+  if (!Number.isFinite(raw) || raw < 60) {
+    return CONFIGURED_NEW_SESSION_MS;
+  }
+
   return Math.min(Math.floor(raw * 1000), 30 * 60_000);
 }
 
@@ -75,10 +86,55 @@ function upstreamCode(payload: unknown) {
   if (!payload || typeof payload !== "object") return undefined;
   const error = (payload as { error?: unknown }).error;
   if (!error || typeof error !== "object") return undefined;
-  const code = (error as { status?: unknown; code?: unknown }).status;
-  if (typeof code === "string") return code;
-  const numericCode = (error as { code?: unknown }).code;
-  return typeof numericCode === "number" ? String(numericCode) : undefined;
+
+  const status = (error as { status?: unknown }).status;
+  if (typeof status === "string") return status;
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "number" ? String(code) : undefined;
+}
+
+function buildAttempts(now: number) {
+  const newSessionMs = getNewSessionMs();
+  const timedBody = JSON.stringify({
+    uses: 1,
+    expireTime: new Date(now + TOKEN_EXPIRE_MS).toISOString(),
+    newSessionExpireTime: new Date(now + newSessionMs).toISOString(),
+  });
+  const minimalBody = JSON.stringify({ uses: 1 });
+
+  /*
+   * 前端目前使用 v1alpha 的 BidiGenerateContentConstrained WebSocket，
+   * 因此先以 v1alpha 建立相同版本的暫時權杖。
+   * v1beta 保留為 Google 新版端點備援。
+   * 每個版本再以最小請求重試，排除時間欄位或專案政策差異。
+   */
+  return [
+    {
+      apiVersion: "v1alpha" as const,
+      requestMode: "timed" as const,
+      body: timedBody,
+      newSessionExpiresAt: now + newSessionMs,
+    },
+    {
+      apiVersion: "v1alpha" as const,
+      requestMode: "minimal" as const,
+      body: minimalBody,
+      newSessionExpiresAt: now + MINIMAL_NEW_SESSION_MS,
+    },
+    {
+      apiVersion: "v1beta" as const,
+      requestMode: "timed" as const,
+      body: timedBody,
+      newSessionExpiresAt: now + newSessionMs,
+    },
+    {
+      apiVersion: "v1beta" as const,
+      requestMode: "minimal" as const,
+      body: minimalBody,
+      newSessionExpiresAt: now + MINIMAL_NEW_SESSION_MS,
+    },
+  ];
 }
 
 async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
@@ -92,33 +148,19 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
     process.env.GEMINI_LIVE_MODEL ??
     "gemini-3.1-flash-live-preview";
   const now = Date.now();
-  const uses = getTokenUses();
-  const newSessionMs = getNewSessionMs();
-  const body = JSON.stringify({
-    uses,
-    expireTime: new Date(now + 30 * 60_000).toISOString(),
-    newSessionExpireTime: new Date(now + newSessionMs).toISOString(),
-  });
-
-  /*
-   * Google目前文件使用v1beta建立Live API暫時性權杖。
-   * 保留v1alpha備援，避免不同專案或區域仍只開放舊端點。
-   */
-  const endpoints = [
-    "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
-    "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
-  ];
-
   const failures: UpstreamFailure[] = [];
 
-  for (const endpoint of endpoints) {
+  for (const attempt of buildAttempts(now)) {
+    const endpoint =
+      `https://generativelanguage.googleapis.com/${attempt.apiVersion}/auth_tokens`;
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": apiKey,
       },
-      body,
+      body: attempt.body,
       cache: "no-store",
     });
 
@@ -129,29 +171,29 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
         token: payload.name,
         model,
         expiresAt: payload.expireTime,
-        newSessionExpiresAt: now + newSessionMs,
-        usesRemaining: uses,
+        newSessionExpiresAt: attempt.newSessionExpiresAt,
+        usesRemaining: 1,
         createdAt: now,
-        apiVersion: endpoint.includes("/v1beta/")
-          ? "v1beta"
-          : "v1alpha",
+        apiVersion: attempt.apiVersion,
+        requestMode: attempt.requestMode,
       };
     }
 
     failures.push({
-      endpoint,
+      apiVersion: attempt.apiVersion,
+      requestMode: attempt.requestMode,
       status: response.status,
       code: upstreamCode(payload),
       message: upstreamMessage(payload),
     });
   }
 
-  console.error("[NUBO voice session] upstream token failure", failures);
-
-  const last = failures[failures.length - 1];
-  throw new Error(
-    `GEMINI_AUTH_TOKEN_FAILED:${last?.status ?? 0}:${last?.code ?? "UNKNOWN"}`,
+  console.error(
+    "[NUBO voice session] upstream token failure",
+    failures,
   );
+
+  throw new AuthTokenCreationError(failures);
 }
 
 async function getCachedToken() {
@@ -174,9 +216,7 @@ async function getCachedToken() {
 }
 
 function publicError(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-
-  if (message === "MISSING_GEMINI_API_KEY") {
+  if (error instanceof Error && error.message === "MISSING_GEMINI_API_KEY") {
     return {
       status: 503,
       error: "NUBO語音服務尚未連結Gemini API Key。",
@@ -184,41 +224,31 @@ function publicError(error: unknown) {
     };
   }
 
-  const match = message.match(
-    /^GEMINI_AUTH_TOKEN_FAILED:(\d+):(.+)$/,
-  );
+  if (error instanceof AuthTokenCreationError) {
+    const failures = error.failures;
+    const statuses = failures.map((failure) => failure.status);
 
-  if (match) {
-    const upstreamStatus = Number(match[1]);
-    const code = match[2];
-
-    if (upstreamStatus === 400) {
-      return {
-        status: 502,
-        error: "NUBO語音權杖格式或API版本不相容，系統已嘗試雙版本備援。",
-        reason: "invalid_token_request",
-        upstreamStatus,
-        code,
-      };
-    }
-
-    if (upstreamStatus === 401 || upstreamStatus === 403) {
+    if (statuses.some((status) => status === 401 || status === 403)) {
       return {
         status: 502,
         error: "NUBO語音使用的Gemini API Key無效、受限或沒有Live API權限。",
         reason: "api_key_denied",
-        upstreamStatus,
-        code,
       };
     }
 
-    if (upstreamStatus === 429) {
+    if (statuses.some((status) => status === 429)) {
       return {
         status: 503,
         error: "NUBO語音API目前已達額度或速率限制，請稍後再試。",
         reason: "quota_or_rate_limit",
-        upstreamStatus,
-        code,
+      };
+    }
+
+    if (statuses.every((status) => status === 400 || status === 404)) {
+      return {
+        status: 502,
+        error: "NUBO語音暫時權杖建立失敗，已嘗試相容與最小格式。",
+        reason: "invalid_token_request",
       };
     }
 
@@ -226,8 +256,6 @@ function publicError(error: unknown) {
       status: 502,
       error: "NUBO語音工作階段建立失敗，Google語音服務暫時無法核發權杖。",
       reason: "upstream_failure",
-      upstreamStatus,
-      code,
     };
   }
 
@@ -236,6 +264,18 @@ function publicError(error: unknown) {
     error: "NUBO語音工作階段建立失敗，請稍後再試。",
     reason: "unknown",
   };
+}
+
+function safeDiagnostics(error: unknown) {
+  if (!(error instanceof AuthTokenCreationError)) return undefined;
+
+  return error.failures.map((failure) => ({
+    apiVersion: failure.apiVersion,
+    requestMode: failure.requestMode,
+    status: failure.status,
+    code: failure.code,
+    message: failure.message,
+  }));
 }
 
 export async function GET(request: NextRequest) {
@@ -248,34 +288,60 @@ export async function GET(request: NextRequest) {
     const elapsedMs = Date.now() - startedAt;
 
     if (warm) {
-      return NextResponse.json({
-        ok: true,
-        warmed: true,
-        cached: elapsedMs < 50,
-        model: cache.model,
-        usesRemaining: cache.usesRemaining,
-        apiVersion: cache.apiVersion,
-        elapsedMs,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          warmed: true,
+          cached: elapsedMs < 50,
+          model: cache.model,
+          usesRemaining: cache.usesRemaining,
+          apiVersion: cache.apiVersion,
+          requestMode: cache.requestMode,
+          elapsedMs,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
+      );
     }
 
     cache.usesRemaining -= 1;
 
-    return NextResponse.json({
-      token: cache.token,
-      model: cache.model,
-      expiresAt: cache.expiresAt,
-      usesRemaining: cache.usesRemaining,
-      apiVersion: cache.apiVersion,
-      cached: elapsedMs < 50,
-      elapsedMs,
-    });
+    return NextResponse.json(
+      {
+        token: cache.token,
+        model: cache.model,
+        expiresAt: cache.expiresAt,
+        usesRemaining: cache.usesRemaining,
+        apiVersion: cache.apiVersion,
+        requestMode: cache.requestMode,
+        cached: elapsedMs < 50,
+        elapsedMs,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+          "X-NUBO-Gemini-API-Version": cache.apiVersion,
+        },
+      },
+    );
   } catch (error) {
     console.error("[NUBO voice session] create failed", error);
     const failure = publicError(error);
+    const debug = new URL(request.url).searchParams.get("debug") === "1";
 
     return NextResponse.json(
-      failure,
+      {
+        ...failure,
+        ...(debug
+          ? {
+              diagnostics: safeDiagnostics(error),
+              hasApiKey: Boolean(getGeminiApiKey()),
+            }
+          : {}),
+      },
       {
         status: failure.status,
         headers: {
