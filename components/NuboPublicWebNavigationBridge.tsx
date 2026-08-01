@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const BUILD_ID = "public-web-navigation-v4-20260801";
+const BUILD_ID = "public-web-navigation-v6-20260801";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 
 type PendingNavigation = {
   url: string;
+  relayUrl: string;
   label: string;
 };
 
@@ -84,7 +85,7 @@ function destinationFromText(text: string) {
     .replace(/[\s，。！？、:：…]+/g, "");
 
   const wantsOpen =
-    /(開啟|打開|啟動|正在開啟|幫我開)/.test(
+    /(開啟|打開|啟動|幫我開|開facebook|開fb|開臉書|開instagram|開ig|開youtube)/.test(
       normalized,
     );
 
@@ -152,6 +153,24 @@ function labelForUrl(url: string) {
   return "外部網頁";
 }
 
+function buildRelayUrl(url: string) {
+  const relay = new URL("/open", window.location.origin);
+  relay.searchParams.set("url", url);
+  relay.searchParams.set("ts", String(Date.now()));
+  return relay.toString();
+}
+
+function isMobileBrowser() {
+  const userAgent = navigator.userAgent || "";
+  const mobileAgent =
+    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
+  const coarsePointer = window.matchMedia(
+    "(pointer: coarse) and (max-width: 1100px)",
+  ).matches;
+
+  return mobileAgent || coarsePointer;
+}
+
 export function NuboPublicWebNavigationBridge() {
   const [pending, setPending] =
     useState<PendingNavigation | null>(null);
@@ -171,16 +190,28 @@ export function NuboPublicWebNavigationBridge() {
       return;
     }
 
+    const originalOpen = window.open.bind(window);
+    const mobile = isMobileBrowser();
+
     const prepareNavigation = (
       rawUrl: string,
       suppliedLabel?: string,
       autoNavigate = true,
     ) => {
-      const url = normalizeExternalUrl(rawUrl);
-      if (!url) return;
+      const externalUrl = normalizeExternalUrl(rawUrl);
 
-      const label = suppliedLabel || labelForUrl(url);
-      const token = `${url}:${Math.floor(Date.now() / 4000)}`;
+      if (!externalUrl) {
+        if (rawUrl.startsWith(window.location.origin + "/open")) {
+          if (autoNavigate) {
+            window.location.assign(rawUrl);
+          }
+        }
+        return;
+      }
+
+      const label = suppliedLabel || labelForUrl(externalUrl);
+      const relayUrl = buildRelayUrl(externalUrl);
+      const token = `${externalUrl}:${Math.floor(Date.now() / 4000)}`;
 
       if (lastNavigationRef.current === token) {
         return;
@@ -197,23 +228,53 @@ export function NuboPublicWebNavigationBridge() {
         "true",
       );
 
-      setPending({ url, label });
+      setPending({
+        url: externalUrl,
+        relayUrl,
+        label,
+      });
 
       if (!autoNavigate) return;
 
-      /*
-       * 不覆寫window.open，也不攔截fetch。
-       * 讓既有語音主控台使用原生瀏覽器導向；
-       * 這裡只作為轉錄層備援，避免重複導向與錯誤判定。
-       */
       window.setTimeout(() => {
-        try {
-          window.location.assign(url);
-        } catch {
-          setPending({ url, label });
-        }
+        window.location.assign(relayUrl);
       }, 0);
     };
+
+    if (mobile) {
+      window.open = ((
+        url?: string | URL,
+        target?: string,
+        features?: string,
+      ) => {
+        const raw =
+          typeof url === "string"
+            ? url
+            : url?.toString() ?? "";
+        const externalUrl = normalizeExternalUrl(raw);
+
+        if (!externalUrl) {
+          if (raw.startsWith(window.location.origin + "/open")) {
+            window.location.assign(raw);
+            return window;
+          }
+
+          return originalOpen(url, target, features);
+        }
+
+        prepareNavigation(
+          externalUrl,
+          labelForUrl(externalUrl),
+          true,
+        );
+
+        /*
+         * 回傳目前window作為成功結果，避免既有主控台誤判popup失敗，
+         * 再執行第二條衝突路徑或朗讀「系統限制」。
+         */
+        return window;
+      }) as typeof window.open;
+    }
 
     const handleExternalNavigation = (event: Event) => {
       const detail = (
@@ -286,6 +347,9 @@ export function NuboPublicWebNavigationBridge() {
       });
 
     return () => {
+      if (mobile) {
+        window.open = originalOpen;
+      }
       window.removeEventListener(
         "nubo-open-external",
         handleExternalNavigation,
@@ -321,12 +385,12 @@ export function NuboPublicWebNavigationBridge() {
     >
       <span style={{ fontSize: 13 }}>
         {warning ||
-          `若未自動開啟${pending?.label ?? "網頁"}，請按右側。`}
+          `正在開啟${pending?.label ?? "網頁"}；若未跳轉，請按右側。`}
       </span>
 
       {pending ? (
         <a
-          href={pending.url}
+          href={pending.relayUrl}
           target="_self"
           onClick={() => {
             window.localStorage.setItem(
