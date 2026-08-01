@@ -15,23 +15,32 @@ function forceSameTabMobileOpen(result: unknown) {
 
   const payload = result as {
     mobileUrl?: unknown;
-    autoOpen?: unknown;
+    url?: unknown;
   };
+  const targetUrl =
+    typeof payload.mobileUrl === "string"
+      ? payload.mobileUrl
+      : typeof payload.url === "string"
+        ? payload.url
+        : "";
 
-  if (typeof payload.mobileUrl !== "string") return result;
+  if (!targetUrl) return result;
 
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
   window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
-  window.setTimeout(() => {
-    window.location.assign(payload.mobileUrl as string);
-  }, 120);
+  try {
+    window.location.href = targetUrl;
+  } catch {
+    window.location.assign(targetUrl);
+  }
 
   return {
     ...(result as Record<string, unknown>),
     autoOpen: false,
     opened: true,
     mode: "same-tab",
+    forcedSameTab: true,
   };
 }
 
@@ -111,7 +120,11 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       args.title,
     );
   }
-  if (call.name === "open_mobile_app" || call.name === "open_youtube") {
+  if (
+    call.name === "open_mobile_app" ||
+    call.name === "open_youtube" ||
+    call.name === "open_website"
+  ) {
     return forceSameTabMobileOpen(await executeBaseTool(call));
   }
   return executeBaseTool(call);
