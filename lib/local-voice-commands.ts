@@ -2,6 +2,8 @@
 
 const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
 const NUBO_TOKEN_STANDBY_STORAGE_KEY = "nubo_token_saver_standby_v1";
+const NUBO_AUTO_RESUME_STORAGE_KEY = "nubo_voice_auto_resume_v1";
+const NUBO_EXTERNAL_RETURN_STORAGE_KEY = "nubo_external_app_return_v1";
 
 function readNumber(text: string, fallback = 10) {
   const match = text.match(/(\d{1,3})/);
@@ -29,6 +31,122 @@ async function postJson(url: string, body: Record<string, unknown> = {}) {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error ?? "操作失敗");
   return result;
+}
+
+function isPublicNuboWeb() {
+  if (typeof window === "undefined") return false;
+
+  const hostname = window.location.hostname.toLowerCase();
+  return ![
+    "localhost",
+    "127.0.0.1",
+    "::1",
+  ].includes(hostname);
+}
+
+function extractYoutubeQuery(text: string) {
+  return text
+    .replace(/nubo/gi, " ")
+    .replace(/努寶|努宝/gi, " ")
+    .replace(/幫我|請|麻煩/gi, " ")
+    .replace(/開啟|打開|啟動|前往|進入/gi, " ")
+    .replace(/youtube\s*music|youtube|yt|油管/gi, " ")
+    .replace(/網頁|網站|app|應用程式/gi, " ")
+    .replace(/播放|搜尋|找/gi, " ")
+    .replace(/[，。！？、,.!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolvePublicWebCommand(text: string) {
+  if (!isPublicNuboWeb()) return null;
+
+  const normalized = text
+    .replace(/\s+/g, "")
+    .toLowerCase();
+
+  const wantsOpen =
+    normalized.includes("開啟") ||
+    normalized.includes("打開") ||
+    normalized.includes("啟動") ||
+    normalized.includes("前往") ||
+    normalized.includes("進入") ||
+    normalized.includes("播放");
+
+  if (!wantsOpen) return null;
+
+  if (
+    normalized.includes("facebook") ||
+    normalized.includes("臉書") ||
+    normalized.includes("脸书") ||
+    /(^|[^a-z])fb([^a-z]|$)/i.test(text)
+  ) {
+    return {
+      url: "https://m.facebook.com/",
+      label: "Facebook",
+    };
+  }
+
+  if (
+    normalized.includes("instagram") ||
+    /(^|[^a-z])ig([^a-z]|$)/i.test(text)
+  ) {
+    return {
+      url: "https://www.instagram.com/",
+      label: "Instagram",
+    };
+  }
+
+  if (
+    normalized.includes("youtube") ||
+    normalized.includes("油管") ||
+    /(^|[^a-z])yt([^a-z]|$)/i.test(text)
+  ) {
+    const query = normalized.includes("播放")
+      ? extractYoutubeQuery(text)
+      : "";
+
+    return {
+      url: query
+        ? "https://www.youtube.com/results?search_query=" +
+          encodeURIComponent(query)
+        : "https://www.youtube.com/",
+      label: "YouTube",
+    };
+  }
+
+  return null;
+}
+
+function openPublicWebCommand(text: string) {
+  const destination = resolvePublicWebCommand(text);
+  if (!destination) return null;
+
+  window.localStorage.setItem(
+    NUBO_AUTO_RESUME_STORAGE_KEY,
+    "true",
+  );
+  window.localStorage.setItem(
+    NUBO_EXTERNAL_RETURN_STORAGE_KEY,
+    "true",
+  );
+
+  /*
+   * 這條路徑直接在手機目前分頁導向，不使用window.open，
+   * 因此不受Chrome彈出式視窗與語音非同步事件限制。
+   */
+  window.location.assign(destination.url);
+
+  return {
+    handled: true,
+    type: "public-web-navigation",
+    result: {
+      ok: true,
+      url: destination.url,
+      label: destination.label,
+      mode: "same-tab",
+    },
+  };
 }
 
 function isWakePhrase(text: string) {
@@ -101,6 +219,11 @@ export async function runLocalVoiceCommand(text: string) {
           "NUBO已關閉Gemini收音並進入省Token待命。",
       },
     };
+  }
+
+  const publicWebCommand = openPublicWebCommand(text);
+  if (publicWebCommand) {
+    return publicWebCommand;
   }
 
   if (isWakePhrase(normalized)) {
