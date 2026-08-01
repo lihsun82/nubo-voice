@@ -52,8 +52,8 @@ export default function HomePage() {
       </div>
 
       <footer>
-        <span>v0.5.1 System Control</span>
-        <span>NUBO 即時語音優先模式</span>
+        <span>Mobile Web Open V16</span>
+        <span>手機語音直接開啟 FB、IG、YouTube</span>
       </footer>
     </main>
   );
