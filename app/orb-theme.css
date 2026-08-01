@@ -9,12 +9,16 @@ body {
 
 .orb-wrap {
   min-height: 590px;
-  overflow: visible;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 .nubo-energy-orb {
   width: 560px;
   height: 560px;
+  flex: 0 0 560px;
   display: grid;
   place-items: center;
   filter: drop-shadow(0 0 36px rgba(86, 190, 255, 0.38)) drop-shadow(0 0 72px rgba(160, 62, 255, 0.32));
@@ -27,6 +31,20 @@ body {
 }
 
 @media (max-width: 680px) {
-  .orb-wrap { min-height: 410px; }
-  .nubo-energy-orb { transform: scale(0.7); }
+  .orb-wrap {
+    min-height: min(92vw, 430px);
+    overflow: hidden;
+    justify-content: center;
+  }
+
+  .nubo-energy-orb {
+    position: relative;
+    left: 0;
+    width: 560px;
+    height: 560px;
+    flex-basis: 560px;
+    transform: scale(calc((100vw - 48px) / 560));
+    transform-origin: top center;
+    margin-inline: auto;
+  }
 }
