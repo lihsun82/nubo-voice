@@ -137,8 +137,19 @@ function resolvePublicApp(
   return null;
 }
 
+function buildRelayUrl(
+  request: Request,
+  destination: string,
+) {
+  const relay = new URL("/open", request.url);
+  relay.searchParams.set("url", destination);
+  relay.searchParams.set("ts", String(Date.now()));
+  return relay.toString();
+}
+
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
+
   if (!parsed.success) {
     return NextResponse.json(
       { error: "缺少工具參數" },
@@ -156,7 +167,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             error:
-              "公開網頁版無法直接關閉其他App或瀏覽器視窗。",
+              "手機或公開網頁無法直接關閉其他App。",
             publicWeb: true,
           },
           { status: 409 },
@@ -184,19 +195,27 @@ export async function POST(request: Request) {
       );
 
       if (destination) {
+        const relayUrl = buildRelayUrl(
+          request,
+          destination.url,
+        );
+
         return NextResponse.json(
           {
             ok: true,
-            mobileUrl: destination.url,
+            mobileUrl: relayUrl,
+            finalUrl: destination.url,
             mobileLabel: destination.label,
             autoOpen: true,
             publicWeb: true,
             executionTarget: "client-browser",
+            navigationMode: "same-origin-redirect",
           },
           {
             headers: {
               "Cache-Control": "no-store",
-              "X-NUBO-Open-Mode": "client-browser",
+              "X-NUBO-Open-Mode":
+                "same-origin-redirect",
             },
           },
         );
@@ -205,7 +224,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "目前使用的是手機／公開網頁版。請使用手機App工具或網站工具，不要使用Windows桌面工具。",
+            "目前是手機或公開網頁模式。請使用開啟網站功能。",
           publicWeb: true,
           actualPlatform: "web-browser",
         },
