@@ -1,0 +1,36 @@
+/*
+ * NUBO_MOBILE_ORB_CENTER_V2
+ * 僅修正手機版科技球體位置；不影響桌面版、LINE、Agent 或語音核心。
+ */
+@media (max-width: 680px) {
+  .console .orb-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-inline: auto !important;
+    padding-inline: 0 !important;
+    overflow: visible !important;
+  }
+
+  .console .orb-wrap > .nubo-energy-orb {
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    flex: 0 0 auto !important;
+    width: min(86vw, 390px) !important;
+    height: min(86vw, 390px) !important;
+    max-width: calc(100vw - 40px) !important;
+    margin: 0 auto !important;
+    transform: none !important;
+  }
+
+  .console .orb-wrap > .nubo-energy-orb > canvas {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+}
