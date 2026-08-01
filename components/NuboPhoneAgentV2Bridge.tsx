@@ -9,11 +9,6 @@ import {
 } from "@/lib/nubo-phone-agent-v2";
 
 function mapUrlToPhoneAction(rawUrl: string) {
-  const direct = resolveWebsiteTargetAsPhoneApp(rawUrl);
-  if (direct) {
-    return resolveNuboPhoneActionV2(direct.app, direct.query);
-  }
-
   try {
     const parsed = new URL(rawUrl, window.location.href);
     const host = parsed.hostname.toLowerCase();
@@ -43,7 +38,12 @@ function mapUrlToPhoneAction(rawUrl: string) {
       return resolveNuboPhoneActionV2("spotify", parsed.toString());
     }
   } catch {
-    return null;
+    // App aliases such as FB, IG and LINE are handled below.
+  }
+
+  const direct = resolveWebsiteTargetAsPhoneApp(rawUrl);
+  if (direct) {
+    return resolveNuboPhoneActionV2(direct.app, direct.query);
   }
 
   return null;
