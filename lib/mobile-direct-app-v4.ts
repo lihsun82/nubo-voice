@@ -5,9 +5,12 @@ import type { FunctionCall } from "@/lib/browser-nubo-tools";
 type MobileLaunchPlan = {
   primaryUrl: string;
   fallbackUrl: string;
-  fallbackDelayMs: number;
   appLink: boolean;
+  preserveNubo: boolean;
 };
+
+const LEGACY_MOBILE_OPEN_STYLE_ID =
+  "nubo-hide-legacy-mobile-open-v5";
 
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalizedUrl = targetUrl.toLowerCase();
@@ -18,7 +21,7 @@ function getMobileOpenLabel(targetUrl: string, callName: string) {
   if (normalizedUrl.includes("facebook.com") || normalizedUrl.includes("fb.com")) {
     return "Facebook";
   }
-  if (normalizedUrl.includes("instagram.com")) {
+  if (normalizedUrl.includes("instagram.com") || normalizedUrl.startsWith("instagram:")) {
     return "Instagram";
   }
   if (normalizedUrl.includes("music.youtube.com")) {
@@ -113,30 +116,40 @@ function extractYouTubeVideoId(targetUrl: string) {
       return url.pathname.split("/").filter(Boolean)[0] ?? "";
     }
 
-    return url.searchParams.get("v") ?? "";
+    const queryId = url.searchParams.get("v") ?? "";
+    if (queryId) return queryId;
+
+    if (url.pathname.startsWith("/shorts/")) {
+      return url.pathname.split("/").filter(Boolean)[1] ?? "";
+    }
+
+    return "";
   } catch {
     return "";
   }
 }
 
-function androidIntent(
+function androidNativeIntent(
   intentPath: string,
   scheme: string,
   packageName: string,
-  fallbackUrl: string,
 ) {
   return (
     `intent://${intentPath}` +
-    `#Intent;scheme=${scheme};package=${packageName};` +
-    `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)};end`
+    `#Intent;scheme=${scheme};package=${packageName};end`
   );
+}
+
+function canonicalYouTubeUrl(videoId: string) {
+  return videoId
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&autoplay=1`
+    : "https://www.youtube.com/";
 }
 
 function buildMobileLaunchPlan(
   targetUrl: string,
   label: string,
 ): MobileLaunchPlan {
-  const fallbackUrl = targetUrl;
   const normalizedLabel = label.toLowerCase();
   const normalizedUrl = targetUrl.toLowerCase();
   const android = isAndroidMobile();
@@ -145,80 +158,60 @@ function buildMobileLaunchPlan(
   if (/^(tel|sms|mailto):/i.test(targetUrl)) {
     return {
       primaryUrl: targetUrl,
-      fallbackUrl,
-      fallbackDelayMs: 0,
+      fallbackUrl: targetUrl,
       appLink: true,
+      preserveNubo: true,
     };
   }
 
   if (normalizedLabel === "line" || normalizedUrl.includes("line.me/")) {
     return {
       primaryUrl: android
-        ? androidIntent(
+        ? androidNativeIntent(
             "nv/chat",
             "line",
             "jp.naver.line.android",
-            fallbackUrl,
           )
         : apple
           ? "line://nv/chat"
-          : fallbackUrl,
-      fallbackUrl,
-      fallbackDelayMs: android ? 2200 : apple ? 1400 : 0,
+          : targetUrl,
+      fallbackUrl: targetUrl,
       appLink: android || apple,
+      preserveNubo: true,
     };
   }
 
   if (
     normalizedLabel === "youtube music" ||
-    normalizedUrl.includes("music.youtube.com")
-  ) {
-    const videoId = extractYouTubeVideoId(targetUrl);
-    const musicPath = videoId
-      ? `music.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-      : "music.youtube.com/";
-
-    return {
-      primaryUrl: android
-        ? androidIntent(
-            musicPath,
-            "https",
-            "com.google.android.apps.youtube.music",
-            fallbackUrl,
-          )
-        : fallbackUrl,
-      fallbackUrl,
-      fallbackDelayMs: android ? 2200 : 0,
-      appLink: android,
-    };
-  }
-
-  if (
     normalizedLabel === "youtube" ||
+    normalizedUrl.includes("music.youtube.com") ||
     normalizedUrl.includes("youtube.com") ||
     normalizedUrl.includes("youtu.be")
   ) {
     const videoId = extractYouTubeVideoId(targetUrl);
-    const watchPath = videoId
-      ? `www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
-      : "www.youtube.com/";
+    const youtubeUrl = canonicalYouTubeUrl(videoId);
 
     return {
       primaryUrl: android
-        ? androidIntent(
-            watchPath,
-            "https",
-            "com.google.android.youtube",
-            fallbackUrl,
-          )
+        ? videoId
+          ? androidNativeIntent(
+              encodeURIComponent(videoId),
+              "vnd.youtube",
+              "com.google.android.youtube",
+            )
+          : androidNativeIntent(
+              "www.youtube.com/",
+              "https",
+              "com.google.android.youtube",
+            )
         : apple
           ? videoId
             ? `youtube://watch?v=${encodeURIComponent(videoId)}`
             : "youtube://"
-          : fallbackUrl,
-      fallbackUrl,
-      fallbackDelayMs: android ? 2200 : apple ? 1500 : 0,
+          : youtubeUrl,
+      fallbackUrl: youtubeUrl,
       appLink: android || apple,
+      preserveNubo: true,
     };
   }
 
@@ -229,18 +222,17 @@ function buildMobileLaunchPlan(
   ) {
     return {
       primaryUrl: android
-        ? androidIntent(
-            "www.facebook.com/",
-            "https",
+        ? androidNativeIntent(
+            `facewebmodal/f?href=${encodeURIComponent(targetUrl)}`,
+            "fb",
             "com.facebook.katana",
-            fallbackUrl,
           )
         : apple
-          ? `fb://facewebmodal/f?href=${encodeURIComponent(fallbackUrl)}`
-          : fallbackUrl,
-      fallbackUrl,
-      fallbackDelayMs: android ? 2200 : apple ? 1400 : 0,
+          ? `fb://facewebmodal/f?href=${encodeURIComponent(targetUrl)}`
+          : targetUrl,
+      fallbackUrl: targetUrl,
       appLink: android || apple,
+      preserveNubo: true,
     };
   }
 
@@ -250,27 +242,86 @@ function buildMobileLaunchPlan(
   ) {
     return {
       primaryUrl: android
-        ? androidIntent(
-            "instagram.com/",
-            "https",
+        ? androidNativeIntent(
+            "app/",
+            "instagram",
             "com.instagram.android",
-            fallbackUrl,
           )
         : apple
           ? "instagram://app"
-          : fallbackUrl,
-      fallbackUrl,
-      fallbackDelayMs: android ? 2200 : apple ? 1400 : 0,
+          : targetUrl,
+      fallbackUrl: targetUrl,
       appLink: android || apple,
+      preserveNubo: true,
     };
   }
 
   return {
     primaryUrl: targetUrl,
-    fallbackUrl,
-    fallbackDelayMs: 0,
+    fallbackUrl: targetUrl,
     appLink: false,
+    preserveNubo: true,
   };
+}
+
+function hideLegacyClickRelays() {
+  if (typeof document === "undefined") return;
+
+  if (!document.getElementById(LEGACY_MOBILE_OPEN_STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = LEGACY_MOBILE_OPEN_STYLE_ID;
+    style.textContent = `
+      #nubo-mobile-open-fallback,
+      .mobile-youtube-action,
+      [data-nubo-mobile-open-fallback],
+      [data-nubo-mobile-open-dialog] {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.getElementById("nubo-mobile-open-fallback")?.remove();
+
+  for (const element of Array.from(
+    document.querySelectorAll<HTMLElement>("body *"),
+  )) {
+    const text = element.textContent?.trim() ?? "";
+    if (
+      text === "點我開啟YouTube" ||
+      text === "點我開啟 YouTube" ||
+      /^mobile-web-open-v\d+-/i.test(text)
+    ) {
+      const dialog =
+        element.closest<HTMLElement>(
+          '[role="dialog"], [data-nubo-mobile-open-dialog], .mobile-open-dialog',
+        ) ?? element.parentElement;
+      dialog?.remove();
+    }
+  }
+}
+
+function openExternalWebsiteWithoutReplacingNubo(targetUrl: string) {
+  try {
+    const opened = window.open(
+      targetUrl,
+      "nubo_mobile_external",
+      "noopener,noreferrer",
+    );
+
+    if (opened) {
+      try {
+        opened.focus();
+      } catch {
+        // 跨來源外部分頁不可控制時忽略。
+      }
+      return true;
+    }
+  } catch {
+    // 手機瀏覽器阻擋新分頁時維持NUBO，不覆蓋主頁。
+  }
+
+  return false;
 }
 
 function launchMobileTarget(
@@ -278,42 +329,24 @@ function launchMobileTarget(
   label: string,
 ) {
   const plan = buildMobileLaunchPlan(targetUrl, label);
-  let backgrounded = false;
-  let fallbackTimer: number | null = null;
+  hideLegacyClickRelays();
 
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === "hidden") {
-      backgrounded = true;
-
-      if (fallbackTimer !== null) {
-        window.clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
+  if (plan.appLink) {
+    try {
+      /*
+       * App Scheme/Android Intent 成功時，Chrome會進入背景，
+       * NUBO頁面仍保留在原分頁與返回堆疊。
+       * 不再設定 browser_fallback_url，也不以HTTPS覆蓋NUBO。
+       */
+      window.location.href = plan.primaryUrl;
+    } catch {
+      // App啟動遭系統封鎖時，維持NUBO頁面，不顯示二次點擊視窗。
     }
-  };
 
-  document.addEventListener("visibilitychange", handleVisibilityChange, {
-    once: true,
-  });
-
-  if (
-    plan.appLink &&
-    plan.fallbackDelayMs > 0 &&
-    plan.primaryUrl !== plan.fallbackUrl
-  ) {
-    fallbackTimer = window.setTimeout(() => {
-      if (!backgrounded && document.visibilityState === "visible") {
-        window.location.assign(plan.fallbackUrl);
-      }
-    }, plan.fallbackDelayMs);
+    return plan;
   }
 
-  try {
-    window.location.assign(plan.primaryUrl);
-  } catch {
-    window.location.href = plan.fallbackUrl;
-  }
-
+  openExternalWebsiteWithoutReplacingNubo(plan.primaryUrl);
   return plan;
 }
 
@@ -349,13 +382,16 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     ...(result as Record<string, unknown>),
     autoOpen: false,
     opened: true,
-    mode: "direct-app-or-same-tab",
-    forcedSameTab: true,
+    mode: "native-app-preserve-nubo-v5",
+    forcedSameTab: false,
     appLinkAttempted: launchPlan.appLink,
     launchedUrl: launchPlan.primaryUrl,
     fallbackUrl: launchPlan.fallbackUrl,
+    preserveNubo: launchPlan.preserveNubo,
     mobileUrl: undefined,
     playerUrl: undefined,
-    mobileLabel: label,
+    mobileLabel:
+      label === "YouTube Music" ? "YouTube" : label,
+    build: "mobile-native-open-v5-20260802",
   };
 }
