@@ -67,6 +67,30 @@ if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
   throw "npm.cmd was not found. Install Node.js 22 or fix PATH first."
 }
 
+$generatedTrackedFiles = @(
+  "next-env.d.ts",
+  "tsconfig.tsbuildinfo"
+)
+
+foreach ($generatedFile in $generatedTrackedFiles) {
+  & git ls-files --error-unmatch -- $generatedFile 2>$null | Out-Null
+  $isTracked = ($LASTEXITCODE -eq 0)
+
+  if (-not $isTracked) {
+    continue
+  }
+
+  $generatedChange = (& git status --porcelain -- $generatedFile) -join [Environment]::NewLine
+  if ($LASTEXITCODE -ne 0) {
+    throw ("Unable to inspect generated file: " + $generatedFile)
+  }
+
+  if ($generatedChange.Trim()) {
+    Write-Host ("Restoring generated file before update: " + $generatedFile) -ForegroundColor DarkGray
+    Invoke-NativeChecked -Command "git" -Arguments @("restore", "--worktree", "--", $generatedFile)
+  }
+}
+
 $trackedChanges = (& git status --porcelain --untracked-files=no) -join [Environment]::NewLine
 if ($LASTEXITCODE -ne 0) {
   throw "The current folder is not a valid Git repository."
