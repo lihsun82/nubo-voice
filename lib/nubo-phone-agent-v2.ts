@@ -20,6 +20,17 @@ export type NuboPhoneLaunchResult = {
   returnUrl: string;
 };
 
+export type NuboPhoneLaunchEventDetail = {
+  app: string;
+  label: string;
+  manualUrl: string;
+  webUrl: string;
+  returnUrl: string;
+  requestedAt: number;
+};
+
+export const NUBO_PHONE_LAUNCH_EVENT = "nubo-phone-agent-v2-launch";
+
 const PHONE_AGENT_PENDING_KEY = "nubo_phone_agent_v2_pending";
 const AUTO_RESUME_KEY = "nubo_voice_auto_resume_v1";
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
@@ -61,10 +72,7 @@ function encodeIntentFallback(url: string) {
   return encodeURIComponent(url);
 }
 
-function buildHttpsIntent(
-  url: string,
-  packageName: string,
-) {
+function buildHttpsIntent(url: string, packageName: string) {
   const parsed = new URL(url);
   const hostPath = `${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
   return (
@@ -122,12 +130,19 @@ export function isNuboMobileRuntime() {
   const coarsePointer = window
     .matchMedia("(pointer: coarse) and (max-width: 1100px)")
     .matches;
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    ("standalone" in navigator &&
+      (navigator as Navigator & { standalone?: boolean }).standalone === true);
 
-  return mobileUserAgent || coarsePointer;
+  return mobileUserAgent || coarsePointer || standalone;
 }
 
 function isAndroidRuntime() {
-  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+  return (
+    typeof navigator !== "undefined" &&
+    /Android/i.test(navigator.userAgent || "")
+  );
 }
 
 export function resolveNuboPhoneActionV2(
@@ -231,7 +246,10 @@ export function resolveNuboPhoneActionV2(
       "youtube_music",
       "YouTube Music",
       fallback,
-      buildHttpsIntent(fallback, "com.google.android.apps.youtube.music"),
+      buildHttpsIntent(
+        fallback,
+        "com.google.android.apps.youtube.music",
+      ),
     );
   }
 
@@ -306,8 +324,8 @@ export function resolveWebsiteTargetAsPhoneApp(targetValue: unknown) {
     [["facebook", "fb", "臉書"], "facebook"],
     [["instagram", "ig"], "instagram"],
     [["maps", "googlemaps", "地圖", "google地圖", "導航"], "maps"],
-    [["youtube", "yt", "油管"], "youtube"],
     [["youtubemusic", "ytmusic", "youtube音樂"], "youtube_music"],
+    [["youtube", "yt", "油管"], "youtube"],
     [["gmail", "googlemail"], "gmail"],
     [["google", "chrome", "瀏覽器"], "google"],
     [["spotify", "spotify音樂"], "spotify"],
@@ -322,8 +340,12 @@ export function resolveWebsiteTargetAsPhoneApp(targetValue: unknown) {
   try {
     const url = new URL(raw);
     const host = url.hostname.toLowerCase();
-    if (host.includes("facebook.com")) return { app: "facebook", query: raw };
-    if (host.includes("instagram.com")) return { app: "instagram", query: raw };
+    if (host.includes("facebook.com")) {
+      return { app: "facebook", query: raw };
+    }
+    if (host.includes("instagram.com")) {
+      return { app: "instagram", query: raw };
+    }
     if (host.includes("music.youtube.com")) {
       return { app: "youtube_music", query: raw };
     }
@@ -333,13 +355,90 @@ export function resolveWebsiteTargetAsPhoneApp(targetValue: unknown) {
     if (host.includes("google.com") && url.pathname.includes("maps")) {
       return { app: "maps", query: raw };
     }
-    if (host.includes("mail.google.com")) return { app: "gmail", query: raw };
-    if (host.includes("open.spotify.com")) return { app: "spotify", query: raw };
+    if (host.includes("mail.google.com")) {
+      return { app: "gmail", query: raw };
+    }
+    if (host.includes("open.spotify.com")) {
+      return { app: "spotify", query: raw };
+    }
   } catch {
     return null;
   }
 
   return null;
+}
+
+function dispatchLaunchEvent(detail: NuboPhoneLaunchEventDetail) {
+  window.dispatchEvent(
+    new CustomEvent<NuboPhoneLaunchEventDetail>(
+      NUBO_PHONE_LAUNCH_EVENT,
+      { detail },
+    ),
+  );
+}
+
+function navigateTopLevelReliably(primaryUrl: string, fallbackUrl: string) {
+  const initialUrl = window.location.href;
+  const anchor = document.createElement("a");
+  anchor.href = primaryUrl;
+  anchor.target = "_self";
+  anchor.rel = "external";
+  anchor.setAttribute("aria-hidden", "true");
+  anchor.style.display = "none";
+  document.body?.appendChild(anchor);
+
+  const assign = (url: string) => {
+    try {
+      window.location.href = url;
+      return;
+    } catch {
+      // Continue to the next browser navigation API.
+    }
+
+    try {
+      window.location.assign(url);
+    } catch {
+      // The visible manual-launch card remains available.
+    }
+  };
+
+  /*
+   * Do the top-level navigation synchronously. Previous versions delayed it
+   * with setTimeout, which made Chrome/PWA treat the action as detached from
+   * the active voice interaction and could silently ignore it.
+   */
+  assign(primaryUrl);
+
+  window.setTimeout(() => {
+    if (
+      document.visibilityState !== "visible" ||
+      window.location.href !== initialUrl
+    ) {
+      anchor.remove();
+      return;
+    }
+
+    try {
+      anchor.click();
+    } catch {
+      // The visible manual-launch card remains available.
+    }
+  }, 80);
+
+  window.setTimeout(() => {
+    anchor.remove();
+
+    if (
+      document.visibilityState !== "visible" ||
+      window.location.href !== initialUrl ||
+      !fallbackUrl ||
+      fallbackUrl === primaryUrl
+    ) {
+      return;
+    }
+
+    assign(fallbackUrl);
+  }, 700);
 }
 
 export function launchNuboPhoneActionV2(
@@ -349,13 +448,6 @@ export function launchNuboPhoneActionV2(
     throw new Error("目前不是瀏覽器環境");
   }
 
-  /*
-   * 語音工具是由WebSocket非同步觸發，不具備瀏覽器認定的手指點擊事件。
-   * Android Chrome/PWA會攔截這種情境下的intent://跳轉，因此自動執行
-   * 必須使用HTTPS通用連結；系統支援App Links時仍會交給原生App，否則
-   * 至少能可靠開啟網站。畫面上的手動按鈕則保留intent://，由真實點擊
-   * 強制交給Android App。
-   */
   const automaticLaunchUrl = action.universalUrl || action.fallbackUrl;
   const manualLaunchUrl =
     isAndroidRuntime() && action.androidIntentUrl
@@ -371,29 +463,34 @@ export function launchNuboPhoneActionV2(
     JSON.stringify({
       app: action.app,
       label: action.label,
+      manualUrl: manualLaunchUrl,
+      webUrl: action.fallbackUrl,
       returnUrl: action.returnUrl,
       startedAt: new Date(now).toISOString(),
     }),
   );
+
+  dispatchLaunchEvent({
+    app: action.app,
+    label: action.label,
+    manualUrl: manualLaunchUrl,
+    webUrl: action.fallbackUrl,
+    returnUrl: action.returnUrl,
+    requestedAt: now,
+  });
 
   const launchMode: NuboPhoneLaunchResult["launchMode"] =
     isHttpUrl(automaticLaunchUrl)
       ? "universal-link"
       : "web-fallback";
 
-  if (signature !== lastLaunchSignature || now - lastLaunchAt > LAUNCH_DEDUP_MS) {
+  if (
+    signature !== lastLaunchSignature ||
+    now - lastLaunchAt > LAUNCH_DEDUP_MS
+  ) {
     lastLaunchSignature = signature;
     lastLaunchAt = now;
-
-    window.setTimeout(() => {
-      try {
-        window.location.assign(automaticLaunchUrl);
-      } catch {
-        if (automaticLaunchUrl !== action.fallbackUrl) {
-          window.location.assign(action.fallbackUrl);
-        }
-      }
-    }, 120);
+    navigateTopLevelReliably(automaticLaunchUrl, action.fallbackUrl);
   }
 
   return {
