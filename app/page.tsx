@@ -22,8 +22,8 @@ export default function HomePage() {
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Web Plan B V9 2026-08-02</span>
-        <span>科技球體置頂；網頁直接呼叫外部App，Android系統提示依裝置政策顯示</span>
+        <span>v0.5.1 Instagram Mobile Fallback V10 2026-08-02</span>
+        <span>IG先開App；未成功時自動改開Instagram網頁版，科技球體維持置頂</span>
       </footer>
     </main>
   );
