@@ -9,7 +9,7 @@ const noStoreHeaders = [
   { key: "Expires", value: "0" },
   {
     key: "X-NUBO-Build",
-    value: "public-web-navigation-v6-20260801",
+    value: "mobile-web-open-v16-20260801",
   },
 ];
 
