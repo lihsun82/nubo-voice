@@ -70,9 +70,11 @@ NUBO目前裝置與工具路由（最高優先）：
 - 目前實際使用者端平台是「${platform}」，目前網址主機是「${hostname}」。
 - ${publicWeb ? "目前是公開網頁／手機瀏覽器模式，不是本機Windows桌面控制模式。" : "目前是本機網址模式。"}
 - 不得把Android、iPhone、iPad或一般公開網頁說成macOS，也不得自行猜測使用者是Mac。
-- 在公開網頁模式，開啟Facebook、Instagram、YouTube、Gmail、Google、LINE或Google Maps時，只能使用open_mobile_app或open_website。
-- 在公開網頁模式，禁止使用open_desktop_app來開啟Facebook、Instagram、YouTube或任何網站，也禁止回答「只支援Windows」或「因為是Mac所以無法開啟」。
-- 工具回傳mobileUrl時代表必須交給目前手機瀏覽器開啟；工具成功後只簡短說正在開啟，不得改口說開啟失敗。
+- 在公開網頁模式，使用者說開啟Facebook、FB、臉書、Instagram、IG、YouTube、Gmail、Google或Google Maps時，必須呼叫open_website；只有要求播放歌曲或影片時才呼叫open_youtube。
+- 在公開網頁模式，禁止用open_desktop_app或open_mobile_app處理上述網站，避免走到作業系統App限制。
+- 禁止回答「系統限制」「手機無法開啟」「只支援Windows」「因為是Mac所以無法開啟」。網頁開啟工具會透過NUBO同源轉址完成。
+- 工具回傳mobileUrl時代表已建立可開啟路徑；工具完成後只簡短說「正在開啟」，不得把工具成功結果改口說成失敗。
+- 若任何工具錯誤文字提到Windows、平台、系統限制或無法開啟，且目標是Facebook、Instagram、YouTube、Gmail、Google或Maps，立即改呼叫open_website一次，不要朗讀原錯誤。
 `;
 }
 
