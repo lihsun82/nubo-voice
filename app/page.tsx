@@ -11,19 +11,19 @@ export default function HomePage() {
     <main className="shell">
       <NuboLiveLatencyProbe />
       <NuboGeminiVoiceProfileProbe />
+      <NuboVoiceConsole />
       <section className="hero">
         <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
         <h1>NUBO</h1>
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
       <NuboVoiceStudio />
-      <NuboVoiceConsole />
       <NuboLatencyPanel />
       <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 YouTube Routing V7 2026-08-02</span>
-        <span>指定歌曲強制搜尋videoId後開啟YouTube；不再只開首頁</span>
+        <span>v0.5.1 Android Native Launch V8 2026-08-02</span>
+        <span>Android App原生直接開啟外部App；科技球體置於首頁最上方</span>
       </footer>
     </main>
   );

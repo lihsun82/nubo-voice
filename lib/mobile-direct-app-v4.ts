@@ -9,6 +9,21 @@ type MobileLaunchPlan = {
   preserveNubo: boolean;
 };
 
+type MobileLaunchResult = MobileLaunchPlan & {
+  nativeBridge: boolean;
+};
+
+type NuboNativeBridge = {
+  openExternalApp: (targetUrl: string, label: string) => boolean;
+  isNativeApp?: () => boolean;
+};
+
+declare global {
+  interface Window {
+    NuboNative?: NuboNativeBridge;
+  }
+}
+
 const LEGACY_MOBILE_OPEN_STYLE_ID =
   "nubo-hide-legacy-mobile-open-v6";
 
@@ -335,30 +350,62 @@ function openExternalWebsiteWithoutReplacingNubo(targetUrl: string) {
   return false;
 }
 
+function tryNativeBridgeOpen(targetUrl: string, label: string) {
+  const bridge = window.NuboNative;
+
+  if (!bridge || typeof bridge.openExternalApp !== "function") {
+    return false;
+  }
+
+  try {
+    return bridge.openExternalApp(targetUrl, label) !== false;
+  } catch {
+    return false;
+  }
+}
+
 function launchMobileTarget(
   targetUrl: string,
   label: string,
-) {
+): MobileLaunchResult {
   const plan = buildMobileLaunchPlan(targetUrl, label);
   hideLegacyClickRelays();
+
+  /*
+   * NUBO Android App會注入受限原生橋接。
+   * 由原生Activity啟動YouTube、LINE、IG與Facebook，
+   * 不經Chrome，因此不會出現瀏覽器的「繼續使用App」提示。
+   */
+  if (tryNativeBridgeOpen(targetUrl, label)) {
+    return {
+      ...plan,
+      appLink: true,
+      nativeBridge: true,
+    };
+  }
 
   if (plan.appLink) {
     try {
       /*
-       * Android YouTube 使用完整 watch?v=影片ID Intent，
-       * 不再使用會只開首頁的 vnd.youtube 路徑。
-       * App切換後NUBO仍保留在Chrome背景與返回堆疊。
+       * 純網頁模式維持原有相容流程。
+       * Android瀏覽器可能依系統安全政策顯示App確認提示。
        */
       window.location.href = plan.primaryUrl;
     } catch {
       // App啟動遭系統封鎖時，維持NUBO頁面，不顯示二次點擊視窗。
     }
 
-    return plan;
+    return {
+      ...plan,
+      nativeBridge: false,
+    };
   }
 
   openExternalWebsiteWithoutReplacingNubo(plan.primaryUrl);
-  return plan;
+  return {
+    ...plan,
+    nativeBridge: false,
+  };
 }
 
 export function forceDirectMobileOpen(result: unknown, callName: string) {
@@ -393,9 +440,12 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     ...(result as Record<string, unknown>),
     autoOpen: false,
     opened: true,
-    mode: "native-youtube-watch-v6",
+    mode: launchPlan.nativeBridge
+      ? "android-native-app-v8"
+      : "mobile-web-intent-v8",
     forcedSameTab: false,
     appLinkAttempted: launchPlan.appLink,
+    nativeBridgeUsed: launchPlan.nativeBridge,
     launchedUrl: launchPlan.primaryUrl,
     fallbackUrl: launchPlan.fallbackUrl,
     preserveNubo: launchPlan.preserveNubo,
@@ -403,6 +453,6 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     playerUrl: undefined,
     mobileLabel:
       label === "YouTube Music" ? "YouTube" : label,
-    build: "mobile-youtube-watch-v6-20260802",
+    build: "android-native-launch-v8-20260802",
   };
 }
