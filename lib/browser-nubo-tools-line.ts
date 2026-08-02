@@ -29,6 +29,17 @@ function normalizeAppName(value: unknown) {
     .replace(/[\s_-]+/g, "");
 }
 
+function isMobileInlineMusicClient() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+
+  return (
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "") ||
+    window.matchMedia("(pointer: coarse) and (max-width: 1100px)").matches
+  );
+}
+
 function routeYouTubePlayback(call: FunctionCall): FunctionCall {
   const args = call.args ?? {};
 
@@ -50,17 +61,52 @@ function routeYouTubePlayback(call: FunctionCall): FunctionCall {
 
   if (!YOUTUBE_APP_NAMES.has(app) || !query) return call;
 
-  /*
-   * 語音核心偶爾會把「播放某首歌」誤選成open_mobile_app。
-   * open_mobile_app只產生YouTube搜尋頁，沒有videoId，Android因此只開首頁。
-   * 只要YouTube指令帶有歌曲/影片查詢，就強制改走YouTube Data API搜尋。
-   */
   return {
     name: "open_youtube",
     args: {
       query,
       service: "youtube",
     },
+  };
+}
+
+function playYouTubeInsideNubo(result: unknown) {
+  if (!result || typeof result !== "object") return result;
+
+  const payload = result as {
+    videoId?: unknown;
+    title?: unknown;
+    channelTitle?: unknown;
+  };
+
+  const videoId = String(payload.videoId ?? "").trim();
+  if (!videoId) return result;
+
+  const title = String(payload.title ?? "正在播放").trim() || "正在播放";
+  const channelTitle = String(payload.channelTitle ?? "").trim();
+
+  window.dispatchEvent(
+    new CustomEvent("nubo-inline-music-play", {
+      detail: {
+        videoId,
+        title,
+        channelTitle,
+        requestedAt: Date.now(),
+      },
+    }),
+  );
+
+  return {
+    ...(result as Record<string, unknown>),
+    opened: true,
+    autoOpen: false,
+    inlinePlayback: true,
+    replacedCurrentSong: true,
+    mobileUrl: undefined,
+    playerUrl: undefined,
+    mobileLabel: "NUBO音樂播放器",
+    message: `已在NUBO內切換播放：${title}`,
+    build: "mobile-inline-music-replace-v13-20260802",
   };
 }
 
@@ -151,6 +197,14 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   ) {
     const routedCall = routeYouTubePlayback(call);
     const result = await executeBaseTool(routedCall);
+
+    if (
+      routedCall.name === "open_youtube" &&
+      isMobileInlineMusicClient()
+    ) {
+      return playYouTubeInsideNubo(result);
+    }
+
     return forceDirectMobileOpen(result, routedCall.name ?? call.name);
   }
 
@@ -177,16 +231,19 @@ export const geminiSystemInstruction = `
 7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
 8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
 9. open_youtube的query必須保留使用者說出的完整歌曲、歌手或影片名稱，service固定youtube。
-10. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
-11. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
-12. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
-13. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
-14. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
-15. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
+10. 使用者在歌曲播放中又指定另一首歌時，立即再次呼叫open_youtube；最新歌曲直接替換目前歌曲，不詢問確認、不建立第二個播放器、不離開NUBO頁面。
+11. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
+12. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
+13. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
+14. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
+15. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
+16. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
 
 手機規則：
-- FB、IG、YouTube與LINE優先直接啟動已安裝App，不顯示二次點擊中介按鈕。
-- 播放YouTube時必須先取得指定影片的videoId，再啟動YouTube App。
+- FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
+- 指定歌曲或影片必須先取得videoId，然後在NUBO頁面的持續播放器播放，不得跳出YouTube或YouTube Music。
+- 新歌曲指令永遠覆蓋上一首；不得詢問是否切換，不得同時播放兩首。
+- 音樂播放期間仍維持NUBO語音聆聽；語音核心回覆時播放器會自動降低音量。
 - 工具失敗時不得聲稱已播放；應簡短說明失敗原因。
 - 網站開在使用者目前裝置，不得說只能在Windows使用。
 - 不得聲稱可任意啟動所有App，只能使用已支援的官方App Link、Universal Link或安全白名單。
@@ -213,7 +270,7 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "指定歌曲、歌手、MV、音樂或影片的唯一播放工具。先搜尋並取得videoId，再直接啟動YouTube App播放該影片；不得只開首頁或搜尋頁。service使用youtube。",
+          "指定歌曲、歌手、MV、音樂或影片的唯一播放工具。先搜尋取得videoId，再在NUBO頁面的持續播放器播放；新指令直接替換目前歌曲，不得開啟外部YouTube或YouTube Music。service使用youtube。",
       };
     }
 
