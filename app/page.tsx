@@ -20,8 +20,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Human Concierge Foundation V16.0 2026-08-03</span>
-        <span>真人形象、聆聽／思考／說話動態與 Avatar 串流插槽</span>
+        <span>v0.5.1 Human Motion V16.2 2026-08-03</span>
+        <span>自然眨眼、呼吸、頭部微動與說話嘴型動畫</span>
       </footer>
     </main>
   );
