@@ -20,8 +20,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 High Fidelity Music V14.6 2026-08-02</span>
-        <span>優先官方高品質音源；播放器使用品質安全視窗與強化音量曲線</span>
+        <span>v0.5.1 Multimedia Speaker Route V14.7 2026-08-02</span>
+        <span>麥克風改用虛擬輸出；音樂與語音優先使用手機多媒體喇叭</span>
       </footer>
     </main>
   );
