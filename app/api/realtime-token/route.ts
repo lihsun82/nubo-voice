@@ -1,16 +1,22 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+const OPENAI_VOICES = new Set(["marin", "cedar"]);
+
+export async function GET(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "伺服器尚未設定 OPENAI_API_KEY" },
+      { error: "高擬人語音服務尚未設定憑證" },
       { status: 500 },
     );
   }
+
+  const requestedVoice = new URL(request.url).searchParams.get("voice") ?? "marin";
+  const voice = OPENAI_VOICES.has(requestedVoice) ? requestedVoice : "marin";
+  const model = process.env.OPENAI_REALTIME_MODEL ?? "gpt-realtime-2";
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -23,20 +29,21 @@ export async function GET() {
     body: JSON.stringify({
       session: {
         type: "realtime",
-        model: "gpt-realtime-2",
+        model,
+        output_modalities: ["audio"],
         audio: {
-          output: { voice: "marin" },
+          output: { voice },
         },
       },
     }),
     cache: "no-store",
   });
 
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error("OpenAI realtime token error", data);
+    console.error("NUBO realtime token error", data);
     return NextResponse.json(
-      { error: "OpenAI 即時語音憑證建立失敗" },
+      { error: "高擬人即時語音憑證建立失敗" },
       { status: response.status },
     );
   }
