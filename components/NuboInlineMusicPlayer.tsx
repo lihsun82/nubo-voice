@@ -27,7 +27,7 @@ type YouTubeEvent = {
   data?: number;
 };
 
-type YouTubeWindow = Window & {
+type YouTubeApiHost = {
   YT?: {
     Player: new (
       elementId: string,
@@ -160,7 +160,7 @@ export function NuboInlineMusicPlayer() {
   useEffect(() => {
     if (!song) return;
 
-    const youtubeWindow = window as YouTubeWindow;
+    const youtubeWindow = window as unknown as YouTubeApiHost;
     let disposed = false;
     const previousReady = youtubeWindow.onYouTubeIframeAPIReady;
 
