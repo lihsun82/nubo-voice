@@ -104,6 +104,101 @@ button.nubo-mode-card {
   accent-color: #5cd8ff;
 }
 
+.nubo-voice-legend-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.nubo-voice-legend-row legend {
+  margin: 0;
+}
+
+.nubo-voice-legend-row small,
+.nubo-voice-result-count {
+  color: rgba(230, 237, 255, 0.58);
+}
+
+.nubo-voice-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.nubo-voice-filter button {
+  border: 1px solid rgba(125, 157, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(12, 17, 29, 0.82);
+  color: rgba(239, 244, 255, 0.78);
+  padding: 8px 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.nubo-voice-filter button:hover,
+.nubo-voice-filter button.active {
+  border-color: rgba(92, 216, 255, 0.8);
+  background: rgba(92, 216, 255, 0.13);
+  color: #ffffff;
+}
+
+.nubo-voice-gallery {
+  max-height: 610px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 2px 6px 8px 2px;
+  scrollbar-width: thin;
+}
+
+.nubo-voice-card {
+  min-height: 126px;
+}
+
+.nubo-voice-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.nubo-voice-badges span,
+.nubo-voice-badges em,
+.nubo-voice-badges i {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.nubo-voice-badges span {
+  background: rgba(125, 157, 255, 0.14);
+  color: #c9d6ff;
+}
+
+.nubo-voice-badges em {
+  background: rgba(255, 191, 92, 0.15);
+  color: #ffd28c;
+}
+
+.nubo-voice-badges i {
+  background: rgba(92, 216, 255, 0.13);
+  color: #8beaff;
+}
+
+.nubo-voice-result-count {
+  margin: 10px 0 0;
+  font-size: 12px;
+  text-align: right;
+}
+
 .nubo-current-profile,
 .nubo-mode-note {
   display: flex;
@@ -145,12 +240,30 @@ button.nubo-mode-card {
     grid-template-columns: 1fr;
   }
 
-  .nubo-current-profile {
+  .nubo-current-profile,
+  .nubo-voice-legend-row {
     flex-direction: column;
   }
 
   .nubo-mode-card,
   .nubo-choice-card {
     min-height: 92px;
+  }
+
+  .nubo-voice-gallery {
+    max-height: 540px;
+  }
+
+  .nubo-voice-card {
+    min-height: 118px;
+  }
+
+  .nubo-voice-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nubo-voice-filter button {
+    width: 100%;
   }
 }
