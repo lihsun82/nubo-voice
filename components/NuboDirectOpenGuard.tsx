@@ -30,15 +30,7 @@ function removeFallbackContainer(element: Element) {
   container.remove();
 }
 
-function isStartNuboButton(target: EventTarget | null) {
-  if (!(target instanceof Element)) return false;
-  const button = target.closest<HTMLButtonElement>("button");
-  if (!button || button.disabled) return false;
-  return button.textContent?.replace(/\s+/g, "").includes("啟動NUBO") === true;
-}
-
 export function NuboDirectOpenGuard() {
-  const reservedTabRef = useRef<Window | null>(null);
   const lastLaunchRef = useRef<{ url: string; at: number }>({
     url: "",
     at: 0,
@@ -49,47 +41,16 @@ export function NuboDirectOpenGuard() {
 
     const originalOpen = window.open.bind(window);
 
-    const reserveExternalTab = () => {
-      const current = reservedTabRef.current;
-      if (current && !current.closed) return current;
-
-      const reserved = originalOpen(
-        "about:blank",
-        EXTERNAL_WINDOW_NAME,
-      );
-
-      if (!reserved) return null;
-      reservedTabRef.current = reserved;
-
-      try {
-        reserved.document.title = "NUBO 外部分頁";
-        reserved.document.body.innerHTML = `
-          <main style="min-height:100vh;display:grid;place-items:center;background:#080b12;color:#d9e7ff;font-family:system-ui;text-align:center;padding:24px">
-            <div><strong>NUBO 外部分頁已就緒</strong><p style="opacity:.7">語音指令開啟的網站會顯示在此分頁。</p></div>
-          </main>
-        `;
-      } catch {
-        // about:blank 無法寫入時仍保留分頁控制權。
-      }
-
-      try {
-        reserved.blur();
-        window.focus();
-      } catch {
-        // 手機瀏覽器不允許程式切回原分頁時忽略。
-      }
-
-      return reserved;
-    };
-
     const openInExternalTab = (targetUrl: string) => {
-      let external = reservedTabRef.current;
+      let external: Window | null = null;
 
-      if (!external || external.closed) {
+      try {
         external = originalOpen(
           targetUrl,
           EXTERNAL_WINDOW_NAME,
         );
+      } catch {
+        external = null;
       }
 
       if (!external) {
@@ -101,27 +62,16 @@ export function NuboDirectOpenGuard() {
         return null;
       }
 
-      reservedTabRef.current = external;
-
       try {
-        external.location.replace(targetUrl);
+        external.opener = null;
       } catch {
-        try {
-          external.location.href = targetUrl;
-        } catch {
-          window.dispatchEvent(
-            new CustomEvent("nubo-external-tab-blocked", {
-              detail: { url: targetUrl },
-            }),
-          );
-          return null;
-        }
+        // 跨來源分頁不可修改opener時忽略。
       }
 
       try {
         external.focus();
       } catch {
-        // 跨來源分頁不能控制焦點時忽略。
+        // 手機瀏覽器不允許程式控制焦點時忽略。
       }
 
       return external;
@@ -136,13 +86,6 @@ export function NuboDirectOpenGuard() {
 
       return originalOpen(url, target, features);
     }) as typeof window.open;
-
-    const handleStartNubo = (event: Event) => {
-      if (!isStartNuboButton(event.target)) return;
-      reserveExternalTab();
-    };
-
-    document.addEventListener("click", handleStartNubo, true);
 
     const launchFallback = (anchor: HTMLAnchorElement) => {
       const targetUrl = anchor.href || anchor.getAttribute("href") || "";
@@ -192,7 +135,6 @@ export function NuboDirectOpenGuard() {
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("click", handleStartNubo, true);
       window.open = originalOpen;
     };
   }, []);
