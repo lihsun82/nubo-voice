@@ -14,7 +14,9 @@ type YouTubePlayer = {
   playVideo: () => void;
   pauseVideo: () => void;
   stopVideo: () => void;
+  mute: () => void;
   unMute: () => void;
+  isMuted?: () => boolean;
   setVolume: (volume: number) => void;
   getPlayerState: () => number;
   getIframe?: () => HTMLIFrameElement;
@@ -34,18 +36,19 @@ type YouTubeApiHost = {
     ) => YouTubePlayer;
   };
   onYouTubeIframeAPIReady?: () => void;
+  __nuboAudioPrimed?: boolean;
 };
 
 type TimerListRef = {
   current: number[];
 };
 
-const PLAYER_ELEMENT_ID = "nubo-inline-youtube-player-v14-4";
+const PLAYER_ELEMENT_ID = "nubo-inline-youtube-player-v14-5";
 const NORMAL_VOLUME = 62;
 const DUCK_VOLUME = 14;
-const AUTO_START_DELAYS = [250, 700, 1400, 2600];
-const SOUND_PROMOTION_DELAYS = [0, 80, 220, 520];
-const BACKGROUND_RETRY_DELAYS = [600, 1800, 4200];
+const AUTO_RECOVERY_DELAYS = [0, 120, 350, 800, 1500, 3000, 6000, 10000, 15000];
+const SOUND_PROMOTION_DELAYS = [0, 80, 220, 520, 1000, 2000];
+const BACKGROUND_RETRY_DELAYS = [500, 1400, 3200, 6500];
 
 function readSongDetail(event: Event): InlineSong | null {
   const detail = (
@@ -85,23 +88,25 @@ export function NuboInlineMusicPlayer() {
   const playerRef = useRef<YouTubePlayer | null>(null);
   const readyRef = useRef(false);
   const currentSongRef = useRef<InlineSong | null>(null);
+  const desiredPlayingRef = useRef(true);
   const userPausedRef = useRef(false);
+  const audioPrimedRef = useRef(false);
   const keepBackgroundPlaybackRef = useRef(false);
-  const autoStartTimersRef = useRef<number[]>([]);
+  const recoveryTimersRef = useRef<number[]>([]);
   const soundTimersRef = useRef<number[]>([]);
   const backgroundTimersRef = useRef<number[]>([]);
 
   const [song, setSong] = useState<InlineSong | null>(null);
   const [status, setStatus] = useState("正在準備播放器…");
   const [isPlaying, setIsPlaying] = useState(false);
-  const [needsUserStart, setNeedsUserStart] = useState(false);
+  const [isUserPaused, setIsUserPaused] = useState(false);
 
   const clearTimerList = (timers: TimerListRef) => {
     timers.current.forEach((timer) => window.clearTimeout(timer));
     timers.current = [];
   };
 
-  const clearAutoStartRetries = () => clearTimerList(autoStartTimersRef);
+  const clearAutoRecovery = () => clearTimerList(recoveryTimersRef);
   const clearSoundPromotion = () => clearTimerList(soundTimersRef);
   const clearBackgroundRetries = () => clearTimerList(backgroundTimersRef);
 
@@ -110,77 +115,54 @@ export function NuboInlineMusicPlayer() {
     player.unMute();
   };
 
+  const promoteSound = (player: YouTubePlayer, background = false) => {
+    if (
+      playerRef.current !== player ||
+      !currentSongRef.current ||
+      !desiredPlayingRef.current ||
+      userPausedRef.current
+    ) {
+      return;
+    }
+
+    try {
+      applyAudibleSettings(player);
+      const state = player.getPlayerState();
+      if (state !== 1 && state !== 3) player.playVideo();
+
+      setIsPlaying(state === 1 || state === 3);
+      setStatus(background ? "背景播放中" : "播放中");
+      setMediaSessionPlaybackState("playing");
+
+      if (!player.isMuted || player.isMuted() === false) {
+        clearAutoRecovery();
+      }
+    } catch {
+      // 後續自動重試會再解除靜音。
+    }
+  };
+
   const scheduleSoundPromotion = (player: YouTubePlayer) => {
     clearSoundPromotion();
 
     for (const delay of SOUND_PROMOTION_DELAYS) {
       const timer = window.setTimeout(() => {
-        if (
-          playerRef.current !== player ||
-          !currentSongRef.current ||
-          userPausedRef.current
-        ) {
-          return;
-        }
-
-        try {
-          applyAudibleSettings(player);
-        } catch {
-          // 下一輪再嘗試解除靜音。
-        }
+        promoteSound(player, document.visibilityState === "hidden");
       }, delay);
       soundTimersRef.current.push(timer);
     }
   };
 
-  const requestPlayback = ({
-    fromGesture,
-    background = false,
-  }: {
-    fromGesture: boolean;
-    background?: boolean;
-  }) => {
-    const player = playerRef.current;
-    const currentSong = currentSongRef.current;
+  const scheduleAutoRecovery = (nextSong: InlineSong) => {
+    clearAutoRecovery();
 
-    if (!player || !currentSong || !readyRef.current) {
-      setStatus("播放器仍在準備中…");
-      return;
-    }
-
-    if (fromGesture) {
-      userPausedRef.current = false;
-      keepBackgroundPlaybackRef.current = false;
-      clearBackgroundRetries();
-      setNeedsUserStart(false);
-    }
-
-    try {
-      const state = player.getPlayerState();
-
-      if (state === -1 || state === 0 || state === 5) {
-        player.loadVideoById(currentSong.videoId);
-      }
-
-      applyAudibleSettings(player);
-      player.playVideo();
-      scheduleSoundPromotion(player);
-      setStatus(background ? "背景播放中" : "正在啟動有聲播放…");
-    } catch {
-      setNeedsUserStart(true);
-      setStatus("請點一下播放音樂。");
-    }
-  };
-
-  const scheduleAutoStart = (nextSong: InlineSong) => {
-    clearAutoStartRetries();
-
-    AUTO_START_DELAYS.forEach((delay, index) => {
+    for (const delay of AUTO_RECOVERY_DELAYS) {
       const timer = window.setTimeout(() => {
         if (
           currentSongRef.current?.requestedAt !== nextSong.requestedAt ||
-          !playerRef.current ||
-          userPausedRef.current
+          !desiredPlayingRef.current ||
+          userPausedRef.current ||
+          !playerRef.current
         ) {
           return;
         }
@@ -189,66 +171,39 @@ export function NuboInlineMusicPlayer() {
 
         try {
           const state = player.getPlayerState();
+
           if (state === 1 || state === 3) {
             scheduleSoundPromotion(player);
             return;
           }
 
-          applyAudibleSettings(player);
+          if (audioPrimedRef.current) {
+            applyAudibleSettings(player);
+          } else {
+            player.mute();
+          }
+
           player.playVideo();
-
-          if (index === AUTO_START_DELAYS.length - 1) {
-            setNeedsUserStart(true);
-            setStatus("請點一下播放音樂。");
-          }
+          setStatus("正在自動啟動有聲播放…");
         } catch {
-          if (index === AUTO_START_DELAYS.length - 1) {
-            setNeedsUserStart(true);
-            setStatus("請點一下播放音樂。");
-          }
+          setStatus("正在自動恢復播放器…");
         }
       }, delay);
-      autoStartTimersRef.current.push(timer);
-    });
-  };
-
-  const scheduleBackgroundPlaybackRetries = () => {
-    clearBackgroundRetries();
-
-    for (const delay of BACKGROUND_RETRY_DELAYS) {
-      const timer = window.setTimeout(() => {
-        if (
-          !keepBackgroundPlaybackRef.current ||
-          userPausedRef.current ||
-          !currentSongRef.current ||
-          !playerRef.current
-        ) {
-          return;
-        }
-
-        try {
-          const state = playerRef.current.getPlayerState();
-          if (state !== 1 && state !== 3) {
-            playerRef.current.playVideo();
-          }
-        } catch {
-          // 背景分頁可能被系統節流，下一輪再嘗試。
-        }
-      }, delay);
-      backgroundTimersRef.current.push(timer);
+      recoveryTimersRef.current.push(timer);
     }
   };
 
-  const loadCurrentSong = (nextSong: InlineSong) => {
+  const startCurrentSongAutomatically = (nextSong: InlineSong) => {
     const player = playerRef.current;
     currentSongRef.current = nextSong;
+    desiredPlayingRef.current = true;
     userPausedRef.current = false;
     keepBackgroundPlaybackRef.current = false;
-    clearAutoStartRetries();
+    setIsPlaying(false);
+    setIsUserPaused(false);
+    clearAutoRecovery();
     clearSoundPromotion();
     clearBackgroundRetries();
-    setIsPlaying(false);
-    setNeedsUserStart(false);
 
     if (!player || !readyRef.current) {
       setStatus("正在準備播放器…");
@@ -256,58 +211,58 @@ export function NuboInlineMusicPlayer() {
     }
 
     try {
-      setStatus(`正在播放：${nextSong.title}`);
+      setStatus(`正在自動播放：${nextSong.title}`);
       player.setVolume(NORMAL_VOLUME);
-      player.unMute();
+      if (audioPrimedRef.current) player.unMute();
       player.loadVideoById(nextSong.videoId);
       player.playVideo();
-      scheduleAutoStart(nextSong);
+      scheduleAutoRecovery(nextSong);
     } catch {
-      setNeedsUserStart(true);
-      setStatus("請點一下播放音樂。");
+      scheduleAutoRecovery(nextSong);
+      setStatus("正在自動恢復播放器…");
     }
   };
 
-  const togglePlayback = () => {
+  const pausePlayback = () => {
     const player = playerRef.current;
     if (!player || !currentSongRef.current) return;
 
-    let state = -1;
+    desiredPlayingRef.current = false;
+    userPausedRef.current = true;
+    keepBackgroundPlaybackRef.current = false;
+    clearAutoRecovery();
+    clearSoundPromotion();
+    clearBackgroundRetries();
+
     try {
-      state = player.getPlayerState();
+      player.pauseVideo();
     } catch {
-      // 以 React 狀態作為備援。
+      // 狀態事件仍會同步介面。
     }
 
-    if (isPlaying || state === 1 || state === 3) {
-      userPausedRef.current = true;
-      keepBackgroundPlaybackRef.current = false;
-      clearAutoStartRetries();
-      clearSoundPromotion();
-      clearBackgroundRetries();
+    setIsPlaying(false);
+    setIsUserPaused(true);
+    setStatus("已暫停");
+    setMediaSessionPlaybackState("paused");
+  };
 
-      try {
-        player.pauseVideo();
-      } catch {
-        // 狀態事件仍會同步介面。
-      }
+  const resumePlayback = () => {
+    const currentSong = currentSongRef.current;
+    if (!currentSong) return;
 
-      setIsPlaying(false);
-      setNeedsUserStart(false);
-      setStatus("已暫停");
-      setMediaSessionPlaybackState("paused");
-      return;
-    }
-
-    requestPlayback({ fromGesture: true });
+    desiredPlayingRef.current = true;
+    userPausedRef.current = false;
+    setIsUserPaused(false);
+    startCurrentSongAutomatically(currentSong);
   };
 
   const stopPlayback = () => {
-    clearAutoStartRetries();
-    clearSoundPromotion();
-    clearBackgroundRetries();
+    desiredPlayingRef.current = false;
     userPausedRef.current = false;
     keepBackgroundPlaybackRef.current = false;
+    clearAutoRecovery();
+    clearSoundPromotion();
+    clearBackgroundRetries();
 
     try {
       playerRef.current?.stopVideo();
@@ -318,16 +273,63 @@ export function NuboInlineMusicPlayer() {
     currentSongRef.current = null;
     setSong(null);
     setIsPlaying(false);
-    setNeedsUserStart(false);
+    setIsUserPaused(false);
     setStatus("已停止");
     setMediaSessionPlaybackState("none");
   };
+
+  const scheduleBackgroundPlaybackRetries = () => {
+    clearBackgroundRetries();
+
+    for (const delay of BACKGROUND_RETRY_DELAYS) {
+      const timer = window.setTimeout(() => {
+        if (
+          !keepBackgroundPlaybackRef.current ||
+          !desiredPlayingRef.current ||
+          userPausedRef.current ||
+          !currentSongRef.current ||
+          !playerRef.current
+        ) {
+          return;
+        }
+
+        try {
+          const state = playerRef.current.getPlayerState();
+          if (state !== 1 && state !== 3) playerRef.current.playVideo();
+          promoteSound(playerRef.current, true);
+        } catch {
+          // 背景分頁可能被系統節流，下一輪再嘗試。
+        }
+      }, delay);
+      backgroundTimersRef.current.push(timer);
+    }
+  };
+
+  useEffect(() => {
+    const host = window as unknown as YouTubeApiHost;
+    audioPrimedRef.current = Boolean(host.__nuboAudioPrimed);
+
+    const onAudioPrimed = () => {
+      audioPrimedRef.current = true;
+      const player = playerRef.current;
+      const currentSong = currentSongRef.current;
+      if (player && currentSong && desiredPlayingRef.current) {
+        promoteSound(player, false);
+        scheduleAutoRecovery(currentSong);
+      }
+    };
+
+    window.addEventListener("nubo-audio-primed", onAudioPrimed);
+    return () => window.removeEventListener("nubo-audio-primed", onAudioPrimed);
+  }, []);
 
   useEffect(() => {
     const onPlay = (event: Event) => {
       const nextSong = readSongDetail(event);
       if (!nextSong) return;
       currentSongRef.current = nextSong;
+      desiredPlayingRef.current = true;
+      userPausedRef.current = false;
       setSong(nextSong);
     };
 
@@ -406,18 +408,17 @@ export function NuboInlineMusicPlayer() {
               );
               iframe?.setAttribute("tabindex", "-1");
             } catch {
-              // iframe 屬性無法修改時不影響自訂控制鍵。
+              // iframe 屬性無法修改時不影響自動控制。
             }
 
             event.target.setVolume(NORMAL_VOLUME);
             const pending = currentSongRef.current;
-            if (pending) loadCurrentSong(pending);
+            if (pending) startCurrentSongAutomatically(pending);
           },
           onStateChange: (event: YouTubeEvent) => {
             if (event.data === 1) {
-              clearAutoStartRetries();
               setIsPlaying(true);
-              setNeedsUserStart(false);
+              setIsUserPaused(false);
               setMediaSessionPlaybackState("playing");
               scheduleSoundPromotion(event.target);
               setStatus(
@@ -432,12 +433,10 @@ export function NuboInlineMusicPlayer() {
               setIsPlaying(false);
               clearSoundPromotion();
 
-              if (
-                document.visibilityState === "hidden" &&
-                keepBackgroundPlaybackRef.current &&
-                !userPausedRef.current
-              ) {
-                scheduleBackgroundPlaybackRetries();
+              if (desiredPlayingRef.current && !userPausedRef.current) {
+                const currentSong = currentSongRef.current;
+                if (currentSong) scheduleAutoRecovery(currentSong);
+                setStatus("正在自動恢復播放…");
               } else {
                 setStatus("已暫停");
                 setMediaSessionPlaybackState("paused");
@@ -451,25 +450,32 @@ export function NuboInlineMusicPlayer() {
             }
 
             if (event.data === 0) {
-              userPausedRef.current = false;
+              desiredPlayingRef.current = false;
               keepBackgroundPlaybackRef.current = false;
+              clearAutoRecovery();
               clearBackgroundRetries();
               clearSoundPromotion();
               setIsPlaying(false);
-              setNeedsUserStart(false);
               setStatus("播放完畢");
               setMediaSessionPlaybackState("none");
             }
           },
-          onAutoplayBlocked: () => {
-            clearAutoStartRetries();
+          onAutoplayBlocked: (event: YouTubeEvent) => {
             setIsPlaying(false);
-            setNeedsUserStart(true);
-            setStatus("請點一下播放音樂。");
+            setStatus("正在自動解除播放限制…");
+
+            try {
+              event.target.mute();
+              event.target.playVideo();
+            } catch {
+              // 自動重試會繼續處理。
+            }
+
+            const currentSong = currentSongRef.current;
+            if (currentSong) scheduleAutoRecovery(currentSong);
           },
           onError: () => {
             setIsPlaying(false);
-            setNeedsUserStart(true);
             setStatus("這支影片無法內嵌播放，請重新指定歌曲。");
           },
         },
@@ -498,7 +504,7 @@ export function NuboInlineMusicPlayer() {
 
     return () => {
       disposed = true;
-      clearAutoStartRetries();
+      clearAutoRecovery();
       clearSoundPromotion();
       clearBackgroundRetries();
       readyRef.current = false;
@@ -509,7 +515,7 @@ export function NuboInlineMusicPlayer() {
   }, [Boolean(song)]);
 
   useEffect(() => {
-    if (song) loadCurrentSong(song);
+    if (song) startCurrentSongAutomatically(song);
   }, [song?.videoId, song?.requestedAt]);
 
   useEffect(() => {
@@ -523,6 +529,9 @@ export function NuboInlineMusicPlayer() {
           player.setVolume(DUCK_VOLUME);
         } else if (phase === "listening" || phase === "idle") {
           player.setVolume(NORMAL_VOLUME);
+          if (desiredPlayingRef.current && !userPausedRef.current) {
+            scheduleSoundPromotion(player);
+          }
         }
       } catch {
         // 播放器切換瞬間忽略音量控制錯誤。
@@ -531,17 +540,17 @@ export function NuboInlineMusicPlayer() {
 
     const onBeforeExternalTab = () => {
       const player = playerRef.current;
-      if (!player || !currentSongRef.current || userPausedRef.current) return;
-
-      try {
-        const state = player.getPlayerState();
-        if (state !== 1 && state !== 3) return;
-      } catch {
+      if (
+        !player ||
+        !currentSongRef.current ||
+        !desiredPlayingRef.current ||
+        userPausedRef.current
+      ) {
         return;
       }
 
       keepBackgroundPlaybackRef.current = true;
-      setStatus("背景播放中");
+      promoteSound(player, true);
       scheduleBackgroundPlaybackRetries();
     };
 
@@ -551,28 +560,25 @@ export function NuboInlineMusicPlayer() {
     };
 
     const onVisibilityChange = () => {
-      if (!currentSongRef.current || !playerRef.current) return;
+      const player = playerRef.current;
+      const currentSong = currentSongRef.current;
+      if (!player || !currentSong) return;
 
       if (document.visibilityState === "hidden") {
-        if (
-          keepBackgroundPlaybackRef.current &&
-          !userPausedRef.current
-        ) {
+        if (desiredPlayingRef.current && !userPausedRef.current) {
+          keepBackgroundPlaybackRef.current = true;
           scheduleBackgroundPlaybackRetries();
         }
         return;
       }
 
       clearBackgroundRetries();
-
-      if (
-        keepBackgroundPlaybackRef.current &&
-        !userPausedRef.current
-      ) {
-        requestPlayback({ fromGesture: false });
-      }
-
       keepBackgroundPlaybackRef.current = false;
+
+      if (desiredPlayingRef.current && !userPausedRef.current) {
+        promoteSound(player, false);
+        scheduleAutoRecovery(currentSong);
+      }
     };
 
     window.addEventListener("nubo-voice-phase", onVoicePhase);
@@ -592,10 +598,7 @@ export function NuboInlineMusicPlayer() {
   if (!song) return null;
 
   return (
-    <aside
-      className={`nubo-inline-music${needsUserStart ? " needs-user-start" : ""}`}
-      aria-live="polite"
-    >
+    <aside className="nubo-inline-music" aria-live="polite">
       <div className="nubo-inline-music-frame" aria-hidden="true">
         <div id={PLAYER_ELEMENT_ID} />
       </div>
@@ -603,18 +606,38 @@ export function NuboInlineMusicPlayer() {
       <div className="nubo-inline-music-info">
         <strong>{song.title}</strong>
         {song.channelTitle ? <span>{song.channelTitle}</span> : null}
-        <small>{status}｜說出另一首歌會直接替換</small>
+        <small>{status}｜新歌曲會自動替換並播放</small>
       </div>
 
       <div className="nubo-inline-music-controls">
-        <button
-          type="button"
-          className="nubo-inline-music-toggle"
-          onClick={togglePlayback}
-          aria-label={isPlaying ? "暫停音樂" : "播放音樂"}
-        >
-          {isPlaying ? "暫停" : needsUserStart ? "播放音樂" : "播放"}
-        </button>
+        {isPlaying ? (
+          <button
+            type="button"
+            className="nubo-inline-music-toggle"
+            onClick={pausePlayback}
+            aria-label="暫停音樂"
+          >
+            暫停
+          </button>
+        ) : isUserPaused ? (
+          <button
+            type="button"
+            className="nubo-inline-music-toggle"
+            onClick={resumePlayback}
+            aria-label="繼續音樂"
+          >
+            繼續
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="nubo-inline-music-toggle"
+            disabled
+            aria-label="音樂正在自動啟動"
+          >
+            自動播放中
+          </button>
+        )}
         <button
           type="button"
           className="nubo-inline-music-stop"
