@@ -44,6 +44,12 @@ export function NuboDirectOpenGuard() {
     const openInExternalTab = (targetUrl: string) => {
       let external: Window | null = null;
 
+      window.dispatchEvent(
+        new CustomEvent("nubo-before-external-tab", {
+          detail: { url: targetUrl },
+        }),
+      );
+
       try {
         external = originalOpen(
           targetUrl,
