@@ -1,0 +1,156 @@
+.nubo-voice-settings {
+  display: grid;
+  gap: 20px;
+}
+
+.nubo-voice-settings .nubo-panel-head {
+  align-items: flex-start;
+}
+
+.nubo-voice-settings .nubo-panel-head p {
+  margin: 6px 0 0;
+  color: rgba(230, 237, 255, 0.68);
+  line-height: 1.55;
+}
+
+.nubo-mode-presets,
+.nubo-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.nubo-choice-grid.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.nubo-mode-card,
+.nubo-choice-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  border: 1px solid rgba(125, 157, 255, 0.2);
+  border-radius: 18px;
+  background: rgba(13, 18, 31, 0.78);
+  color: #f7f9ff;
+  padding: 16px;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+button.nubo-mode-card {
+  cursor: pointer;
+  font: inherit;
+}
+
+.nubo-mode-card:hover,
+.nubo-choice-card:hover,
+.nubo-mode-card.active,
+.nubo-choice-card.active {
+  border-color: rgba(92, 216, 255, 0.78);
+  background: linear-gradient(145deg, rgba(27, 44, 75, 0.94), rgba(18, 24, 42, 0.96));
+}
+
+.nubo-mode-card:active {
+  transform: scale(0.985);
+}
+
+.nubo-mode-card strong,
+.nubo-choice-card strong {
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.nubo-mode-card span {
+  color: #7ce7ff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.nubo-mode-card small,
+.nubo-choice-card small {
+  color: rgba(230, 237, 255, 0.66);
+  line-height: 1.5;
+}
+
+.nubo-voice-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.nubo-voice-fieldset legend {
+  margin-bottom: 10px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.nubo-choice-card {
+  cursor: pointer;
+  padding-left: 46px;
+}
+
+.nubo-choice-card input {
+  position: absolute;
+  top: 17px;
+  left: 17px;
+  width: 18px;
+  height: 18px;
+  accent-color: #5cd8ff;
+}
+
+.nubo-current-profile,
+.nubo-mode-note {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(92, 216, 255, 0.08);
+  border: 1px solid rgba(92, 216, 255, 0.16);
+}
+
+.nubo-current-profile div {
+  display: grid;
+  gap: 4px;
+}
+
+.nubo-current-profile span {
+  color: #8beaff;
+}
+
+.nubo-current-profile small,
+.nubo-mode-note p {
+  margin: 0;
+  color: rgba(230, 237, 255, 0.68);
+  line-height: 1.5;
+}
+
+.nubo-mode-note {
+  display: grid;
+  gap: 6px;
+  background: rgba(255, 191, 92, 0.06);
+  border-color: rgba(255, 191, 92, 0.16);
+}
+
+@media (max-width: 760px) {
+  .nubo-mode-presets,
+  .nubo-choice-grid,
+  .nubo-choice-grid.two-column {
+    grid-template-columns: 1fr;
+  }
+
+  .nubo-current-profile {
+    flex-direction: column;
+  }
+
+  .nubo-mode-card,
+  .nubo-choice-card {
+    min-height: 92px;
+  }
+}

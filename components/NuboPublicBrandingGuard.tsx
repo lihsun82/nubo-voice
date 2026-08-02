@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 const PUBLIC_IDENTITY = "LEO開發的LLM語言模型";
+const SETTINGS_SELECTOR = "[data-nubo-voice-settings='true']";
 
 const SENSITIVE_PATTERNS = [
   /Gemini(?:\s+Live)?/gi,
@@ -34,7 +35,16 @@ function sanitizePublicText(value: string) {
   );
 }
 
+function isVoiceSettingsNode(node: Node) {
+  if (node instanceof Element) {
+    return node.matches(SETTINGS_SELECTOR) || Boolean(node.closest(SETTINGS_SELECTOR));
+  }
+  return Boolean(node.parentElement?.closest(SETTINGS_SELECTOR));
+}
+
 function sanitizeNode(root: Node) {
+  if (isVoiceSettingsNode(root)) return;
+
   if (root.nodeType === Node.TEXT_NODE) {
     const current = root.nodeValue ?? "";
     const sanitized = sanitizePublicText(current);
@@ -49,7 +59,10 @@ function sanitizeNode(root: Node) {
   let node = walker.nextNode();
   while (node) {
     const parent = node.parentElement;
-    if (!parent?.matches("script, style, textarea, input, code, pre")) {
+    if (
+      !parent?.matches("script, style, textarea, input, code, pre") &&
+      !parent?.closest(SETTINGS_SELECTOR)
+    ) {
       const current = node.nodeValue ?? "";
       const sanitized = sanitizePublicText(current);
       if (sanitized !== current) node.nodeValue = sanitized;
