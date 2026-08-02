@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     default: "NUBO 智能語音",
     template: "%s | NUBO",
   },
-  description: "NUBO 個人 AI 語音與自動化控制中心",
+  description: "NUBO 智慧語音與自動化控制中心",
   applicationName: "NUBO",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
