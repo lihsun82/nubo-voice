@@ -1,4 +1,5 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
+import { NuboAudioPrimeGuard } from "@/components/NuboAudioPrimeGuard";
 import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfileProbe";
 import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
@@ -6,6 +7,7 @@ import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 export default function HomePage() {
   return (
     <main className="shell">
+      <NuboAudioPrimeGuard />
       <NuboGeminiVoiceProfileProbe />
       <NuboVoiceConsole />
       <NuboInlineMusicPlayer />
@@ -16,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Reliable Music Controls V14.4 2026-08-02</span>
-        <span>自動嘗試有聲播放；NUBO播放鍵直接控制聲音、播放與暫停</span>
+        <span>v0.5.1 Zero-Touch Audio V14.5 2026-08-02</span>
+        <span>啟動NUBO時預先開通音訊；語音點歌後自動有聲播放與恢復</span>
       </footer>
     </main>
   );
