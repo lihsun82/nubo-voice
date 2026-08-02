@@ -1,38 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { NuboNotice, NuboTask, TaskRun } from "@/lib/task-types";
+import type { NuboTask, TaskRun } from "@/lib/task-types";
 
 type TaskPayload = {
   tasks: NuboTask[];
   runs: TaskRun[];
-  inbox: NuboNotice[];
 };
 
-const emptyPayload: TaskPayload = { tasks: [], runs: [], inbox: [] };
+const emptyPayload: TaskPayload = { tasks: [], runs: [] };
 
 export function TaskCenter() {
   const [data, setData] = useState<TaskPayload>(emptyPayload);
   const [status, setStatus] = useState("載入任務中");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] =
-    useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const activeIds = useRef(new Set<string>());
-  const seenInbox = useRef(new Set<string>());
 
   const load = useCallback(async () => {
     const response = await fetch("/api/tasks", { cache: "no-store" });
     if (!response.ok) throw new Error("無法讀取任務中心");
     const payload = (await response.json()) as TaskPayload;
-    setData(payload);
-    setStatus(`已載入 ${payload.tasks.length} 個任務`);
-
-    for (const item of payload.inbox) {
-      if (seenInbox.current.has(item.id)) continue;
-      seenInbox.current.add(item.id);
-      if (item.read || Notification.permission !== "granted") continue;
-      new Notification(item.title, { body: item.message.slice(0, 180) });
-    }
+    setData({
+      tasks: Array.isArray(payload.tasks) ? payload.tasks : [],
+      runs: Array.isArray(payload.runs) ? payload.runs : [],
+    });
+    setStatus(`已載入 ${payload.tasks?.length ?? 0} 個任務`);
     return payload;
   }, []);
 
@@ -92,19 +85,12 @@ export function TaskCenter() {
     return () => window.clearInterval(timer);
   }, [checkDue]);
 
-  // NUBO_RUN_HISTORY_AUTO_COLLAPSE
   useEffect(() => {
-    if (!historyOpen) {
-      return;
-    }
-
-    const timer =
-      window.setTimeout(() => {
-        setHistoryOpen(false);
-      }, 12_000);
-
-    return () =>
-      window.clearTimeout(timer);
+    if (!historyOpen) return;
+    const timer = window.setTimeout(() => {
+      setHistoryOpen(false);
+    }, 12_000);
+    return () => window.clearTimeout(timer);
   }, [historyOpen]);
 
   const enableBrowserNotice = async () => {
@@ -162,67 +148,29 @@ export function TaskCenter() {
             ))
           )}
         </div>
-
-        <div className="task-panel">
-          <h3>NUBO 收件匣</h3>
-          {data.inbox.length === 0 ? (
-            <p className="empty">完成的提醒、報告與條件命中結果會出現在這裡。</p>
-          ) : (
-            data.inbox.map((item) => (
-              <article className="inbox-card" key={item.id}>
-                <strong>{item.title}</strong>
-                <p>{item.message}</p>
-                <small>{new Date(item.createdAt).toLocaleString("zh-TW")}</small>
-              </article>
-            ))
-          )}
-        </div>
       </div>
 
       <details
         className="run-history"
         open={historyOpen}
-        onToggle={(event) =>
-          setHistoryOpen(
-            event.currentTarget.open,
-          )
-        }
+        onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
       >
         <summary>
-          最近執行紀錄
-          （{data.runs.length}）
+          最近執行紀錄（{data.runs.length}）
         </summary>
 
         {historyOpen
-          ? data.runs
-              .slice(0, 10)
-              .map((run) => (
-                <div
-                  key={run.id}
-                  className="run-row"
-                >
-                  <span>
-                    {run.status}
-                  </span>
-
-                  <span>
-                    {new Date(
-                      run.startedAt,
-                    ).toLocaleString(
-                      "zh-TW",
-                    )}
-                  </span>
-
-                  <span>
-                    {run.error ??
-                      run.output?.slice(
-                        0,
-                        100,
-                      ) ??
-                      "處理中"}
-                  </span>
-                </div>
-              ))
+          ? data.runs.slice(0, 10).map((run) => (
+              <div key={run.id} className="run-row">
+                <span>{run.status}</span>
+                <span>
+                  {new Date(run.startedAt).toLocaleString("zh-TW")}
+                </span>
+                <span>
+                  {run.error ?? run.output?.slice(0, 100) ?? "處理中"}
+                </span>
+              </div>
+            ))
           : null}
       </details>
     </section>
