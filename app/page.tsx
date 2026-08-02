@@ -18,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Voice Modes V15 2026-08-02</span>
-        <span>三種快速模式、雙語音核心、聲音與個性可自訂</span>
+        <span>v0.5.1 Voice Gallery V15.1 2026-08-02</span>
+        <span>男聲、女聲、中性聲線與高擬真聲音可自由選擇</span>
       </footer>
     </main>
   );
