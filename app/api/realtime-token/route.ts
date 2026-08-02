@@ -3,7 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENAI_VOICES = new Set(["marin", "cedar"]);
+const OPENAI_VOICES = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+]);
 
 export async function GET(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
