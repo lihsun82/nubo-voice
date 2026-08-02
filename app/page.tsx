@@ -1,15 +1,10 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfileProbe";
-import { NuboLatencyPanel } from "@/components/NuboLatencyPanel";
-import { NuboLiveLatencyPanel } from "@/components/NuboLiveLatencyPanel";
-import { NuboLiveLatencyProbe } from "@/components/NuboLiveLatencyProbe";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
-import { NuboVoiceStudio } from "@/components/NuboVoiceStudio";
 
 export default function HomePage() {
   return (
     <main className="shell">
-      <NuboLiveLatencyProbe />
       <NuboGeminiVoiceProfileProbe />
       <NuboVoiceConsole />
       <section className="hero">
@@ -17,13 +12,10 @@ export default function HomePage() {
         <h1>NUBO</h1>
         <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
       </section>
-      <NuboVoiceStudio />
-      <NuboLatencyPanel />
-      <NuboLiveLatencyPanel />
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Instagram Mobile Fallback V10 2026-08-02</span>
-        <span>IG先開App；未成功時自動改開Instagram網頁版，科技球體維持置頂</span>
+        <span>v0.5.1 Mobile Privacy & Scroll V11 2026-08-02</span>
+        <span>單指滑動、介面精簡與核心資訊保護</span>
       </footer>
     </main>
   );
