@@ -3,7 +3,7 @@
   z-index: 920;
   left: 50%;
   bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px));
-  width: min(680px, calc(100% - 24px));
+  width: min(720px, calc(100% - 24px));
   transform: translateX(-50%);
   display: grid;
   grid-template-columns: 144px minmax(0, 1fr) auto;
@@ -15,14 +15,20 @@
   background: rgba(7, 9, 18, 0.96);
   box-shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(22px);
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
 }
 
 .nubo-inline-music-frame {
+  position: relative;
+  z-index: 1;
   width: 144px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 12px;
   background: #000;
+  pointer-events: none !important;
+  touch-action: none !important;
 }
 
 .nubo-inline-music-frame > div,
@@ -31,6 +37,8 @@
   width: 100% !important;
   height: 100% !important;
   border: 0;
+  pointer-events: none !important;
+  touch-action: none !important;
 }
 
 .nubo-inline-music-info {
@@ -62,26 +70,71 @@
   font-size: 11px;
 }
 
+.nubo-inline-music-controls {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  min-width: 92px;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+}
+
+.nubo-inline-music-toggle,
 .nubo-inline-music-stop {
+  position: relative;
+  z-index: 4;
   min-height: 42px;
   padding: 9px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.08);
   color: #fff;
   font: inherit;
+  font-weight: 700;
   cursor: pointer;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: rgba(255, 255, 255, 0.16);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nubo-inline-music-toggle {
+  border: 1px solid rgba(116, 190, 255, 0.72);
+  background: linear-gradient(135deg, rgba(43, 155, 220, 0.95), rgba(91, 70, 205, 0.96));
+  box-shadow: 0 8px 24px rgba(69, 101, 255, 0.28);
+}
+
+.nubo-inline-music-stop {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nubo-inline-music.needs-user-start .nubo-inline-music-toggle {
+  animation: nubo-music-start-pulse 1.15s ease-in-out infinite;
+}
+
+@keyframes nubo-music-start-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 8px 24px rgba(69, 101, 255, 0.28);
+  }
+  50% {
+    transform: scale(1.035);
+    box-shadow: 0 10px 32px rgba(92, 134, 255, 0.52);
+  }
 }
 
 body.nubo-inline-music-active .shell {
-  padding-bottom: max(158px, calc(env(safe-area-inset-bottom) + 146px));
+  padding-bottom: max(174px, calc(env(safe-area-inset-bottom) + 162px));
 }
 
 @media (max-width: 680px) {
   .nubo-inline-music {
     bottom: max(8px, calc(env(safe-area-inset-bottom) + 6px));
     width: calc(100% - 16px);
-    grid-template-columns: 104px minmax(0, 1fr) auto;
+    grid-template-columns: 104px minmax(0, 1fr) 96px;
     gap: 9px;
     padding: 8px;
     border-radius: 16px;
@@ -101,23 +154,55 @@ body.nubo-inline-music-active .shell {
     font-size: 10px;
   }
 
+  .nubo-inline-music-controls {
+    min-width: 0;
+    width: 96px;
+  }
+
+  .nubo-inline-music-toggle,
   .nubo-inline-music-stop {
-    min-height: 38px;
-    padding: 8px 10px;
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 7px;
     font-size: 12px;
   }
 
   body.nubo-inline-music-active .shell {
-    padding-bottom: max(126px, calc(env(safe-area-inset-bottom) + 116px));
+    padding-bottom: max(150px, calc(env(safe-area-inset-bottom) + 140px));
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 430px) {
   .nubo-inline-music {
-    grid-template-columns: 88px minmax(0, 1fr) auto;
+    grid-template-columns: 88px minmax(0, 1fr) 88px;
+    gap: 7px;
   }
 
   .nubo-inline-music-frame {
     width: 88px;
+  }
+
+  .nubo-inline-music-controls {
+    width: 88px;
+  }
+
+  .nubo-inline-music-toggle,
+  .nubo-inline-music-stop {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  .nubo-inline-music {
+    grid-template-columns: 76px minmax(0, 1fr) 82px;
+  }
+
+  .nubo-inline-music-frame {
+    width: 76px;
+  }
+
+  .nubo-inline-music-controls {
+    width: 82px;
   }
 }

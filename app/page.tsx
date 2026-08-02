@@ -16,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Audible Music Fix V14.3 2026-08-02</span>
-        <span>音樂進入播放後自動解除靜音；播放鍵不再被背景控制中止</span>
+        <span>v0.5.1 Reliable Music Controls V14.4 2026-08-02</span>
+        <span>自動嘗試有聲播放；NUBO播放鍵直接控制聲音、播放與暫停</span>
       </footer>
     </main>
   );
