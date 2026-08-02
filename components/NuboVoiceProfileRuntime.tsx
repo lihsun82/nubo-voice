@@ -73,20 +73,17 @@ export function NuboVoiceProfileRuntime() {
     WebSocket.prototype.send = function patchedNuboVoiceSend(
       data: string | ArrayBufferLike | Blob | ArrayBufferView,
     ) {
-      if (
+      const outgoing =
         typeof data === "string" &&
         this.url.includes("generativelanguage.googleapis.com")
-      ) {
-        return originalSend.call(this, configureGeminiSetupPayload(data));
-      }
+          ? configureGeminiSetupPayload(data)
+          : data;
 
-      return originalSend.call(this, data);
+      return Reflect.apply(originalSend, this, [outgoing]);
     };
 
     return () => {
-      if (WebSocket.prototype.send !== originalSend) {
-        WebSocket.prototype.send = originalSend;
-      }
+      WebSocket.prototype.send = originalSend;
     };
   }, []);
 
