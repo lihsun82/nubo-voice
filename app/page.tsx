@@ -16,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 External Web Tab V14 2026-08-02</span>
-        <span>IG、FB、地圖與一般網站使用外部分頁；NUBO主頁持續保留</span>
+        <span>v0.5.1 External Web Tab V14.1 2026-08-02</span>
+        <span>啟動語音不開空白頁；外部網站只在收到指令時另開分頁</span>
       </footer>
     </main>
   );
