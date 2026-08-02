@@ -1,0 +1,58 @@
+/* NUBO_MOBILE_PRIVACY_SCROLL_V11 */
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  height: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  position: static !important;
+}
+
+.shell,
+.console,
+.orb-wrap,
+.voice-transcript,
+.task-center,
+.integration-center {
+  touch-action: pan-y !important;
+}
+
+.nubo-energy-orb,
+.nubo-energy-orb canvas {
+  pointer-events: none !important;
+  touch-action: pan-y !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* Keep the three capability descriptions, but remove their public headings. */
+.capability > b {
+  display: none !important;
+}
+
+.capability > small {
+  display: block;
+  margin: 0;
+}
+
+@media (max-width: 680px) {
+  .shell {
+    overflow: visible !important;
+  }
+
+  .console {
+    overflow: visible;
+  }
+
+  .orb-wrap {
+    contain: layout paint;
+  }
+}
