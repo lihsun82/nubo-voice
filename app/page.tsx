@@ -16,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 External Web Tab V14.1 2026-08-02</span>
-        <span>啟動語音不開空白頁；外部網站只在收到指令時另開分頁</span>
+        <span>v0.5.1 Background Music V14.2 2026-08-02</span>
+        <span>開啟外部網頁時維持NUBO音樂播放；返回後自動續播</span>
       </footer>
     </main>
   );
