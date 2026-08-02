@@ -10,6 +10,7 @@ import "./orb-theme.css";
 import "./mobile-pwa.css";
 import "./mobile-privacy-v11.css";
 import "./inline-music-v13.css";
+import "./inline-music-quality-v14-6.css";
 
 export const metadata: Metadata = {
   title: {
