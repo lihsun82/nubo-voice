@@ -1,3 +1,8 @@
+import {
+  disableHardwareOutputForCaptureContext,
+  preferMultimediaAudioContext,
+} from "@/lib/browser-speaker-output";
+
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -57,6 +62,7 @@ export class MicrophonePcmStream {
   private source: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
   private mute: GainNode | null = null;
+  private captureDestination: MediaStreamAudioDestinationNode | null = null;
   private foregroundListenersAttached = false;
 
   private readonly handleForeground = () => {
@@ -91,16 +97,27 @@ export class MicrophonePcmStream {
         sampleRate: { ideal: 16000 },
       },
     });
+
     this.context = new AudioContext({ latencyHint: "interactive" });
+
+    /*
+     * The microphone graph is capture-only. On Android, connecting its silent
+     * tail to context.destination can keep Chrome in communication/call output
+     * mode and route unrelated music to the earpiece. Prefer a no-output sink
+     * when supported and always terminate the graph at a virtual MediaStream
+     * destination rather than the phone hardware output.
+     */
+    await disableHardwareOutputForCaptureContext(this.context);
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
 
     /*
-     * 2048在常見48kHz裝置約43ms，符合Gemini Live建議的小音訊區塊，
+     * 2048在常見48kHz裝置約43ms，符合即時語音的小音訊區塊，
      * 同時避免手機累積一秒後才傳送造成明顯延遲。
      */
     this.processor = this.context.createScriptProcessor(2048, 1, 1);
     this.mute = this.context.createGain();
+    this.captureDestination = this.context.createMediaStreamDestination();
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
@@ -111,7 +128,7 @@ export class MicrophonePcmStream {
     };
     this.source.connect(this.processor);
     this.processor.connect(this.mute);
-    this.mute.connect(this.context.destination);
+    this.mute.connect(this.captureDestination);
     this.attachForegroundListeners();
   }
 
@@ -121,6 +138,8 @@ export class MicrophonePcmStream {
     for (const track of this.stream.getAudioTracks()) {
       track.enabled = true;
     }
+
+    await disableHardwareOutputForCaptureContext(this.context);
 
     if (this.context.state === "suspended") {
       await this.context.resume().catch(() => undefined);
@@ -135,6 +154,7 @@ export class MicrophonePcmStream {
     this.processor?.disconnect();
     this.source?.disconnect();
     this.mute?.disconnect();
+    this.captureDestination?.disconnect();
     this.stream?.getTracks().forEach((track) => track.stop());
     await this.context?.close().catch(() => undefined);
     this.stream = null;
@@ -142,6 +162,7 @@ export class MicrophonePcmStream {
     this.source = null;
     this.processor = null;
     this.mute = null;
+    this.captureDestination = null;
   }
 }
 
@@ -172,15 +193,18 @@ export class PcmPlaybackQueue {
 
   private async ensureContext() {
     if (!this.context) {
-      this.context = new AudioContext({ latencyHint: "interactive" });
+      this.context = new AudioContext({ latencyHint: "playback" });
       this.attachForegroundListeners();
     }
+
+    await preferMultimediaAudioContext(this.context);
     if (this.context.state === "suspended") await this.context.resume();
     return this.context;
   }
 
   async resume() {
     if (!this.context) return false;
+    await preferMultimediaAudioContext(this.context);
     if (this.context.state === "suspended") {
       await this.context.resume().catch(() => undefined);
     }
