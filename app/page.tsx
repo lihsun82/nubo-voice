@@ -19,7 +19,7 @@ export default function HomePage() {
       <DeferredDashboardCenters />
       <footer>
         <span>v0.5.1 Voice Modes V15 2026-08-02</span>
-        <span>三種快速模式、雙語音引擎、九種 Gemini 聲音與 Marin／Cedar</span>
+        <span>三種快速模式、雙語音核心、聲音與個性可自訂</span>
       </footer>
     </main>
   );
