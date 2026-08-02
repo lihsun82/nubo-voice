@@ -10,10 +10,10 @@ type GmailStatus = {
 };
 
 type ProviderStatus = {
-  workChain: string[];
-  researchChain: string[];
-  voiceProvider: string;
-  providers: Array<{ name: string; configured: boolean; model: string }>;
+  ready?: boolean;
+  configuredCoreCount?: number;
+  publicIdentity?: string;
+  providers?: Array<{ configured?: boolean }>;
 };
 
 type YouTubeStatus = {
@@ -158,7 +158,7 @@ export function IntegrationCenter() {
             測試寄給我的Google信箱
           </button>
           {!gmail?.configured ? (
-            <small>請先在.env.local設定GOOGLE_CLIENT_ID與GOOGLE_CLIENT_SECRET。</small>
+            <small>請先完成Google帳號整合設定。</small>
           ) : null}
         </article>
 
@@ -166,11 +166,11 @@ export function IntegrationCenter() {
           <div className="integration-card-top">
             <strong>YouTube／YouTube Music</strong>
             <span className={`badge ${youtube?.configured ? "active" : "paused"}`}>
-              {youtube?.configured ? "可自動播放" : "待設定API Key"}
+              {youtube?.configured ? "可自動播放" : "待設定播放服務"}
             </span>
           </div>
           <p>
-            NUBO會搜尋可嵌入影片，在播放器就緒後主動解除靜音、播放並自動重試。
+            NUBO會搜尋可播放影片，在播放器就緒後主動解除靜音、播放並自動重試。
           </p>
           <button
             className="secondary"
@@ -179,21 +179,17 @@ export function IntegrationCenter() {
           >
             測試自動播放
           </button>
-          {!youtube?.configured ? (
-            <small>請在.env.local設定YOUTUBE_API_KEY並重新啟動NUBO。</small>
-          ) : (
-            <small>
-              {youtube.autoplayMode
-                ? "Windows專用自動播放模式已啟用。"
-                : "目前平台可能需要第一次手動按播放。"}
-            </small>
-          )}
+          <small>
+            {youtube?.autoplayMode
+              ? "自動播放模式已啟用。"
+              : "目前裝置可能需要第一次手動按播放。"}
+          </small>
         </article>
 
         <article className="integration-card">
           <div className="integration-card-top">
             <strong>網頁開啟</strong>
-            <span className="badge active">Windows可用</span>
+            <span className="badge active">可用</span>
           </div>
           <p>可開啟Facebook、Instagram、Google、Gmail、Maps、Calendar、NUBO、指定網址或搜尋關鍵字。</p>
           <button className="secondary" onClick={() => void testFacebook()}>
@@ -206,10 +202,10 @@ export function IntegrationCenter() {
 
         <article className="integration-card">
           <div className="integration-card-top">
-            <strong>Windows工具</strong>
+            <strong>裝置工具</strong>
             <span className="badge active">安全白名單</span>
           </div>
-          <p>可開啟計算機、記事本、小畫家、檔案總管、Windows設定與時鐘。</p>
+          <p>可開啟計算機、記事本、小畫家、檔案總管、系統設定與時鐘。</p>
           <button className="secondary" onClick={() => void testCalculator()}>
             測試開啟計算機
           </button>
@@ -218,19 +214,16 @@ export function IntegrationCenter() {
         <article className="integration-card">
           <div className="integration-card-top">
             <strong>研究與分析</strong>
-            <span className="badge active">自動備援</span>
+            <span className={`badge ${providers?.ready ? "active" : "paused"}`}>
+              {providers?.ready ? "已啟用" : "載入中"}
+            </span>
           </div>
           <p>
-            {providers
-              ? `已啟用 ${
-                  providers.providers.filter(
-                    (item) =>
-                      item.configured,
-                  ).length
-                } 組智慧核心，系統會自動選擇與備援。`
-              : "載入中"}
+            {providers?.ready
+              ? "LEO開發的LLM語言模型已啟用，系統會依工作內容自動處理與備援。"
+              : "正在確認智慧核心狀態。"}
           </p>
-          <small>研究結果會附來源並存入NUBO收件匣。</small>
+          <small>研究結果會附來源並保留於工作紀錄。</small>
         </article>
 
         <article className="integration-card">
@@ -239,7 +232,7 @@ export function IntegrationCenter() {
             <span className="badge paused">預設草稿</span>
           </div>
           <p>即時寄信必須先預覽再確認；排程寄送只有白名單收件者可自動寄出。</p>
-          <small>設定NUBO_EMAIL_AUTOSEND=true及NUBO_EMAIL_ALLOWLIST後才會開放。</small>
+          <small>完成寄送權限與白名單設定後才會開放。</small>
         </article>
       </div>
     </section>
