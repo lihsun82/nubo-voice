@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { NuboPublicBrandingGuard } from "@/components/NuboPublicBrandingGuard";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -42,6 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboPublicBrandingGuard />
         {children}
         <PwaInstallPrompt />
       </body>
