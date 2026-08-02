@@ -33,7 +33,7 @@ body {
   -webkit-touch-callout: none !important;
 }
 
-/* Keep the three capability descriptions, but remove their public headings. */
+/* Remove the three public capability headings while preserving descriptions. */
 .capability > b {
   display: none !important;
 }
@@ -41,6 +41,15 @@ body {
 .capability > small {
   display: block;
   margin: 0;
+}
+
+/* Remove the NUBO inbox item from the task center UI. */
+.task-grid > .task-panel:nth-child(2) {
+  display: none !important;
+}
+
+.task-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
 }
 
 @media (max-width: 680px) {
