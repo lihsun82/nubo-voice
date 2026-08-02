@@ -1,13 +1,16 @@
 import NuboV12Shell from "@/components/v12/NuboV12Shell";
 import EmailContactsPanel from "@/components/EmailContactsPanel";
+import NuboVoiceModeSettings from "@/components/NuboVoiceModeSettings";
 
 export default function SettingsPage() {
   return (
     <NuboV12Shell title="Settings 系統設定">
       <section className="nubo-page-grid">
+        <NuboVoiceModeSettings />
+
         <div className="nubo-panel nubo-full-panel">
           <div className="nubo-panel-head">
-            <h2>V12 Settings</h2>
+            <h2>裝置與自動化</h2>
             <span>Configuration</span>
           </div>
 
