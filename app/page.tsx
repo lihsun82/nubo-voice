@@ -14,8 +14,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Privacy & Scroll V11 2026-08-02</span>
-        <span>單指滑動、介面精簡與核心資訊保護</span>
+        <span>v0.5.1 Mobile Direct Open V12 2026-08-02</span>
+        <span>網頁與外部目標收到指令後直接開啟，不顯示NUBO確認按鈕</span>
       </footer>
     </main>
   );
