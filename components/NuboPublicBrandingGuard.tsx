@@ -15,15 +15,19 @@ const SENSITIVE_PATTERNS = [
   /Qwen(?:[-\s]?[\w.:-]*)?/gi,
   /Llama(?:[-\s]?[\w.:-]*)?/gi,
   /Google\s*(?:AI|Generative\s*Language)/gi,
-  /AI\s*(?:引擎|模型|語言模型)/gi,
+  /AI\s*(?:模型|語言模型)/gi,
   /模型(?:名稱|版本|供應商|提供者)/gi,
 ];
 
 function sanitizePublicText(value: string) {
-  let next = value;
+  let next = value
+    .replace(/AI\s*引擎/gi, "語言核心")
+    .replace(/NUBO\s*收件(?:匣|夾)/g, "工作紀錄");
+
   for (const pattern of SENSITIVE_PATTERNS) {
     next = next.replace(pattern, PUBLIC_IDENTITY);
   }
+
   return next.replace(
     new RegExp(`(?:${PUBLIC_IDENTITY}[\s/｜·、]*){2,}`, "g"),
     PUBLIC_IDENTITY,
