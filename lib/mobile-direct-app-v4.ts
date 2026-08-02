@@ -7,10 +7,11 @@ type MobileLaunchPlan = {
   fallbackUrl: string;
   appLink: boolean;
   preserveNubo: boolean;
+  externalTab: boolean;
 };
 
 const LEGACY_MOBILE_OPEN_STYLE_ID =
-  "nubo-hide-legacy-mobile-open-v10";
+  "nubo-hide-legacy-mobile-open-v14";
 
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalizedUrl = targetUrl.toLowerCase();
@@ -41,6 +42,9 @@ function getMobileOpenLabel(targetUrl: string, callName: string) {
   }
   if (normalizedUrl.includes("mail.google.com")) {
     return "Gmail";
+  }
+  if (normalizedUrl.includes("google.com")) {
+    return "Google";
   }
   if (callName === "open_website") {
     return "網站";
@@ -170,26 +174,6 @@ function androidYouTubeWatchIntent(videoId: string) {
   );
 }
 
-function normalizeInstagramWebUrl(targetUrl: string) {
-  try {
-    const url = new URL(targetUrl);
-    const hostname = url.hostname.toLowerCase();
-
-    if (
-      hostname === "instagram.com" ||
-      hostname === "www.instagram.com" ||
-      hostname.endsWith(".instagram.com")
-    ) {
-      url.protocol = "https:";
-      return url.toString();
-    }
-  } catch {
-    // 非HTTP網址時改用Instagram首頁。
-  }
-
-  return "https://www.instagram.com/";
-}
-
 function buildMobileLaunchPlan(
   targetUrl: string,
   label: string,
@@ -205,6 +189,7 @@ function buildMobileLaunchPlan(
       fallbackUrl: targetUrl,
       appLink: true,
       preserveNubo: true,
+      externalTab: false,
     };
   }
 
@@ -215,6 +200,7 @@ function buildMobileLaunchPlan(
             "nv/chat",
             "line",
             "jp.naver.line.android",
+            targetUrl,
           )
         : apple
           ? "line://nv/chat"
@@ -222,6 +208,7 @@ function buildMobileLaunchPlan(
       fallbackUrl: targetUrl,
       appLink: android || apple,
       preserveNubo: true,
+      externalTab: !(android || apple),
     };
   }
 
@@ -243,6 +230,7 @@ function buildMobileLaunchPlan(
               "www.youtube.com/",
               "https",
               "com.google.android.youtube",
+              youtubeUrl,
             )
         : apple
           ? videoId
@@ -252,59 +240,20 @@ function buildMobileLaunchPlan(
       fallbackUrl: youtubeUrl,
       appLink: android || apple,
       preserveNubo: true,
+      externalTab: !(android || apple),
     };
   }
 
-  if (
-    normalizedLabel === "facebook" ||
-    normalizedUrl.includes("facebook.com") ||
-    normalizedUrl.includes("fb.com")
-  ) {
-    return {
-      primaryUrl: android
-        ? androidNativeIntent(
-            `facewebmodal/f?href=${encodeURIComponent(targetUrl)}`,
-            "fb",
-            "com.facebook.katana",
-          )
-        : apple
-          ? `fb://facewebmodal/f?href=${encodeURIComponent(targetUrl)}`
-          : targetUrl,
-      fallbackUrl: targetUrl,
-      appLink: android || apple,
-      preserveNubo: true,
-    };
-  }
-
-  if (
-    normalizedLabel === "instagram" ||
-    normalizedUrl.includes("instagram.com")
-  ) {
-    const instagramWebUrl = normalizeInstagramWebUrl(targetUrl);
-    const instagramIntentPath = instagramWebUrl.replace(/^https:\/\//i, "");
-
-    return {
-      primaryUrl: android
-        ? androidNativeIntent(
-            instagramIntentPath,
-            "https",
-            "com.instagram.android",
-            instagramWebUrl,
-          )
-        : apple
-          ? "instagram://app"
-          : instagramWebUrl,
-      fallbackUrl: instagramWebUrl,
-      appLink: android || apple,
-      preserveNubo: true,
-    };
-  }
-
+  /*
+   * Facebook、Instagram、Google Maps、Gmail、Google及一般網站
+   * 一律使用另一個瀏覽器分頁。不得以App Intent或目前頁面取代NUBO。
+   */
   return {
     primaryUrl: targetUrl,
     fallbackUrl: targetUrl,
     appLink: false,
     preserveNubo: true,
+    externalTab: true,
   };
 }
 
@@ -333,7 +282,6 @@ function openExternalWebsiteWithoutReplacingNubo(targetUrl: string) {
     const opened = window.open(
       targetUrl,
       "nubo_mobile_external",
-      "noopener,noreferrer",
     );
 
     if (opened) {
@@ -345,78 +293,37 @@ function openExternalWebsiteWithoutReplacingNubo(targetUrl: string) {
       return true;
     }
   } catch {
-    // 新分頁被阻擋時改由呼叫端處理。
+    // 新分頁被阻擋時保留NUBO，不改用目前頁面。
   }
 
+  window.dispatchEvent(
+    new CustomEvent("nubo-external-tab-blocked", {
+      detail: { url: targetUrl },
+    }),
+  );
   return false;
-}
-
-function launchInstagramWithGuaranteedWebFallback(plan: MobileLaunchPlan) {
-  let finished = false;
-  let timer = 0;
-
-  const cleanup = () => {
-    if (finished) return;
-    finished = true;
-
-    if (timer) {
-      window.clearTimeout(timer);
-    }
-
-    document.removeEventListener("visibilitychange", onVisibilityChange);
-    window.removeEventListener("pagehide", cleanup);
-  };
-
-  const onVisibilityChange = () => {
-    if (document.visibilityState === "hidden") {
-      cleanup();
-    }
-  };
-
-  document.addEventListener("visibilitychange", onVisibilityChange);
-  window.addEventListener("pagehide", cleanup, { once: true });
-
-  timer = window.setTimeout(() => {
-    if (finished) return;
-    cleanup();
-
-    if (document.visibilityState === "visible") {
-      window.location.assign(plan.fallbackUrl);
-    }
-  }, 1800);
-
-  try {
-    window.location.href = plan.primaryUrl;
-  } catch {
-    cleanup();
-    window.location.assign(plan.fallbackUrl);
-  }
 }
 
 function launchMobileTarget(targetUrl: string, label: string) {
   const plan = buildMobileLaunchPlan(targetUrl, label);
   hideLegacyClickRelays();
 
-  if (label.toLowerCase() === "instagram" && plan.appLink) {
-    launchInstagramWithGuaranteedWebFallback(plan);
-    return plan;
+  if (plan.externalTab) {
+    const opened = openExternalWebsiteWithoutReplacingNubo(plan.fallbackUrl);
+    return { plan, opened };
   }
 
   if (plan.appLink) {
     try {
       window.location.href = plan.primaryUrl;
+      return { plan, opened: true };
     } catch {
-      // App啟動遭系統封鎖時維持NUBO頁面。
+      return { plan, opened: false };
     }
-
-    return plan;
   }
 
-  if (!openExternalWebsiteWithoutReplacingNubo(plan.primaryUrl)) {
-    window.location.assign(plan.fallbackUrl);
-  }
-
-  return plan;
+  const opened = openExternalWebsiteWithoutReplacingNubo(plan.primaryUrl);
+  return { plan, opened };
 }
 
 export function forceDirectMobileOpen(result: unknown, callName: string) {
@@ -444,27 +351,32 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
       : getMobileOpenLabel(targetUrl, callName);
 
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
-  window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
-  const launchPlan = launchMobileTarget(targetUrl, label);
-  const instagram = label.toLowerCase() === "instagram";
+  const { plan: launchPlan, opened } = launchMobileTarget(targetUrl, label);
+
+  if (launchPlan.appLink) {
+    window.localStorage.setItem("nubo_external_app_return_v1", "true");
+  } else {
+    window.localStorage.removeItem("nubo_external_app_return_v1");
+  }
 
   return {
     ...(result as Record<string, unknown>),
     autoOpen: false,
-    opened: true,
-    mode: instagram
-      ? "mobile-web-instagram-fallback-v10"
-      : "mobile-web-intent-v10",
-    forcedSameTab: instagram,
+    opened,
+    mode: launchPlan.externalTab
+      ? "mobile-external-tab-v14"
+      : "mobile-app-link-v14",
+    forcedSameTab: false,
+    externalTab: launchPlan.externalTab,
     appLinkAttempted: launchPlan.appLink,
     launchedUrl: launchPlan.primaryUrl,
     fallbackUrl: launchPlan.fallbackUrl,
-    fallbackScheduled: instagram && launchPlan.appLink,
-    preserveNubo: launchPlan.preserveNubo,
+    fallbackScheduled: false,
+    preserveNubo: true,
     mobileUrl: undefined,
     playerUrl: undefined,
     mobileLabel: label === "YouTube Music" ? "YouTube" : label,
-    build: "mobile-web-instagram-fallback-v10-20260802",
+    build: "mobile-external-tab-v14-20260802",
   };
 }
