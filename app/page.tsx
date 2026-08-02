@@ -1,6 +1,5 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboAudioPrimeGuard } from "@/components/NuboAudioPrimeGuard";
-import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfileProbe";
 import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboMusicSoundEnhancer } from "@/components/NuboMusicSoundEnhancer";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
@@ -9,7 +8,6 @@ export default function HomePage() {
   return (
     <main className="shell">
       <NuboAudioPrimeGuard />
-      <NuboGeminiVoiceProfileProbe />
       <NuboVoiceConsole />
       <NuboInlineMusicPlayer />
       <NuboMusicSoundEnhancer />
@@ -20,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Multimedia Speaker Route V14.7 2026-08-02</span>
-        <span>麥克風改用虛擬輸出；音樂與語音優先使用手機多媒體喇叭</span>
+        <span>v0.5.1 Voice Modes V15 2026-08-02</span>
+        <span>三種快速模式、雙語音引擎、九種 Gemini 聲音與 Marin／Cedar</span>
       </footer>
     </main>
   );
