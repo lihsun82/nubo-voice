@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { NuboDirectOpenGuard } from "@/components/NuboDirectOpenGuard";
 import { NuboPublicBrandingGuard } from "@/components/NuboPublicBrandingGuard";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboDirectOpenGuard />
         <NuboPublicBrandingGuard />
         {children}
         <PwaInstallPrompt />
