@@ -16,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Inline Music Replace V13 2026-08-02</span>
-        <span>指定歌曲留在NUBO頁面播放；新歌曲自動替換目前歌曲</span>
+        <span>v0.5.1 External Web Tab V14 2026-08-02</span>
+        <span>IG、FB、地圖與一般網站使用外部分頁；NUBO主頁持續保留</span>
       </footer>
     </main>
   );
