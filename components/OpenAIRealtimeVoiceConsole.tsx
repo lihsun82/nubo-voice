@@ -34,6 +34,14 @@ type RealtimeEvent = {
   response?: { status?: string };
 };
 
+type RealtimeApiErrorPayload = {
+  error?: {
+    message?: unknown;
+    type?: unknown;
+    code?: unknown;
+  };
+};
+
 type SinkAudioElement = HTMLAudioElement & {
   setSinkId?: (sinkId: string) => Promise<void>;
 };
@@ -66,6 +74,68 @@ function safeJson(value: unknown) {
   } catch {
     return JSON.stringify({ error: "工具結果無法序列化" });
   }
+}
+
+function getRealtimeApiMessage(rawBody: string) {
+  try {
+    const payload = JSON.parse(rawBody) as RealtimeApiErrorPayload;
+    return typeof payload.error?.message === "string"
+      ? payload.error.message
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function getFriendlyRealtimeError(status: number, rawBody: string) {
+  const message = getRealtimeApiMessage(rawBody).toLowerCase();
+
+  if (status === 401 || status === 403) {
+    return "高擬真語音授權已失效，請重新啟動 NUBO。";
+  }
+
+  if (
+    message.includes("rate limit") ||
+    message.includes("quota") ||
+    message.includes("insufficient")
+  ) {
+    return "高擬真語音服務額度暫時不足，請稍後再試。";
+  }
+
+  if (message.includes("voice")) {
+    return "所選聲音目前無法使用，請返回設定改選其他聲音。";
+  }
+
+  if (
+    message.includes("sdp") ||
+    message.includes("multipart") ||
+    message.includes("form_data")
+  ) {
+    return "高擬真語音連線初始化失敗，請重新啟動 NUBO。";
+  }
+
+  return "高擬真語音連線失敗，請稍後重新啟動 NUBO。";
+}
+
+function getFriendlyConnectError(cause: unknown) {
+  if (cause instanceof DOMException) {
+    if (cause.name === "NotAllowedError") {
+      return "麥克風權限尚未開啟，請允許 NUBO 使用麥克風後重新啟動。";
+    }
+
+    if (cause.name === "NotFoundError") {
+      return "找不到可使用的麥克風，請檢查手機音訊裝置。";
+    }
+  }
+
+  if (cause instanceof Error) {
+    const message = cause.message.trim();
+    if (message && !message.startsWith("{") && /[\u3400-\u9fff]/.test(message)) {
+      return message;
+    }
+  }
+
+  return "高擬真語音啟動失敗，請確認麥克風權限後重新啟動 NUBO。";
 }
 
 export function OpenAIRealtimeVoiceConsole({
@@ -247,7 +317,8 @@ export function OpenAIRealtimeVoiceConsole({
     }
 
     if (type === "error") {
-      setError(event.error?.message ?? "即時語音發生錯誤");
+      console.error("NUBO realtime event error", event.error);
+      setError("高擬真語音連線發生錯誤，請重新啟動 NUBO。");
       setState("error");
     }
   };
@@ -267,11 +338,15 @@ export function OpenAIRealtimeVoiceConsole({
       );
       const tokenPayload = await tokenResponse.json();
       if (!tokenResponse.ok) {
-        throw new Error(tokenPayload.error ?? "即時語音憑證建立失敗");
+        const tokenError =
+          typeof tokenPayload?.error === "string"
+            ? tokenPayload.error
+            : "高擬真語音憑證建立失敗";
+        throw new Error(tokenError);
       }
 
       const clientSecret = extractClientSecret(tokenPayload);
-      if (!clientSecret) throw new Error("即時語音憑證格式不正確");
+      if (!clientSecret) throw new Error("高擬真語音憑證格式不正確");
 
       const peer = new RTCPeerConnection();
       peerRef.current = peer;
@@ -299,7 +374,7 @@ export function OpenAIRealtimeVoiceConsole({
           peer.connectionState === "disconnected"
         ) {
           setState("error");
-          setError("即時語音連線中斷，請重新啟動 NUBO。");
+          setError("高擬真語音連線中斷，請重新啟動 NUBO。");
         }
       };
 
@@ -313,7 +388,7 @@ export function OpenAIRealtimeVoiceConsole({
       streamRef.current = stream;
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
 
-      const channel = peer.createDataChannel("oai-events");
+      const channel = peer.createDataChannel("nubo-events");
       channelRef.current = channel;
       channel.onmessage = (message) => {
         try {
@@ -323,11 +398,16 @@ export function OpenAIRealtimeVoiceConsole({
         }
       };
       channel.onerror = () => {
-        setError("即時語音控制通道異常。");
+        setError("高擬真語音控制通道異常，請重新啟動 NUBO。");
       };
 
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
+
+      const localSdp = peer.localDescription?.sdp ?? offer.sdp ?? "";
+      if (!localSdp.trim()) {
+        throw new Error("高擬真語音連線資料建立失敗，請重新啟動 NUBO。");
+      }
 
       const instructions = `${geminiSystemInstruction}\n\n${getNuboPersonalityInstruction(
         profile.personality,
@@ -360,16 +440,13 @@ export function OpenAIRealtimeVoiceConsole({
       };
 
       const form = new FormData();
-      form.append(
-        "sdp",
-        new Blob([offer.sdp ?? ""], { type: "application/sdp" }),
-        "offer.sdp",
-      );
-      form.append(
-        "session",
-        new Blob([JSON.stringify(session)], { type: "application/json" }),
-        "session.json",
-      );
+      /*
+       * SDP 與 session 必須是一般 multipart 欄位。
+       * 不可附加 filename，否則服務端會把它視為檔案上傳，
+       * 造成「sdp required but not found」。
+       */
+      form.append("sdp", localSdp);
+      form.append("session", JSON.stringify(session));
 
       const callResponse = await fetch(
         "https://api.openai.com/v1/realtime/calls",
@@ -381,21 +458,33 @@ export function OpenAIRealtimeVoiceConsole({
       );
       const answerSdp = await callResponse.text();
       if (!callResponse.ok) {
-        throw new Error(answerSdp || "即時語音 WebRTC 連線失敗");
+        console.error("NUBO realtime call error", {
+          status: callResponse.status,
+          body: answerSdp,
+        });
+        throw new Error(
+          getFriendlyRealtimeError(callResponse.status, answerSdp),
+        );
+      }
+
+      if (!answerSdp.trim().startsWith("v=0")) {
+        console.error("NUBO realtime answer is not SDP", answerSdp);
+        throw new Error("高擬真語音回傳格式不正確，請重新啟動 NUBO。");
       }
 
       await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     } catch (cause) {
+      console.error("NUBO high-realism voice startup failed", cause);
       await disconnect();
       setState("error");
-      setError(cause instanceof Error ? cause.message : "即時語音啟動失敗");
+      setError(getFriendlyConnectError(cause));
     }
   };
 
   const stateLabel = {
     idle: ["NUBO待命", "智慧服務已就緒"],
-    connecting: ["NUBO正在連線", "正在啟動高擬人語音服務"],
-    connected: ["NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
+    connecting: ["NUBO正在連線", "正在啟動高擬真語音服務"],
+    connected: ["NUBO正在聆聽", "高擬真陪伴與工具服務已啟用"],
     error: ["NUBO尚未連線", "請檢查語音設定或服務額度"],
   }[state];
 

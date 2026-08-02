@@ -18,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Voice Selection V15.2 2026-08-02</span>
-        <span>點擊整張聲音卡片即可選擇男聲、女聲與高擬真聲線</span>
+        <span>v0.5.1 High Realism Connect Fix V15.3 2026-08-02</span>
+        <span>修正高擬真語音 SDP 連線格式，錯誤訊息全面中文化</span>
       </footer>
     </main>
   );
