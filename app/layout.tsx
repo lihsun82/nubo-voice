@@ -9,6 +9,7 @@ import "./youtube-player.css";
 import "./orb-theme.css";
 import "./mobile-pwa.css";
 import "./mobile-privacy-v11.css";
+import "./inline-music-v13.css";
 
 export const metadata: Metadata = {
   title: {
