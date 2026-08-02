@@ -18,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Voice Gallery V15.1 2026-08-02</span>
-        <span>男聲、女聲、中性聲線與高擬真聲音可自由選擇</span>
+        <span>v0.5.1 Voice Selection V15.2 2026-08-02</span>
+        <span>點擊整張聲音卡片即可選擇男聲、女聲與高擬真聲線</span>
       </footer>
     </main>
   );

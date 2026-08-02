@@ -169,7 +169,8 @@ button.nubo-mode-card {
 
 .nubo-voice-badges span,
 .nubo-voice-badges em,
-.nubo-voice-badges i {
+.nubo-voice-badges i,
+.nubo-voice-badges b {
   border-radius: 999px;
   padding: 3px 8px;
   font-size: 11px;
@@ -191,6 +192,36 @@ button.nubo-mode-card {
 .nubo-voice-badges i {
   background: rgba(92, 216, 255, 0.13);
   color: #8beaff;
+}
+
+.nubo-voice-badges b {
+  background: rgba(83, 232, 159, 0.15);
+  color: #8ff0bd;
+}
+
+button.nubo-voice-card {
+  width: 100%;
+  padding-left: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.nubo-voice-card > * {
+  pointer-events: none;
+}
+
+button.nubo-voice-card:active {
+  transform: scale(0.985);
+}
+
+button.nubo-voice-card:focus-visible {
+  outline: 3px solid rgba(92, 216, 255, 0.58);
+  outline-offset: 2px;
 }
 
 .nubo-voice-result-count {

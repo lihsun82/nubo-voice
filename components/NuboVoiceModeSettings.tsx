@@ -88,10 +88,10 @@ export default function NuboVoiceModeSettings() {
         <div>
           <h2>NUBO 語音模式與聲音庫</h2>
           <p>
-            可自由切換男聲、女聲、中性聲線與高擬真聲音。設定會在下一次啟動或重新連線時套用。
+            可自由切換男聲、女聲、中性聲線與高擬真聲音。直接點擊整張聲音卡片即可選擇。
           </p>
         </div>
-        <span>Voice Gallery V15.1</span>
+        <span>Voice Selection V15.2</span>
       </div>
 
       <div className="nubo-mode-presets" aria-label="快速模式">
@@ -164,32 +164,40 @@ export default function NuboVoiceModeSettings() {
         </div>
 
         <div className="nubo-voice-gallery" aria-label="可選聲音">
-          <div className="nubo-choice-grid">
-            {visibleVoiceOptions.map((option) => (
-              <label
-                key={option.id}
-                className={`nubo-choice-card nubo-voice-card${profile.voice === option.id ? " active" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="nubo-voice"
-                  checked={profile.voice === option.id}
-                  onChange={() => commit({ ...profile, voice: option.id })}
-                />
-                <div className="nubo-voice-badges">
-                  <span>{option.genderLabel}</span>
-                  {option.recommended ? <em>官方品質推薦</em> : null}
-                  {option.realism === "high" ? <i>高擬真</i> : null}
-                </div>
-                <strong>{option.label}</strong>
-                <small>{option.tone}</small>
-              </label>
-            ))}
+          <div
+            className="nubo-choice-grid"
+            role="radiogroup"
+            aria-label="NUBO 聲音選項"
+          >
+            {visibleVoiceOptions.map((option) => {
+              const selected = profile.voice === option.id;
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={`選擇${option.label}，${option.genderLabel}，${option.tone}`}
+                  className={`nubo-choice-card nubo-voice-card${selected ? " active" : ""}`}
+                  onClick={() => commit({ ...profile, voice: option.id })}
+                >
+                  <div className="nubo-voice-badges">
+                    <span>{option.genderLabel}</span>
+                    {option.recommended ? <em>官方品質推薦</em> : null}
+                    {option.realism === "high" ? <i>高擬真</i> : null}
+                    {selected ? <b>✓ 已選擇</b> : null}
+                  </div>
+                  <strong>{option.label}</strong>
+                  <small>{option.tone}</small>
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <p className="nubo-voice-result-count">
-          顯示 {visibleVoiceOptions.length} 種聲音
+          顯示 {visibleVoiceOptions.length} 種聲音｜點擊整張卡片即可選擇
         </p>
       </fieldset>
 
@@ -223,7 +231,7 @@ export default function NuboVoiceModeSettings() {
         </div>
         <small>
           {savedAt
-            ? "已儲存。正在對話中的語音工作階段會在重新連線後套用新聲音。"
+            ? `已選擇「${labels.voice}」。正在對話中的語音工作階段會在重新連線後套用。`
             : "設定儲存在這支裝置，不會寫入公開頁面。"}
         </small>
       </div>
