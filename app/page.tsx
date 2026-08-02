@@ -16,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Background Music V14.2 2026-08-02</span>
-        <span>開啟外部網頁時維持NUBO音樂播放；返回後自動續播</span>
+        <span>v0.5.1 Audible Music Fix V14.3 2026-08-02</span>
+        <span>音樂進入播放後自動解除靜音；播放鍵不再被背景控制中止</span>
       </footer>
     </main>
   );
