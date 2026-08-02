@@ -1,0 +1,52 @@
+/* NUBO_YOUTUBE_AUDIO_QUALITY_V14_6
+ * Keep the visible compact player card, while giving YouTube a 480x270
+ * rendering viewport so adaptive streaming does not treat the player as
+ * an 88-104px thumbnail.
+ */
+.nubo-inline-music-frame {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.nubo-inline-music-frame > div {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.nubo-inline-music-frame iframe {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 480px !important;
+  min-width: 480px !important;
+  max-width: none !important;
+  height: 270px !important;
+  min-height: 270px !important;
+  max-height: none !important;
+  transform: translate(-50%, -50%) scale(0.3) !important;
+  transform-origin: center center !important;
+  pointer-events: none !important;
+  touch-action: none !important;
+  border: 0 !important;
+}
+
+@media (max-width: 680px) {
+  .nubo-inline-music-frame iframe {
+    transform: translate(-50%, -50%) scale(0.216667) !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .nubo-inline-music-frame iframe {
+    transform: translate(-50%, -50%) scale(0.183333) !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .nubo-inline-music-frame iframe {
+    transform: translate(-50%, -50%) scale(0.158333) !important;
+  }
+}
