@@ -1,5 +1,6 @@
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboGeminiVoiceProfileProbe } from "@/components/NuboGeminiVoiceProfileProbe";
+import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 
 export default function HomePage() {
@@ -7,6 +8,7 @@ export default function HomePage() {
     <main className="shell">
       <NuboGeminiVoiceProfileProbe />
       <NuboVoiceConsole />
+      <NuboInlineMusicPlayer />
       <section className="hero">
         <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
         <h1>NUBO</h1>
@@ -14,8 +16,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Mobile Direct Open V12 2026-08-02</span>
-        <span>網頁與外部目標收到指令後直接開啟，不顯示NUBO確認按鈕</span>
+        <span>v0.5.1 Inline Music Replace V13 2026-08-02</span>
+        <span>指定歌曲留在NUBO頁面播放；新歌曲自動替換目前歌曲</span>
       </footer>
     </main>
   );
