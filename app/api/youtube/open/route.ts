@@ -4,10 +4,10 @@ import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  searchYouTubeVideo,
   YouTubeApiError,
   youtubeErrorSuggestion,
 } from "@/lib/youtube";
+import { searchHighQualityYouTubeVideo } from "@/lib/youtube-quality-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -124,7 +124,6 @@ function openDedicatedPlayer(url: string): {
   }
 }
 
-// NUBO forwarded public player origin
 function resolvePlayerBaseUrl(request: Request) {
   const requestUrl = new URL(request.url);
 
@@ -148,16 +147,11 @@ function resolvePlayerBaseUrl(request: Request) {
       forwardedHost.startsWith("127.0.0.1") ||
       forwardedHost.startsWith("localhost");
 
-    const protocol =
-      forwardedProto ||
-      (isLocal ? "http" : "https");
-
+    const protocol = forwardedProto || (isLocal ? "http" : "https");
     return `${protocol}://${forwardedHost}`;
   }
 
-  const configured =
-    process.env.NUBO_PUBLIC_URL?.trim();
-
+  const configured = process.env.NUBO_PUBLIC_URL?.trim();
   if (configured) {
     try {
       const configuredUrl = new URL(configured);
@@ -177,7 +171,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await searchYouTubeVideo(parsed.data.query);
+    const result = await searchHighQualityYouTubeVideo(parsed.data.query);
     const playerUrl = new URL("/youtube-player", resolvePlayerBaseUrl(request));
     playerUrl.searchParams.set("videoId", result.videoId);
     playerUrl.searchParams.set("title", result.title);
