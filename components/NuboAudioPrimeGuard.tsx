@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+  preferMultimediaAudioContext,
+  preferMultimediaMediaElement,
+} from "@/lib/browser-speaker-output";
 
 type NuboAudioWindow = Window & {
   __nuboAudioPrimed?: boolean;
@@ -12,7 +16,7 @@ type NuboAudioWindow = Window & {
 };
 
 const SILENT_WAV =
-  "data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+  "data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 function preloadYouTubeApi() {
   if (
@@ -29,7 +33,7 @@ function preloadYouTubeApi() {
   document.head.appendChild(script);
 }
 
-function primeNuboAudioSession() {
+async function primeNuboAudioSession() {
   const host = window as NuboAudioWindow;
 
   try {
@@ -38,8 +42,11 @@ function primeNuboAudioSession() {
 
     if (AudioContextConstructor) {
       const context =
-        host.__nuboAudioContext ?? new AudioContextConstructor();
+        host.__nuboAudioContext ??
+        new AudioContextConstructor({ latencyHint: "playback" });
       host.__nuboAudioContext = context;
+
+      await preferMultimediaAudioContext(context);
 
       if (!host.__nuboAudioOscillator || !host.__nuboAudioGain) {
         const oscillator = context.createOscillator();
@@ -55,9 +62,7 @@ function primeNuboAudioSession() {
         host.__nuboAudioGain = gain;
       }
 
-      void context.resume().catch(() => {
-        // 下一次自然操作時會再次嘗試恢復。
-      });
+      await context.resume().catch(() => undefined);
     }
   } catch {
     // Web Audio 失敗時仍繼續嘗試 HTMLAudio 解鎖。
@@ -67,12 +72,11 @@ function primeNuboAudioSession() {
     const audio = host.__nuboSilentAudio ?? new Audio(SILENT_WAV);
     audio.loop = true;
     audio.preload = "auto";
-    audio.volume = 0.01;
+    audio.volume = 0.001;
     audio.setAttribute("playsinline", "true");
     host.__nuboSilentAudio = audio;
-    void audio.play().catch(() => {
-      // 某些瀏覽器只允許 Web Audio；不影響後續重試。
-    });
+    await preferMultimediaMediaElement(audio);
+    await audio.play().catch(() => undefined);
   } catch {
     // HTMLAudio 不可用時交由 Web Audio 與播放器處理。
   }
@@ -80,11 +84,12 @@ function primeNuboAudioSession() {
   host.__nuboAudioPrimed = true;
   preloadYouTubeApi();
   window.dispatchEvent(new CustomEvent("nubo-audio-primed"));
+  window.dispatchEvent(new CustomEvent("nubo-speaker-route-ready"));
 }
 
 export function NuboAudioPrimeGuard() {
   useEffect(() => {
-    const primeFromGesture = () => primeNuboAudioSession();
+    const primeFromGesture = () => void primeNuboAudioSession();
 
     window.addEventListener("pointerdown", primeFromGesture, true);
     window.addEventListener("touchstart", primeFromGesture, true);
@@ -94,16 +99,20 @@ export function NuboAudioPrimeGuard() {
       if (document.visibilityState !== "visible") return;
       const host = window as NuboAudioWindow;
       if (!host.__nuboAudioPrimed) return;
-      primeNuboAudioSession();
+      void primeNuboAudioSession();
     };
 
+    const refreshForMusic = () => void primeNuboAudioSession();
+
     document.addEventListener("visibilitychange", resumeWhenVisible);
+    window.addEventListener("nubo-inline-music-play", refreshForMusic);
 
     return () => {
       window.removeEventListener("pointerdown", primeFromGesture, true);
       window.removeEventListener("touchstart", primeFromGesture, true);
       window.removeEventListener("keydown", primeFromGesture, true);
       document.removeEventListener("visibilitychange", resumeWhenVisible);
+      window.removeEventListener("nubo-inline-music-play", refreshForMusic);
     };
   }, []);
 
