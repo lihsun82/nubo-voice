@@ -27,20 +27,18 @@ type YouTubeEvent = {
   data?: number;
 };
 
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (
-        elementId: string,
-        options: Record<string, unknown>,
-      ) => YouTubePlayer;
-      PlayerState?: {
-        PLAYING: number;
-      };
+type YouTubeWindow = Window & {
+  YT?: {
+    Player: new (
+      elementId: string,
+      options: Record<string, unknown>,
+    ) => YouTubePlayer;
+    PlayerState?: {
+      PLAYING: number;
     };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
+  };
+  onYouTubeIframeAPIReady?: () => void;
+};
 
 const PLAYER_ELEMENT_ID = "nubo-inline-youtube-player-v13";
 const NORMAL_VOLUME = 62;
@@ -162,13 +160,14 @@ export function NuboInlineMusicPlayer() {
   useEffect(() => {
     if (!song) return;
 
+    const youtubeWindow = window as YouTubeWindow;
     let disposed = false;
-    const previousReady = window.onYouTubeIframeAPIReady;
+    const previousReady = youtubeWindow.onYouTubeIframeAPIReady;
 
     const createPlayer = () => {
-      if (disposed || playerRef.current || !window.YT?.Player) return;
+      if (disposed || playerRef.current || !youtubeWindow.YT?.Player) return;
 
-      playerRef.current = new window.YT.Player(PLAYER_ELEMENT_ID, {
+      playerRef.current = new youtubeWindow.YT.Player(PLAYER_ELEMENT_ID, {
         width: "100%",
         height: "100%",
         playerVars: {
@@ -212,10 +211,10 @@ export function NuboInlineMusicPlayer() {
       });
     };
 
-    if (window.YT?.Player) {
+    if (youtubeWindow.YT?.Player) {
       createPlayer();
     } else {
-      window.onYouTubeIframeAPIReady = () => {
+      youtubeWindow.onYouTubeIframeAPIReady = () => {
         previousReady?.();
         createPlayer();
       };
@@ -238,9 +237,7 @@ export function NuboInlineMusicPlayer() {
       readyRef.current = false;
       playerRef.current?.destroy();
       playerRef.current = null;
-      if (window.onYouTubeIframeAPIReady !== previousReady) {
-        window.onYouTubeIframeAPIReady = previousReady;
-      }
+      youtubeWindow.onYouTubeIframeAPIReady = previousReady;
     };
   }, [Boolean(song)]);
 
