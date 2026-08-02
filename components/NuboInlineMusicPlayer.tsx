@@ -10,6 +10,7 @@ type InlineSong = {
 };
 
 type YouTubePlayer = {
+  cueVideoById: (videoId: string) => void;
   loadVideoById: (videoId: string) => void;
   playVideo: () => void;
   pauseVideo: () => void;
@@ -33,6 +34,9 @@ declare global {
         elementId: string,
         options: Record<string, unknown>,
       ) => YouTubePlayer;
+      PlayerState?: {
+        PLAYING: number;
+      };
     };
     onYouTubeIframeAPIReady?: () => void;
   }
