@@ -1,0 +1,123 @@
+.nubo-inline-music {
+  position: fixed;
+  z-index: 920;
+  left: 50%;
+  bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px));
+  width: min(680px, calc(100% - 24px));
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  background: rgba(7, 9, 18, 0.96);
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(22px);
+}
+
+.nubo-inline-music-frame {
+  width: 144px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+}
+
+.nubo-inline-music-frame > div,
+.nubo-inline-music-frame iframe {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  border: 0;
+}
+
+.nubo-inline-music-info {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.nubo-inline-music-info strong,
+.nubo-inline-music-info span,
+.nubo-inline-music-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nubo-inline-music-info strong {
+  color: #fff;
+  font-size: 15px;
+}
+
+.nubo-inline-music-info span {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.nubo-inline-music-info small {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+}
+
+.nubo-inline-music-stop {
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+body.nubo-inline-music-active .shell {
+  padding-bottom: max(158px, calc(env(safe-area-inset-bottom) + 146px));
+}
+
+@media (max-width: 680px) {
+  .nubo-inline-music {
+    bottom: max(8px, calc(env(safe-area-inset-bottom) + 6px));
+    width: calc(100% - 16px);
+    grid-template-columns: 104px minmax(0, 1fr) auto;
+    gap: 9px;
+    padding: 8px;
+    border-radius: 16px;
+  }
+
+  .nubo-inline-music-frame {
+    width: 104px;
+    border-radius: 10px;
+  }
+
+  .nubo-inline-music-info strong {
+    font-size: 13px;
+  }
+
+  .nubo-inline-music-info span,
+  .nubo-inline-music-info small {
+    font-size: 10px;
+  }
+
+  .nubo-inline-music-stop {
+    min-height: 38px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  body.nubo-inline-music-active .shell {
+    padding-bottom: max(126px, calc(env(safe-area-inset-bottom) + 116px));
+  }
+}
+
+@media (max-width: 380px) {
+  .nubo-inline-music {
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+  }
+
+  .nubo-inline-music-frame {
+    width: 88px;
+  }
+}
