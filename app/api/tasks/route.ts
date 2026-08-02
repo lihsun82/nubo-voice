@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { listInbox } from "@/lib/inbox-store";
 import { listRuns } from "@/lib/run-store";
 import { createTask, listTasks } from "@/lib/task-store";
 
@@ -46,12 +45,11 @@ const taskSchema = z.object({
 });
 
 export async function GET() {
-  const [tasks, runs, inbox] = await Promise.all([
+  const [tasks, runs] = await Promise.all([
     listTasks(),
     listRuns(),
-    listInbox(),
   ]);
-  return NextResponse.json({ tasks, runs, inbox });
+  return NextResponse.json({ tasks, runs });
 }
 
 export async function POST(request: Request) {

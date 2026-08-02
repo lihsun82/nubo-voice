@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { getEngineChain, isEngineConfigured, type EngineName } from "@/lib/ai-engine";
+import { isEngineConfigured, type EngineName } from "@/lib/ai-engine";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function checkOllama(): Promise<boolean> {
+const PUBLIC_IDENTITY = "LEO開發的LLM語言模型";
+
+async function checkLocalCore(): Promise<boolean> {
   const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1500);
@@ -21,30 +23,33 @@ async function checkOllama(): Promise<boolean> {
   }
 }
 
-function chooseVoiceProvider() {
-  return process.env.GEMINI_API_KEY ? "gemini" : "none";
-}
-
 export async function GET() {
   const names: EngineName[] = ["gemini", "ollama", "groq", "openai"];
-  const ollamaOnline = await checkOllama();
-  const providers = names.map((name) => ({
-    name,
-    configured: name === "ollama" ? ollamaOnline : isEngineConfigured(name),
-    model:
-      name === "gemini"
-        ? process.env.GEMINI_TEXT_MODEL ?? "gemini-3.5-flash"
-        : name === "ollama"
-          ? process.env.OLLAMA_MODEL ?? "qwen3:4b"
-          : name === "groq"
-            ? process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile"
-            : process.env.OPENAI_WORK_MODEL ?? process.env.NUBO_WORK_MODEL ?? "gpt-5.4-mini",
-  }));
+  const localCoreOnline = await checkLocalCore();
+  const configuredCoreCount = names.filter((name) =>
+    name === "ollama" ? localCoreOnline : isEngineConfigured(name),
+  ).length;
 
-  return NextResponse.json({
-    workChain: getEngineChain(false),
-    researchChain: getEngineChain(true),
-    voiceProvider: chooseVoiceProvider(),
-    providers,
-  });
+  return NextResponse.json(
+    {
+      ready: configuredCoreCount > 0,
+      configuredCoreCount,
+      publicIdentity: PUBLIC_IDENTITY,
+      workChain: [PUBLIC_IDENTITY],
+      researchChain: [PUBLIC_IDENTITY],
+      voiceProvider: PUBLIC_IDENTITY,
+      providers: [
+        {
+          name: PUBLIC_IDENTITY,
+          configured: configuredCoreCount > 0,
+          model: PUBLIC_IDENTITY,
+        },
+      ],
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
+  );
 }

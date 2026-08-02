@@ -37,7 +37,7 @@ function readPersonalityInstruction() {
 
   if (personality === "professional") {
     return [
-      "目前是專業AI管家模式。",
+      "目前是專業管家模式。",
       "語氣沉穩、精準、有條理，先給結論，再補必要資訊。",
       "避免過度寒暄、浮誇情緒與不必要笑聲。",
     ].join("\n");

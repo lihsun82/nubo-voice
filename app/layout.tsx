@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { NuboPublicBrandingGuard } from "@/components/NuboPublicBrandingGuard";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -6,13 +7,14 @@ import "./integration-center.css";
 import "./youtube-player.css";
 import "./orb-theme.css";
 import "./mobile-pwa.css";
+import "./mobile-privacy-v11.css";
 
 export const metadata: Metadata = {
   title: {
     default: "NUBO 智能語音",
     template: "%s | NUBO",
   },
-  description: "NUBO 個人 AI 語音與自動化控制中心",
+  description: "NUBO 智慧語音與自動化控制中心",
   applicationName: "NUBO",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboPublicBrandingGuard />
         {children}
         <PwaInstallPrompt />
       </body>
