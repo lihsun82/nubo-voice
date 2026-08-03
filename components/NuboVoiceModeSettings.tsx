@@ -88,10 +88,10 @@ export default function NuboVoiceModeSettings() {
         <div>
           <h2>NUBO 語音模式與聲音庫</h2>
           <p>
-            可自由切換男聲、女聲、中性聲線與高擬真聲音。直接點擊整張聲音卡片即可選擇。
+            AINUBO Hotel 智慧旅宿管家，可自由切換男聲、女聲、中性聲線與高擬真聲音。
           </p>
         </div>
-        <span>Voice Selection V15.2</span>
+        <span>AINUBO Hotel V15.3</span>
       </div>
 
       <div className="nubo-mode-presets" aria-label="快速模式">
