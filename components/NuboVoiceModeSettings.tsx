@@ -88,10 +88,10 @@ export default function NuboVoiceModeSettings() {
         <div>
           <h2>NUBO 語音模式與聲音庫</h2>
           <p>
-            AINUBO Hotel 智慧旅宿管家，可自由切換男聲、女聲、中性聲線與高擬真聲音。
+            AINUBO Hotel 智慧旅宿管家，已啟用台灣飯店營業日與報價日期校正。
           </p>
         </div>
-        <span>AINUBO Hotel V15.3</span>
+        <span>AINUBO Hotel V15.4</span>
       </div>
 
       <div className="nubo-mode-presets" aria-label="快速模式">
