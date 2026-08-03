@@ -8,14 +8,15 @@ const PHASE_COPY: Record<NuboVoicePhase, { title: string; detail: string }> = {
   connecting: { title: "正在喚醒 NUBO", detail: "正在建立即時語音連線" },
   listening: { title: "NUBO 正在聆聽", detail: "你可以直接說出需求" },
   thinking: { title: "NUBO 正在處理", detail: "正在理解並執行你的任務" },
-  speaking: { title: "NUBO 正在回覆", detail: "女性溫柔語音與動態表情已啟用" },
+  speaking: { title: "NUBO 正在回覆", detail: "女性溫柔語音已啟用" },
   error: { title: "NUBO 安全待命", detail: "語音服務暫時未連線" },
 };
+
+const AVATAR_VIDEO_URL = process.env.NEXT_PUBLIC_NUBO_AVATAR_VIDEO_URL?.trim() ?? "";
 
 export function NuboHumanConcierge() {
   const [phase, setPhase] = useState<NuboVoicePhase>("idle");
   const [imageReady, setImageReady] = useState(false);
-  const [blink, setBlink] = useState(false);
 
   useEffect(() => {
     const handlePhase = (event: Event) => {
@@ -27,48 +28,34 @@ export function NuboHumanConcierge() {
     return () => window.removeEventListener("nubo-voice-phase", handlePhase);
   }, []);
 
-  useEffect(() => {
-    let timer = 0;
-    let closeTimer = 0;
-
-    const scheduleBlink = () => {
-      const delay = 2800 + Math.random() * 3600;
-      timer = window.setTimeout(() => {
-        setBlink(true);
-        closeTimer = window.setTimeout(() => {
-          setBlink(false);
-          scheduleBlink();
-        }, 130 + Math.random() * 70);
-      }, delay);
-    };
-
-    scheduleBlink();
-    return () => {
-      window.clearTimeout(timer);
-      window.clearTimeout(closeTimer);
-    };
-  }, []);
-
   const copy = PHASE_COPY[phase];
 
   return (
     <section className={`human-concierge human-concierge--${phase}`} aria-live="polite">
       <div className="human-concierge__stage">
         <div className="human-concierge__halo" aria-hidden="true" />
-        <div className={`human-concierge__avatar${imageReady ? " is-ready" : ""}`}>
+        {AVATAR_VIDEO_URL ? (
+          <video
+            className="human-concierge__media is-ready"
+            src={AVATAR_VIDEO_URL}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+            aria-label="NUBO 真人智慧禮賓動態影像"
+          />
+        ) : (
           <img
-            className="human-concierge__portrait"
+            className={`human-concierge__media${imageReady ? " is-ready" : ""}`}
             src="/nubo-human-v1.svg"
             alt="NUBO 女性真人智慧禮賓"
             onLoad={() => setImageReady(true)}
           />
-          <span className={`human-concierge__eye human-concierge__eye--left${blink ? " is-blinking" : ""}`} aria-hidden="true" />
-          <span className={`human-concierge__eye human-concierge__eye--right${blink ? " is-blinking" : ""}`} aria-hidden="true" />
-          <span className="human-concierge__mouth" aria-hidden="true" />
-        </div>
+        )}
         <div className="human-concierge__scan" aria-hidden="true" />
         <div className="human-concierge__voice" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-        <div className="human-concierge__badge">LIVE HUMAN · V16.2</div>
+        <div className="human-concierge__badge">REAL AVATAR READY</div>
       </div>
       <div className="human-concierge__status">
         <strong>{copy.title}</strong>
@@ -101,74 +88,34 @@ export function NuboHumanConcierge() {
           box-shadow: 0 0 70px rgba(98,104,255,.22),inset 0 0 60px rgba(91,100,255,.1);
           animation: nubo-halo 7s linear infinite;
         }
-        .human-concierge__avatar {
+        .human-concierge__media {
           position: relative;
           z-index: 2;
           height: 100%;
-          aspect-ratio: 4 / 5;
+          width: auto;
           max-width: 100%;
-          opacity: 0;
-          transform: translateY(16px) scale(.985);
-          transition: opacity .55s ease,transform .75s cubic-bezier(.2,.8,.2,1),filter .35s ease;
-          filter: saturate(.96) contrast(1.02);
-        }
-        .human-concierge__avatar.is-ready {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-          animation: nubo-breathe 5.6s ease-in-out infinite;
-        }
-        .human-concierge__portrait {
-          position: absolute;
-          inset: 0;
-          width: 100%;
-          height: 100%;
           object-fit: contain;
           object-position: center bottom;
+          opacity: 0;
+          transform: translateY(10px) scale(.99);
+          transition: opacity .45s ease, transform .6s ease, filter .35s ease;
+          filter: saturate(.98) contrast(1.02);
           user-select: none;
           pointer-events: none;
         }
-        .human-concierge__eye {
-          position: absolute;
-          z-index: 4;
-          top: 21.4%;
-          width: 7.2%;
-          height: 0;
-          border-radius: 50%;
-          background: linear-gradient(180deg,#c79073,#e1ad92 58%,#8d5c4b);
-          opacity: 0;
-          transform: translateY(-50%);
-          transition: height 70ms ease,opacity 40ms linear;
-          box-shadow: 0 1px 0 rgba(52,29,25,.5);
-          pointer-events: none;
+        .human-concierge__media.is-ready {
+          opacity: 1;
+          transform: translateY(0) scale(1);
         }
-        .human-concierge__eye--left { left: 42.2%; transform: translateY(-50%) rotate(2deg); }
-        .human-concierge__eye--right { left: 51.9%; transform: translateY(-50%) rotate(-2deg); }
-        .human-concierge__eye.is-blinking { height: 1.45%; opacity: .96; }
-        .human-concierge__mouth {
-          position: absolute;
-          z-index: 4;
-          left: 49.1%;
-          top: 29.5%;
-          width: 6.6%;
-          height: .45%;
-          transform: translate(-50%,-50%);
-          border-radius: 50% 50% 58% 58%;
-          background: radial-gradient(ellipse at 50% 35%,#a9484d 0 28%,#6e2028 52%,#321116 100%);
-          opacity: 0;
-          box-shadow: inset 0 1px rgba(255,180,185,.3),0 0 1px rgba(0,0,0,.55);
-          pointer-events: none;
-        }
-        .human-concierge--speaking .human-concierge__avatar { animation: nubo-speaking 1.15s ease-in-out infinite; filter: saturate(1.07) contrast(1.035) brightness(1.03); }
-        .human-concierge--speaking .human-concierge__mouth { opacity: .96; animation: nubo-mouth 420ms ease-in-out infinite alternate; }
-        .human-concierge--listening .human-concierge__avatar { filter: saturate(1.02) contrast(1.04) brightness(1.025); }
-        .human-concierge--listening .human-concierge__avatar { animation: nubo-listen 3.2s ease-in-out infinite; }
-        .human-concierge--thinking .human-concierge__avatar { filter: saturate(.92) contrast(1.05) hue-rotate(4deg); animation: nubo-think 2.4s ease-in-out infinite; }
+        .human-concierge--listening .human-concierge__media { filter: saturate(1.02) contrast(1.04) brightness(1.02); }
+        .human-concierge--thinking .human-concierge__media { filter: saturate(.94) contrast(1.04) hue-rotate(3deg); }
+        .human-concierge--speaking .human-concierge__media { filter: saturate(1.05) contrast(1.03) brightness(1.02); }
         .human-concierge__scan {
           position: absolute;
           z-index: 3;
           inset: 0;
           pointer-events: none;
-          background: linear-gradient(180deg,transparent 0 46%,rgba(156,167,255,.15) 50%,transparent 54%);
+          background: linear-gradient(180deg,transparent 0 46%,rgba(156,167,255,.12) 50%,transparent 54%);
           transform: translateY(-100%);
           animation: nubo-scan 5.5s ease-in-out infinite;
           mix-blend-mode: screen;
@@ -201,15 +148,10 @@ export function NuboHumanConcierge() {
         .human-concierge__status strong { font-size:clamp(18px,3.2vw,24px); }
         .human-concierge__status span { color:#aeb8d3;font-size:clamp(12px,2vw,14px); }
         @keyframes nubo-halo { to { transform:rotate(360deg); } }
-        @keyframes nubo-breathe { 0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.004)} }
-        @keyframes nubo-speaking { 0%,100%{transform:translateY(0) rotate(0) scale(1)}50%{transform:translateY(-2px) rotate(.16deg) scale(1.006)} }
-        @keyframes nubo-listen { 0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-2px) rotate(-.22deg)} }
-        @keyframes nubo-think { 0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-1px) rotate(.28deg)} }
-        @keyframes nubo-mouth { 0%{height:.5%;width:6.2%;border-radius:60%}45%{height:1.45%;width:5.8%}100%{height:2.15%;width:5.1%;border-radius:48% 48% 58% 58%} }
         @keyframes nubo-scan { 0%,70%{transform:translateY(-100%);opacity:0}78%{opacity:.8}100%{transform:translateY(100%);opacity:0} }
         @keyframes nubo-wave { to { height:20px; } }
         @media (max-width:680px){.human-concierge__stage{height:min(118vw,570px)}.human-concierge__badge{top:12px;left:12px}}
-        @media (prefers-reduced-motion:reduce){.human-concierge__avatar,.human-concierge__halo,.human-concierge__scan,.human-concierge__voice i,.human-concierge__mouth{animation:none!important}.human-concierge__eye{display:none}}
+        @media (prefers-reduced-motion:reduce){.human-concierge__halo,.human-concierge__scan,.human-concierge__voice i{animation:none!important}}
       `}</style>
     </section>
   );
