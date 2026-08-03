@@ -5,22 +5,28 @@ function hostName(value: string | null) {
 }
 
 export function proxy(request: NextRequest) {
-  const configuredHost = hostName(process.env.LINE_PUBLIC_HOST ?? null);
-  if (!configuredHost) return NextResponse.next();
+  const { pathname } = request.nextUrl;
 
-  const requestHost = hostName(
-    request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
-  );
-  if (requestHost !== configuredHost) return NextResponse.next();
-
-  if (
-    request.nextUrl.pathname === "/api/line/webhook" &&
-    request.method === "POST"
-  ) {
+  // 只保護 LINE webhook，不攔截 NUBO 的其他頁面與 API。
+  if (pathname !== "/api/line/webhook") {
     return NextResponse.next();
   }
 
-  return new NextResponse(null, { status: 404 });
+  const configuredHost = hostName(process.env.LINE_PUBLIC_HOST ?? null);
+  const requestHost = hostName(
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+  );
+
+  // LINE webhook 僅允許 POST；如有設定專用 host，也必須符合。
+  if (request.method !== "POST") {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  if (configuredHost && requestHost !== configuredHost) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  return NextResponse.next();
 }
 
 export const config = { matcher: "/:path*" };
