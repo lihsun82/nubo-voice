@@ -18,8 +18,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 AINUBO Hotel Concierge V15.3 2026-08-04</span>
-        <span>AINUBO Hotel 智慧旅宿管家｜5 個平面車位｜男女聲與高擬真聲線</span>
+        <span>v0.5.1 AINUBO Hotel Date Guard V15.4 2026-08-04</span>
+        <span>台灣飯店營業日校正｜市場價與實際售價分流｜5 個平面車位</span>
       </footer>
     </main>
   );

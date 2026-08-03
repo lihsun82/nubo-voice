@@ -1,733 +1,283 @@
-type JsonRecord =
-  Record<string, unknown>;
+import {
+  fetchLatestHotelRadarSnapshot,
+  summarizeHotelRadar as summarizeBaseHotelRadar,
+  triggerHotelRadarWorkflow,
+} from "./ainubo-x1-base";
 
-const DEFAULT_OWNER =
-  "lihsun82";
+export {
+  fetchLatestHotelRadarSnapshot,
+  triggerHotelRadarWorkflow,
+};
 
-const DEFAULT_REPO =
-  "AinuboX1";
+const HOTEL_TIME_ZONE = "Asia/Taipei";
+const MAX_RADAR_AGE_HOURS = 18;
+const DAY_MS = 86_400_000;
 
-const DEFAULT_BRANCH =
-  "main";
+type JsonRecord = Record<string, unknown>;
 
-const SNAPSHOT_PATH =
-  "google_travel_area_snapshots/latest.json";
+type BaseRadarReport = JsonRecord & {
+  stayName?: unknown;
+  checkInDate?: unknown;
+  checkOutDate?: unknown;
+  sampleCount?: unknown;
+  averagePrice?: unknown;
+  medianPrice?: unknown;
+  minimumPrice?: unknown;
+  recommendedPrice?: unknown;
+  directPrice?: unknown;
+  otaPrice?: unknown;
+  sellThroughPrice?: unknown;
+  action?: unknown;
+  actionNote?: unknown;
+  conversionIncentive?: unknown;
+};
 
-const WORKFLOW_FILE =
-  "price-radar.yml";
+type BaseRadarSummary = JsonRecord & {
+  checkedAt?: unknown;
+  ageHours?: unknown;
+  reports?: unknown;
+};
 
-function asRecord(
-  value: unknown,
-): JsonRecord {
-  return value &&
-    typeof value === "object" &&
-    !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
+function text(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
 }
 
-function asArray(
-  value: unknown,
-): unknown[] {
-  return Array.isArray(value)
-    ? value
-    : [];
+function numberValue(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
-function text(
-  value: unknown,
-  fallback = "",
-) {
-  return typeof value === "string"
-    ? value
-    : fallback;
+function formatMoney(value: unknown) {
+  const numeric = numberValue(value);
+  if (numeric === null) return "無資料";
+  return `NT$${Math.round(numeric).toLocaleString("zh-TW")}`;
 }
 
-function numberValue(
-  value: unknown,
-): number | null {
-  const numeric =
-    typeof value === "number"
-      ? value
-      : Number(value);
+function getHotelBusinessDate(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: HOTEL_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
 
-  return Number.isFinite(numeric)
-    ? numeric
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function dateKeyToEpochDay(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const timestamp = Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  );
+
+  return Number.isFinite(timestamp)
+    ? Math.floor(timestamp / DAY_MS)
     : null;
 }
 
-function getConfig() {
-  const token =
-    process.env
-      .AINUBO_GITHUB_TOKEN
-      ?.trim();
+function getStayDateStatus(checkInDate: string, businessDate: string) {
+  const checkInDay = dateKeyToEpochDay(checkInDate);
+  const businessDay = dateKeyToEpochDay(businessDate);
 
-  if (!token) {
-    throw new Error(
-      "AINUBO_GITHUB_TOKEN尚未設定",
-    );
+  if (checkInDay === null || businessDay === null) {
+    return {
+      dayOffset: null,
+      status: "unknown" as const,
+      label: checkInDate || "日期未確認",
+    };
+  }
+
+  const dayOffset = checkInDay - businessDay;
+
+  if (dayOffset < 0) {
+    return {
+      dayOffset,
+      status: "past" as const,
+      label: `已過期（${checkInDate}）`,
+    };
+  }
+
+  if (dayOffset === 0) {
+    return { dayOffset, status: "today" as const, label: "今天" };
+  }
+
+  if (dayOffset === 1) {
+    return { dayOffset, status: "tomorrow" as const, label: "明天" };
+  }
+
+  if (dayOffset === 2) {
+    return { dayOffset, status: "day-after-tomorrow" as const, label: "後天" };
   }
 
   return {
-    token,
-    owner:
-      process.env
-        .AINUBO_GITHUB_OWNER
-        ?.trim() ||
-      DEFAULT_OWNER,
-    repo:
-      process.env
-        .AINUBO_GITHUB_REPO
-        ?.trim() ||
-      DEFAULT_REPO,
-    branch:
-      process.env
-        .AINUBO_GITHUB_BRANCH
-        ?.trim() ||
-      DEFAULT_BRANCH,
+    dayOffset,
+    status: "future" as const,
+    label: checkInDate,
   };
 }
 
-async function githubFetch(
-  apiPath: string,
-  init: RequestInit = {},
-) {
-  const config =
-    getConfig();
+function buildReportSpeech(report: BaseRadarReport) {
+  const stayName = text(report.stayName, text(report.checkInDate));
+  const checkInDate = text(report.checkInDate);
+  const checkOutDate = text(report.checkOutDate);
+  const stayRange = checkInDate
+    ? `${stayName}（${checkInDate}入住${checkOutDate ? `、${checkOutDate}退房` : ""}）`
+    : stayName;
 
-  const headers =
-    new Headers(init.headers);
-
-  headers.set(
-    "Accept",
-    "application/vnd.github+json",
-  );
-
-  headers.set(
-    "Authorization",
-    `Bearer ${config.token}`,
-  );
-
-  headers.set(
-    "X-GitHub-Api-Version",
-    "2022-11-28",
-  );
-
-  headers.set(
-    "User-Agent",
-    "NUBO-AinuboX1-Agent-Bridge",
-  );
-
-  const response =
-    await fetch(
-      `https://api.github.com${apiPath}`,
-      {
-        ...init,
-        headers,
-        cache: "no-store",
-      },
-    );
-
-  if (!response.ok) {
-    const payload =
-      await response
-        .json()
-        .catch(() => ({}));
-
-    const message =
-      text(
-        asRecord(payload).message,
-      ) ||
-      `GitHub API錯誤：${response.status}`;
-
-    throw new Error(message);
-  }
-
-  return response;
+  return [
+    stayRange,
+    `樣本${numberValue(report.sampleCount) ?? 0}間`,
+    `平均${formatMoney(report.averagePrice)}`,
+    `中位數${formatMoney(report.medianPrice)}`,
+    `最低${formatMoney(report.minimumPrice)}`,
+    `建議售價${formatMoney(report.recommendedPrice)}`,
+    numberValue(report.directPrice) !== null
+      ? `官網直訂建議${formatMoney(report.directPrice)}`
+      : "",
+    numberValue(report.otaPrice) !== null
+      ? `OTA建議${formatMoney(report.otaPrice)}`
+      : "",
+    numberValue(report.sellThroughPrice) !== null
+      ? `最可能成交價${formatMoney(report.sellThroughPrice)}`
+      : "",
+    text(report.action) ? `策略${text(report.action)}` : "",
+  ]
+    .filter(Boolean)
+    .join("，") + "。";
 }
 
-function parseCheckedAt(
-  value: string,
-) {
-  if (!value) {
-    return null;
-  }
-
-  const normalized =
-    value.includes("T")
-      ? value
-      : value.replace(
-          " ",
-          "T",
-        );
-
-  const zoned =
-    /(?:Z|[+-]\d{2}:?\d{2})$/i
-      .test(normalized)
-      ? normalized
-      : normalized +
-        "+08:00";
-
-  const timestamp =
-    Date.parse(zoned);
-
-  return Number.isFinite(
-    timestamp,
-  )
-    ? timestamp
-    : null;
-}
-
-function formatMoney(
-  value: number | null,
-) {
-  if (value === null) {
-    return "無資料";
-  }
-
-  return (
-    "NT$" +
-    Math.round(value)
-      .toLocaleString("zh-TW")
-  );
-}
-
-function normalizeZone(
-  value: string,
-) {
-  const key =
-    value
-      .trim()
-      .toLowerCase()
-      .replace(
-        /[\s　_-]+/g,
-        "",
-      );
-
-  if (
-    [
-      "",
-      "taichung",
-      "台中",
-      "一中",
-      "一中館",
-      "新寶",
-      "新寶智慧",
-      "新寶智慧一中館",
-      "錦新街",
-    ].includes(key)
-  ) {
-    return "taichung";
-  }
-
-  if (
-    [
-      "taipei",
-      "台北",
-      "忠孝復興",
-      "忠孝復興站",
-      "台北忠孝復興",
-    ].includes(key)
-  ) {
-    return "taipei";
-  }
-
-  if (
-    [
-      "all",
-      "全部",
-      "所有",
-      "兩區",
-      "兩個區域",
-    ].includes(key)
-  ) {
-    return "all";
-  }
-
-  return key;
-}
-
-function zoneMatches(
-  zoneId: string,
-  zone: string,
-) {
-  if (zone === "all") {
-    return true;
-  }
-
-  if (zone === "taichung") {
-    return (
-      zoneId.includes(
-        "taichung",
-      ) ||
-      zoneId.includes(
-        "yizhong",
-      )
-    );
-  }
-
-  if (zone === "taipei") {
-    return (
-      zoneId.includes(
-        "taipei",
-      ) ||
-      zoneId.includes(
-        "zhongxiao",
-      )
-    );
-  }
-
-  return zoneId
-    .toLowerCase()
-    .includes(zone);
-}
-
-export async function
-fetchLatestHotelRadarSnapshot() {
-  const config =
-    getConfig();
-
-  const apiPath =
-    "/repos/" +
-    encodeURIComponent(
-      config.owner,
-    ) +
-    "/" +
-    encodeURIComponent(
-      config.repo,
-    ) +
-    "/contents/" +
-    SNAPSHOT_PATH
-      .split("/")
-      .map(encodeURIComponent)
-      .join("/") +
-    "?ref=" +
-    encodeURIComponent(
-      config.branch,
-    );
-
-  const response =
-    await githubFetch(
-      apiPath,
-    );
-
-  const payload =
-    asRecord(
-      await response.json(),
-    );
-
-  const encoded =
-    text(payload.content)
-      .replace(/\s+/g, "");
-
-  if (!encoded) {
-    throw new Error(
-      "AinuboX1最新行情檔案沒有內容",
-    );
-  }
-
-  const decoded =
-    Buffer.from(
-      encoded,
-      "base64",
-    ).toString("utf8");
-
-  const snapshot =
-    JSON.parse(decoded);
-
-  if (
-    !snapshot ||
-    typeof snapshot !==
-      "object"
-  ) {
-    throw new Error(
-      "AinuboX1行情JSON格式不正確",
-    );
-  }
-
-  return snapshot as JsonRecord;
-}
-
-export function
-summarizeHotelRadar(
+export function summarizeHotelRadar(
   snapshot: JsonRecord,
   requestedZone = "taichung",
 ) {
-  const zone =
-    normalizeZone(
-      requestedZone,
-    );
+  const base = summarizeBaseHotelRadar(
+    snapshot,
+    requestedZone,
+  ) as unknown as BaseRadarSummary;
 
-  const checkedAt =
-    text(
-      snapshot.checked_at,
-    );
+  const operationalDate = getHotelBusinessDate();
+  const sourceReports = Array.isArray(base.reports)
+    ? (base.reports as BaseRadarReport[])
+    : [];
 
-  const checkedAtMs =
-    parseCheckedAt(
-      checkedAt,
-    );
+  let dateLabelsCorrected = 0;
+  let sourceTodayDateMismatch = false;
 
-  const ageHours =
-    checkedAtMs === null
-      ? null
-      : Math.max(
-          0,
-          Math.round(
-            ((Date.now() -
-              checkedAtMs) /
-              3_600_000) *
-              10,
-          ) / 10,
-        );
+  const correctedReports = sourceReports.map((report) => {
+    const checkInDate = text(report.checkInDate);
+    const sourceStayName = text(report.stayName);
+    const dateStatus = getStayDateStatus(checkInDate, operationalDate);
 
-  /*
-   * AinuboX1每日兩次排程。
-   * 超過18小時視為過期資料。
-   */
-  const stale =
-    ageHours === null ||
-    ageHours > 18;
+    if (sourceStayName !== dateStatus.label) {
+      dateLabelsCorrected += 1;
+    }
 
-  const reports =
-    asArray(
-      snapshot.markets,
-    )
-      .map(asRecord)
-      .filter((market) =>
-        zoneMatches(
-          text(
-            market.zone_id,
-          ),
-          zone,
-        ),
-      )
-      .map((market) => {
-        const stay =
-          asRecord(
-            market.stay,
-          );
+    if (sourceStayName === "今天" && checkInDate !== operationalDate) {
+      sourceTodayDateMismatch = true;
+    }
 
-        const stats =
-          asRecord(
-            market.stats,
-          );
+    return {
+      ...report,
+      sourceStayName,
+      stayName: dateStatus.label,
+      dayOffset: dateStatus.dayOffset,
+      dateStatus: dateStatus.status,
+      operationalDate,
+    };
+  });
 
-        const pricing =
-          asRecord(
-            market.pricing,
-          );
+  const excludedPastReportCount = correctedReports.filter(
+    (report) => report.dateStatus === "past",
+  ).length;
 
-        const sellThrough =
-          asRecord(
-            pricing
-              .sell_through,
-          );
+  const reports = correctedReports.filter(
+    (report) => report.dateStatus !== "past",
+  );
 
-        const hotels =
-          asArray(
-            market.hotels,
-          )
-            .map(asRecord)
-            .map((hotel) => ({
-              name:
-                text(
-                  hotel.name,
-                  "未知旅館",
-                ),
-              price:
-                numberValue(
-                  hotel.price,
-                ),
-              distanceKm:
-                numberValue(
-                  hotel.distance_km,
-                ),
-              rating:
-                numberValue(
-                  hotel.rating,
-                ),
-            }))
-            .sort(
-              (a, b) =>
-                (a.price ??
-                  Number
-                    .MAX_SAFE_INTEGER) -
-                (b.price ??
-                  Number
-                    .MAX_SAFE_INTEGER),
-            );
+  const currentDateCovered = reports.some(
+    (report) => text(report.checkInDate) === operationalDate,
+  );
 
-        return {
-          zoneId:
-            text(
-              market.zone_id,
-            ),
-          zoneName:
-            text(
-              market.zone_name,
-            ),
-          stayId:
-            text(stay.id),
-          stayName:
-            text(
-              stay.name,
-            ),
-          checkInDate:
-            text(
-              stay
-                .check_in_date,
-            ),
-          checkOutDate:
-            text(
-              stay
-                .check_out_date,
-            ),
-          sampleCount:
-            numberValue(
-              stats.count,
-            ),
-          averagePrice:
-            numberValue(
-              stats.average,
-            ),
-          medianPrice:
-            numberValue(
-              stats.median,
-            ),
-          minimumPrice:
-            numberValue(
-              stats.min,
-            ),
-          maximumPrice:
-            numberValue(
-              stats.max,
-            ),
-          recommendedPrice:
-            numberValue(
-              pricing
-                .recommended_price,
-            ),
-          directPrice:
-            numberValue(
-              pricing
-                .direct_price,
-            ),
-          otaPrice:
-            numberValue(
-              pricing
-                .ota_price,
-            ),
-          walkinPrice:
-            numberValue(
-              pricing
-                .walkin_price,
-            ),
-          floorRate:
-            numberValue(
-              pricing
-                .floor_rate,
-            ),
-          action:
-            text(
-              pricing
-                .action_label,
-              text(
-                pricing.action,
-              ),
-            ),
-          actionNote:
-            text(
-              pricing
-                .action_note,
-            ),
-          inventoryAction:
-            text(
-              pricing
-                .inventory_action,
-            ),
-          confidenceScore:
-            numberValue(
-              pricing
-                .confidence_score,
-            ),
-          sellThroughPrice:
-            numberValue(
-              pricing
-                .sell_through_price ??
-                sellThrough
-                  .sell_through_price,
-            ),
-          sellabilityScore:
-            numberValue(
-              pricing
-                .sellability_score ??
-                sellThrough
-                  .sellability_score,
-            ),
-          conversionIncentive:
-            text(
-              pricing
-                .conversion_incentive,
-              text(
-                sellThrough
-                  .incentive,
-              ),
-            ),
-          hotels:
-            hotels.slice(0, 8),
-        };
-      })
-      .sort(
-        (a, b) =>
-          a.checkInDate.localeCompare(
-            b.checkInDate,
-          ),
-      );
+  const ageHours = numberValue(base.ageHours);
+  const ageStale = ageHours === null || ageHours > MAX_RADAR_AGE_HOURS;
+  const noUsableReports = reports.length === 0;
+  const staleReasons: string[] = [];
 
-  if (
-    reports.length === 0
-  ) {
-    throw new Error(
-      `找不到「${requestedZone}」的旅館行情資料`,
-    );
+  if (ageHours === null) {
+    staleReasons.push("無法確認行情更新時間");
+  } else if (ageStale) {
+    staleReasons.push(`行情已超過${MAX_RADAR_AGE_HOURS}小時`);
   }
 
-  const speechLines = [
-    stale
-      ? `注意：目前行情資料已過期，最後更新時間是${checkedAt || "未知"}。`
-      : `行情資料更新時間：${checkedAt}。`,
-  ];
+  if (!currentDateCovered) {
+    staleReasons.push(`資料未涵蓋台灣飯店營業日${operationalDate}`);
+  }
 
-  for (
-    const report of reports
-  ) {
+  if (noUsableReports) {
+    staleReasons.push("沒有今天或未來入住日的可用行情");
+  }
+
+  const stale = ageStale || !currentDateCovered || noUsableReports;
+  const quoteEligible = !stale && currentDateCovered;
+  const checkedAt = text(base.checkedAt);
+  const speechLines: string[] = [];
+
+  if (stale) {
     speechLines.push(
-      [
-        report.stayName ||
-          report.checkInDate,
-        `樣本${report.sampleCount ?? 0}間`,
-        `平均${formatMoney(report.averagePrice)}`,
-        `中位數${formatMoney(report.medianPrice)}`,
-        `最低${formatMoney(report.minimumPrice)}`,
-        `建議售價${formatMoney(report.recommendedPrice)}`,
-        report.directPrice !==
-        null
-          ? `官網直訂${formatMoney(report.directPrice)}`
-          : "",
-        report.otaPrice !==
-        null
-          ? `OTA${formatMoney(report.otaPrice)}`
-          : "",
-        report.sellThroughPrice !==
-        null
-          ? `最可能成交價${formatMoney(report.sellThroughPrice)}`
-          : "",
-        report.action
-          ? `策略${report.action}`
-          : "",
-      ]
-        .filter(Boolean)
-        .join("，") +
-        "。",
+      `注意：目前行情不能直接作為今日報價依據。${staleReasons.join("；")}。最後更新時間是${checkedAt || "未知"}。`,
     );
+  } else {
+    speechLines.push(
+      `行情更新時間：${checkedAt}。已依台灣時間${operationalDate}與實際入住日期重新校正。`,
+    );
+  }
 
-    if (
-      report.actionNote
-    ) {
-      speechLines.push(
-        report.actionNote,
-      );
-    }
+  if (sourceTodayDateMismatch) {
+    speechLines.push(
+      "來源檔案的相對日期標籤已跨日，NUBO 已改以實際入住日期判斷，不再沿用錯誤的今天或明天標示。",
+    );
+  }
 
-    if (
-      report
-        .conversionIncentive
-    ) {
-      speechLines.push(
-        "成交誘因：" +
-          report
-            .conversionIncentive,
-      );
+  for (const report of reports) {
+    speechLines.push(buildReportSpeech(report));
+
+    const actionNote = text(report.actionNote);
+    if (actionNote) speechLines.push(actionNote);
+
+    const conversionIncentive = text(report.conversionIncentive);
+    if (conversionIncentive) {
+      speechLines.push(`成交誘因：${conversionIncentive}`);
     }
   }
 
-  return {
-    ok: true,
-    source:
-      "AinuboX1 GitHub Agent",
-    checkedAt:
-      checkedAt || null,
-    ageHours,
-    stale,
-    requestedZone:
-      requestedZone ||
-      "taichung",
-    resolvedZone: zone,
-    reportCount:
-      reports.length,
-    reports,
-    speechText:
-      speechLines.join(" "),
-  };
-}
-
-export async function
-triggerHotelRadarWorkflow() {
-  const config =
-    getConfig();
-
-  const apiPath =
-    "/repos/" +
-    encodeURIComponent(
-      config.owner,
-    ) +
-    "/" +
-    encodeURIComponent(
-      config.repo,
-    ) +
-    "/actions/workflows/" +
-    encodeURIComponent(
-      WORKFLOW_FILE,
-    ) +
-    "/dispatches";
-
-  await githubFetch(
-    apiPath,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-      body: JSON.stringify({
-        ref:
-          config.branch,
-        inputs: {
-          mode:
-            "production",
-        },
-      }),
-    },
+  speechLines.push(
+    "以上為市場行情與定價建議，不是本館即時可售房價；旅客實際成交價、房型與庫存仍須以訂房系統或現場確認。",
   );
 
   return {
-    ok: true,
-    started: true,
-    repository:
-      config.owner +
-      "/" +
-      config.repo,
-    workflow:
-      WORKFLOW_FILE,
-    branch:
-      config.branch,
-    mode:
-      "production",
-    startedAt:
-      new Date()
-        .toISOString(),
-    message:
-      "AinuboX1旅館行情工作流已開始執行。完成前不得宣稱最新行情已更新。",
+    ...base,
+    timeZone: HOTEL_TIME_ZONE,
+    operationalDate,
+    ageHours,
+    stale,
+    staleReasons,
+    quoteEligible,
+    marketGuidanceOnly: true,
+    actualBookableRateConfirmed: false,
+    currentDateCovered,
+    sourceTodayDateMismatch,
+    dateLabelsCorrected,
+    excludedPastReportCount,
+    reportCount: reports.length,
+    reports,
+    speechText: speechLines.join(" "),
   };
 }
