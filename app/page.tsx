@@ -20,8 +20,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 Real Avatar Safety Fix V16.2.1 2026-08-03</span>
-        <span>移除失真的假眼睛與假嘴型，改用真正動態人像串流插槽</span>
+        <span>v0.5.1 Tavus Real Avatar V16.3 2026-08-03</span>
+        <span>WebRTC 真人數位人、原生表情與嘴型同步串流</span>
       </footer>
     </main>
   );
