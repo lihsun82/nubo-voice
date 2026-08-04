@@ -12,14 +12,16 @@ export default function HomePage() {
       <NuboInlineMusicPlayer />
       <NuboMusicSoundEnhancer />
       <section className="hero">
-        <div className="eyebrow">NUBO INTELLIGENT OPERATING SYSTEM</div>
+        <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
-        <p className="subtitle">智慧語音、行動控制與自動化工作中心</p>
+        <p className="subtitle">
+          AINUBO Hotel 智慧旅館管家｜沉浸式太空語音服務中心
+        </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 AINUBO Hotel Date Guard V15.4 2026-08-04</span>
-        <span>台灣飯店營業日校正｜市場價與實際售價分流｜5 個平面車位</span>
+        <span>v0.5.1 NUBO V15.5｜Space Immersive Voice Edition</span>
+        <span>AINUBO Hotel 管家身份不變｜動態太空環境｜男女聲與高擬真模式</span>
       </footer>
     </main>
   );
