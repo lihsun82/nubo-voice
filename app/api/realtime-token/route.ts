@@ -18,7 +18,7 @@ const OPENAI_VOICES = new Set([
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
-const DEFAULT_FEMALE_VOICE = "coral";
+const DEFAULT_OPENAI_VOICE = "coral";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -29,84 +29,62 @@ function asRecord(value: unknown): UnknownRecord | null {
 }
 
 function normalizeVoice(value: unknown) {
-  if (value === "marin") return DEFAULT_FEMALE_VOICE;
+  if (value === "marin") return DEFAULT_OPENAI_VOICE;
   return typeof value === "string" && OPENAI_VOICES.has(value)
     ? value
-    : DEFAULT_FEMALE_VOICE;
+    : DEFAULT_OPENAI_VOICE;
 }
 
-function sanitizeRealtimeSession(raw: string) {
-  let source: UnknownRecord = {};
+function parseRequestedVoice(rawSession: string) {
   try {
-    source = asRecord(JSON.parse(raw)) ?? {};
+    const source = asRecord(JSON.parse(rawSession));
+    const audio = asRecord(source?.audio);
+    const output = asRecord(audio?.output);
+    return normalizeVoice(output?.voice);
   } catch {
-    source = {};
+    return DEFAULT_OPENAI_VOICE;
   }
+}
 
-  const audio = asRecord(source.audio);
-  const audioInput = asRecord(audio?.input);
-  const audioOutput = asRecord(audio?.output);
-  const turnDetection = asRecord(audioInput?.turn_detection);
-
-  const session: UnknownRecord = {
+function buildMinimalSession(rawSession: string) {
+  return JSON.stringify({
     type: "realtime",
     model: DEFAULT_REALTIME_MODEL,
-    output_modalities: ["audio"],
     audio: {
-      input: {
-        turn_detection: turnDetection?.type === "semantic_vad"
-          ? {
-              type: "semantic_vad",
-              create_response: turnDetection.create_response !== false,
-              interrupt_response: turnDetection.interrupt_response !== false,
-              eagerness:
-                turnDetection.eagerness === "low" ||
-                turnDetection.eagerness === "high" ||
-                turnDetection.eagerness === "medium"
-                  ? turnDetection.eagerness
-                  : "auto",
-            }
-          : {
-              type: "server_vad",
-              create_response: true,
-              interrupt_response: true,
-            },
-      },
       output: {
-        voice: normalizeVoice(audioOutput?.voice),
-        speed:
-          typeof audioOutput?.speed === "number" &&
-          audioOutput.speed >= 0.25 &&
-          audioOutput.speed <= 1.5
-            ? audioOutput.speed
-            : 0.92,
+        voice: parseRequestedVoice(rawSession),
       },
     },
-  };
+  });
+}
 
-  if (typeof source.instructions === "string" && source.instructions.trim()) {
-    session.instructions = source.instructions.trim();
-  }
-
-  if (Array.isArray(source.tools)) {
-    session.tools = source.tools;
-    session.tool_choice = source.tool_choice === "none" ? "none" : "auto";
-  }
-
-  return JSON.stringify(session);
+function buildMultipartBody(boundary: string, sdp: string, session: string) {
+  return [
+    `--${boundary}\r\n`,
+    'Content-Disposition: form-data; name="sdp"; filename="offer.sdp"\r\n',
+    "Content-Type: application/sdp\r\n\r\n",
+    sdp,
+    "\r\n",
+    `--${boundary}\r\n`,
+    'Content-Disposition: form-data; name="session"\r\n',
+    "Content-Type: application/json\r\n\r\n",
+    session,
+    "\r\n",
+    `--${boundary}--\r\n`,
+  ].join("");
 }
 
 export async function GET(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: "高擬人語音服務尚未設定憑證" },
+      { error: "高擬人語音服務尚未設定憑證", code: "missing_api_key" },
       { status: 500 },
     );
   }
 
   const requestedVoice =
-    new URL(request.url).searchParams.get("voice") ?? DEFAULT_FEMALE_VOICE;
+    new URL(request.url).searchParams.get("voice") ?? DEFAULT_OPENAI_VOICE;
   const voice = normalizeVoice(requestedVoice);
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
@@ -121,9 +99,8 @@ export async function GET(request: NextRequest) {
       session: {
         type: "realtime",
         model: DEFAULT_REALTIME_MODEL,
-        output_modalities: ["audio"],
         audio: {
-          output: { voice, speed: 0.92 },
+          output: { voice },
         },
       },
     }),
@@ -132,9 +109,15 @@ export async function GET(request: NextRequest) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    console.error("NUBO realtime token error", data);
+    console.error("NUBO realtime token error", response.status, data);
     return NextResponse.json(
-      { error: "高擬人即時語音憑證建立失敗" },
+      {
+        error:
+          response.status === 401 || response.status === 403
+            ? "OpenAI API Key 無效或沒有 Realtime 權限"
+            : "高擬人即時語音憑證建立失敗",
+        code: `realtime_token_${response.status}`,
+      },
       { status: response.status },
     );
   }
@@ -149,7 +132,7 @@ export async function POST(request: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "高擬人語音服務尚未設定憑證" },
+        { error: "高擬人語音服務尚未設定憑證", code: "missing_api_key" },
         { status: 500 },
       );
     }
@@ -173,62 +156,66 @@ export async function POST(request: NextRequest) {
 
     if (!sdp.trim()) {
       return NextResponse.json(
-        { error: "OpenAI Realtime SDP 內容缺失" },
+        { error: "OpenAI Realtime SDP 內容缺失", code: "missing_sdp" },
         { status: 400 },
       );
     }
 
-    const safeSession = sanitizeRealtimeSession(rawSession);
-    const form = new FormData();
-    form.append(
-      "sdp",
-      new Blob([sdp], { type: "application/sdp" }),
-      "offer.sdp",
-    );
-    form.append(
-      "session",
-      new Blob([safeSession], { type: "application/json" }),
-      "session.json",
-    );
+    const safeSession = buildMinimalSession(rawSession);
+    const boundary = `nubo-realtime-${crypto.randomUUID()}`;
+    const multipartBody = buildMultipartBody(boundary, sdp, safeSession);
 
     const response = await fetch(OPENAI_REALTIME_CALL_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
         "OpenAI-Safety-Identifier":
           process.env.OPENAI_SAFETY_IDENTIFIER ?? "nubo-owner",
       },
-      body: form,
+      body: multipartBody,
       cache: "no-store",
     });
 
     const answer = await response.text();
     if (!response.ok) {
+      let upstreamCode = "";
+      let upstreamParam = "";
       let upstreamMessage = "";
+
       try {
         const payload = JSON.parse(answer) as {
           error?: { code?: unknown; param?: unknown; message?: unknown };
         };
-        const code =
+        upstreamCode =
           typeof payload.error?.code === "string" ? payload.error.code : "";
-        const param =
+        upstreamParam =
           typeof payload.error?.param === "string" ? payload.error.param : "";
-        upstreamMessage = [code, param].filter(Boolean).join(":");
+        upstreamMessage =
+          typeof payload.error?.message === "string" ? payload.error.message : "";
       } catch {
-        upstreamMessage = "";
+        // Non-JSON upstream body is logged below.
       }
 
-      console.error(
-        "NUBO realtime call error",
-        response.status,
-        answer.slice(0, 1000),
-      );
+      console.error("NUBO realtime call error", {
+        status: response.status,
+        code: upstreamCode,
+        param: upstreamParam,
+        message: upstreamMessage,
+        body: answer.slice(0, 1200),
+      });
+
+      const isKeyProblem = response.status === 401 || response.status === 403;
       return NextResponse.json(
         {
-          error: upstreamMessage
-            ? `高擬人即時語音設定不相容（${upstreamMessage}）`
-            : "高擬人即時語音連線建立失敗",
+          error: isKeyProblem
+            ? "OpenAI API Key 無效或沒有 Realtime 權限"
+            : upstreamMessage
+              ? `OpenAI Realtime：${upstreamMessage}`
+              : "高擬人即時語音連線建立失敗",
           code: `realtime_call_${response.status}`,
+          upstreamCode,
+          upstreamParam,
         },
         { status: response.status },
       );
@@ -237,7 +224,7 @@ export async function POST(request: NextRequest) {
     if (!/^v=0/m.test(answer)) {
       console.error("NUBO realtime invalid SDP answer", answer.slice(0, 500));
       return NextResponse.json(
-        { error: "OpenAI 回傳的語音連線資料格式不正確" },
+        { error: "OpenAI 回傳的語音連線資料格式不正確", code: "invalid_sdp_answer" },
         { status: 502 },
       );
     }
@@ -252,7 +239,13 @@ export async function POST(request: NextRequest) {
   } catch (cause) {
     console.error("NUBO realtime proxy failure", cause);
     return NextResponse.json(
-      { error: "NUBO 無法建立高擬人即時語音連線" },
+      {
+        error:
+          cause instanceof Error
+            ? `NUBO Realtime 代理失敗：${cause.message}`
+            : "NUBO 無法建立高擬人即時語音連線",
+        code: "realtime_proxy_failure",
+      },
       { status: 502 },
     );
   }
