@@ -22,8 +22,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6｜溫柔真人管家語氣版</span>
-        <span>先給結論、自然停頓、不制式｜AINUBO Hotel 管家身份不變</span>
+        <span>v0.5.1 NUBO V15.6.1｜溫柔真人管家語氣版</span>
+        <span>單一語音工作階段｜OpenAI 高擬真選項｜AINUBO Hotel 管家身份不變</span>
       </footer>
     </main>
   );
