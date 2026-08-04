@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
 
-const REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
+const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
+const NUBO_REALTIME_PROXY_URL = "/api/openai/realtime-call";
 
 async function formValueToText(value: FormDataEntryValue | null) {
   if (typeof value === "string") return value;
@@ -28,7 +29,10 @@ export function OpenAIRealtimeVoiceConsoleFixed({
             ? input.toString()
             : input.url;
 
-      if (url !== REALTIME_CALL_URL || !(init?.body instanceof FormData)) {
+      if (
+        url !== OPENAI_REALTIME_CALL_URL ||
+        !(init?.body instanceof FormData)
+      ) {
         return nativeFetch(input, init);
       }
 
@@ -40,13 +44,15 @@ export function OpenAIRealtimeVoiceConsoleFixed({
         throw new Error("OpenAI Realtime SDP 建立失敗，請重新啟動 NUBO。");
       }
 
-      const fixedForm = new FormData();
-      fixedForm.append("sdp", sdp);
-      if (session.trim()) fixedForm.append("session", session);
+      const proxyForm = new FormData();
+      proxyForm.append("sdp", sdp);
+      if (session.trim()) proxyForm.append("session", session);
 
-      return nativeFetch(input, {
-        ...init,
-        body: fixedForm,
+      return nativeFetch(NUBO_REALTIME_PROXY_URL, {
+        method: "POST",
+        headers: init.headers,
+        body: proxyForm,
+        cache: "no-store",
       });
     };
 
