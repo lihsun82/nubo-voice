@@ -13,6 +13,19 @@ async function formValueToText(value: FormDataEntryValue | null) {
   return "";
 }
 
+function normalizeSession(session: string) {
+  if (!session.trim()) return "";
+
+  try {
+    const payload = JSON.parse(session) as Record<string, unknown>;
+    payload.type = "realtime";
+    payload.model = "gpt-realtime";
+    return JSON.stringify(payload);
+  } catch {
+    throw new Error("高擬人語音設定格式不正確，請重新整理後再試。");
+  }
+}
+
 function isHtmlResponse(contentType: string | null, body: string) {
   return Boolean(
     contentType?.includes("text/html") ||
@@ -46,7 +59,9 @@ export function OpenAIRealtimeVoiceConsoleFixed({
 
       const originalForm = init.body;
       const sdp = await formValueToText(originalForm.get("sdp"));
-      const session = await formValueToText(originalForm.get("session"));
+      const session = normalizeSession(
+        await formValueToText(originalForm.get("session")),
+      );
 
       if (!sdp.trim()) {
         throw new Error("OpenAI Realtime SDP 建立失敗，請重新啟動 NUBO。");
@@ -54,7 +69,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
 
       const proxyForm = new FormData();
       proxyForm.append("sdp", sdp);
-      if (session.trim()) proxyForm.append("session", session);
+      if (session) proxyForm.append("session", session);
 
       const response = await nativeFetch(NUBO_REALTIME_PROXY_URL, {
         method: "POST",
@@ -72,9 +87,16 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       }
 
       try {
-        const payload = JSON.parse(body) as { error?: unknown };
+        const payload = JSON.parse(body) as {
+          error?: unknown;
+          code?: unknown;
+        };
         if (typeof payload.error === "string" && payload.error.trim()) {
-          throw new Error(payload.error.trim());
+          const code =
+            typeof payload.code === "string" && payload.code.trim()
+              ? `（${payload.code.trim()}）`
+              : "";
+          throw new Error(`${payload.error.trim()}${code}`);
         }
       } catch (cause) {
         if (cause instanceof Error && cause.message !== "Unexpected end of JSON input") {
