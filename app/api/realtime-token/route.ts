@@ -19,6 +19,7 @@ const OPENAI_VOICES = new Set([
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
 const DEFAULT_OPENAI_VOICE = "coral";
+const LEO_LLM_SPEECH_SPEED = 0.86;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -35,27 +36,39 @@ function normalizeVoice(value: unknown) {
     : DEFAULT_OPENAI_VOICE;
 }
 
-function parseRequestedVoice(rawSession: string) {
+function parseSessionSource(rawSession: string) {
   try {
-    const source = asRecord(JSON.parse(rawSession));
-    const audio = asRecord(source?.audio);
-    const output = asRecord(audio?.output);
-    return normalizeVoice(output?.voice);
+    return asRecord(JSON.parse(rawSession)) ?? {};
   } catch {
-    return DEFAULT_OPENAI_VOICE;
+    return {};
   }
 }
 
-function buildMinimalSession(rawSession: string) {
-  return JSON.stringify({
+function parseRequestedVoice(source: UnknownRecord) {
+  const audio = asRecord(source.audio);
+  const output = asRecord(audio?.output);
+  return normalizeVoice(output?.voice);
+}
+
+function buildRealtimeSession(rawSession: string) {
+  const source = parseSessionSource(rawSession);
+  const session: UnknownRecord = {
     type: "realtime",
     model: DEFAULT_REALTIME_MODEL,
+    output_modalities: ["audio"],
     audio: {
       output: {
-        voice: parseRequestedVoice(rawSession),
+        voice: parseRequestedVoice(source),
+        speed: LEO_LLM_SPEECH_SPEED,
       },
     },
-  });
+  };
+
+  if (typeof source.instructions === "string" && source.instructions.trim()) {
+    session.instructions = source.instructions.trim();
+  }
+
+  return JSON.stringify(session);
 }
 
 function buildMultipartBody(boundary: string, sdp: string, session: string) {
@@ -99,8 +112,12 @@ export async function GET(request: NextRequest) {
       session: {
         type: "realtime",
         model: DEFAULT_REALTIME_MODEL,
+        output_modalities: ["audio"],
         audio: {
-          output: { voice },
+          output: {
+            voice,
+            speed: LEO_LLM_SPEECH_SPEED,
+          },
         },
       },
     }),
@@ -161,7 +178,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const safeSession = buildMinimalSession(rawSession);
+    const safeSession = buildRealtimeSession(rawSession);
     const boundary = `nubo-realtime-${crypto.randomUUID()}`;
     const multipartBody = buildMultipartBody(boundary, sdp, safeSession);
 
