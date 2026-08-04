@@ -18,6 +18,7 @@ const OPENAI_VOICES = new Set([
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
+const DEFAULT_FEMALE_VOICE = "coral";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -28,9 +29,10 @@ function asRecord(value: unknown): UnknownRecord | null {
 }
 
 function normalizeVoice(value: unknown) {
+  if (value === "marin") return DEFAULT_FEMALE_VOICE;
   return typeof value === "string" && OPENAI_VOICES.has(value)
     ? value
-    : "marin";
+    : DEFAULT_FEMALE_VOICE;
 }
 
 function sanitizeRealtimeSession(raw: string) {
@@ -103,7 +105,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const requestedVoice = new URL(request.url).searchParams.get("voice") ?? "marin";
+  const requestedVoice =
+    new URL(request.url).searchParams.get("voice") ?? DEFAULT_FEMALE_VOICE;
   const voice = normalizeVoice(requestedVoice);
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
