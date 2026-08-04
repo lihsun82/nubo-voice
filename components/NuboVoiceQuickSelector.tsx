@@ -20,6 +20,18 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "realistic", label: "高擬真模式", note: "優先顯示高擬真與推薦聲線" },
 ];
 
+function isRecommendedVoice(voice: NuboVoiceOption | undefined) {
+  return Boolean(
+    voice &&
+      "recommended" in voice &&
+      voice.recommended === true,
+  );
+}
+
+function isHighRealismVoice(voice: NuboVoiceOption | undefined) {
+  return voice?.realism === "high";
+}
+
 export function NuboVoiceQuickSelector() {
   const [profile, setProfile] = useState<NuboVoiceProfile>(NUBO_DEFAULT_VOICE_PROFILE);
   const [mode, setMode] = useState<QuickMode>("female");
@@ -28,18 +40,31 @@ export function NuboVoiceQuickSelector() {
     const current = readNuboVoiceProfile();
     setProfile(current);
     const all = current.engine === "openai" ? NUBO_OPENAI_VOICES : NUBO_GEMINI_VOICES;
-    const selected = all.find((voice) => voice.id === current.voice);
-    if (selected?.recommended || selected?.realism === "high") setMode("realistic");
-    else if (selected?.gender === "male") setMode("male");
-    else setMode("female");
+    const selected = all.find((voice) => voice.id === current.voice) as
+      | NuboVoiceOption
+      | undefined;
+
+    if (isRecommendedVoice(selected) || isHighRealismVoice(selected)) {
+      setMode("realistic");
+    } else if (selected?.gender === "male") {
+      setMode("male");
+    } else {
+      setMode("female");
+    }
   }, []);
 
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
-    const all = profile.engine === "openai" ? NUBO_OPENAI_VOICES : NUBO_GEMINI_VOICES;
+    const all = (
+      profile.engine === "openai" ? NUBO_OPENAI_VOICES : NUBO_GEMINI_VOICES
+    ) as ReadonlyArray<NuboVoiceOption>;
+
     if (mode === "realistic") {
-      const preferred = all.filter((voice) => voice.recommended || voice.realism === "high");
+      const preferred = all.filter(
+        (voice) => isRecommendedVoice(voice) || isHighRealismVoice(voice),
+      );
       return preferred.length ? preferred : all;
     }
+
     return all.filter((voice) => voice.gender === (mode as NuboVoiceGender));
   }, [mode, profile.engine]);
 
@@ -56,7 +81,7 @@ export function NuboVoiceQuickSelector() {
           <b>選擇 NUBO 管家語音</b>
           <small>直接選男聲、女聲或高擬真模式</small>
         </div>
-        <span>V15.5</span>
+        <span>V15.5.1</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -91,7 +116,13 @@ export function NuboVoiceQuickSelector() {
                 <strong>{voice.label}</strong>
                 <small>{voice.tone}</small>
               </span>
-              <em>{selected ? "已選擇" : voice.realism === "high" ? "高擬真" : voice.genderLabel}</em>
+              <em>
+                {selected
+                  ? "已選擇"
+                  : isHighRealismVoice(voice) || isRecommendedVoice(voice)
+                    ? "高擬真"
+                    : voice.genderLabel}
+              </em>
             </button>
           );
         })}
