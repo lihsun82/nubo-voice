@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { NuboDirectOpenGuard } from "@/components/NuboDirectOpenGuard";
 import { NuboPublicBrandingGuard } from "@/components/NuboPublicBrandingGuard";
+import { NuboSpaceBackground } from "@/components/NuboSpaceBackground";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
     default: "NUBO 智能語音",
     template: "%s | NUBO",
   },
-  description: "NUBO 智慧語音與自動化控制中心",
+  description: "AINUBO Hotel 智慧旅館管家與自動化控制中心",
   applicationName: "NUBO",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -40,13 +41,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#0b0d14",
+  themeColor: "#030716",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboSpaceBackground />
         <NuboDirectOpenGuard />
         <NuboPublicBrandingGuard />
         {children}
