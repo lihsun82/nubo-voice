@@ -19,8 +19,8 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO 開發的 LLM 溫柔真人管家",
-    note: "OpenAI Coral 女聲・高擬真、穩定、自然陪伴感",
+    label: "LEO LLM 溫柔真人管家",
+    note: "Coral 主聲線・Shimmer 備援・自然停頓與稍慢語速",
   },
 ];
 
@@ -34,6 +34,15 @@ function isRecommendedVoice(voice: NuboVoiceOption | undefined) {
 
 function isHighRealismVoice(voice: NuboVoiceOption | undefined) {
   return voice?.realism === "high";
+}
+
+function openAiVoiceBadge(voice: NuboVoiceOption, selected: boolean) {
+  if (selected) return "已選擇";
+  if (voice.id === "coral") return "主聲線";
+  if (voice.id === "shimmer") return "備援女聲";
+  return isHighRealismVoice(voice) || isRecommendedVoice(voice)
+    ? "高擬真"
+    : voice.genderLabel;
 }
 
 export function NuboVoiceQuickSelector() {
@@ -67,9 +76,14 @@ export function NuboVoiceQuickSelector() {
 
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
     if (mode === "openai") {
-      return (NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>).filter(
+      const all = (NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>).filter(
         (voice) => voice.id !== "marin",
       );
+      return [...all].sort((a, b) => {
+        const priority = (voice: NuboVoiceOption) =>
+          voice.id === "coral" ? 0 : voice.id === "shimmer" ? 1 : 2;
+        return priority(a) - priority(b);
+      });
     }
 
     const all = NUBO_GEMINI_VOICES as ReadonlyArray<NuboVoiceOption>;
@@ -108,9 +122,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>所有聲線都套用溫柔、冷靜、可靠的說話方式</small>
+          <small>LEO LLM 以自然、簡潔、有判斷力的真人對話為主</small>
         </div>
-        <span>V15.6.2</span>
+        <span>V15.6.3</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -146,10 +160,10 @@ export function NuboVoiceQuickSelector() {
                 <small>{voice.tone}</small>
               </span>
               <em>
-                {selected
-                  ? "已選擇"
-                  : isHighRealismVoice(voice) || isRecommendedVoice(voice)
-                    ? "高擬真"
+                {mode === "openai"
+                  ? openAiVoiceBadge(voice, selected)
+                  : selected
+                    ? "已選擇"
                     : voice.genderLabel}
               </em>
             </button>
@@ -158,7 +172,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        LEO 溫柔真人管家預設使用 Coral 女聲。舊的 Marin 設定會自動轉換，切換聲線時也會重新載入語音核心，避免雙聲道。
+        Coral 是 LEO LLM 的主要女聲；Shimmer 是 Realtime 可用的備援女聲。Nova 僅用於文字轉語音，不會放進即時對話模式。
       </p>
     </section>
   );
