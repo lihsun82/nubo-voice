@@ -12,12 +12,12 @@ import {
   type NuboVoiceProfile,
 } from "@/lib/nubo-voice-profile";
 
-type QuickMode = "female" | "male" | "realistic";
+type QuickMode = "female" | "male" | "openai";
 
 const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "female", label: "女生語音", note: "溫柔、自然的真人管家聲線" },
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
-  { id: "realistic", label: "高擬真模式", note: "優先顯示高擬真與推薦聲線" },
+  { id: "openai", label: "OpenAI 溫柔真人管家", note: "高擬真、穩定、自然陪伴感" },
 ];
 
 function isRecommendedVoice(voice: NuboVoiceOption | undefined) {
@@ -39,37 +39,51 @@ export function NuboVoiceQuickSelector() {
   useEffect(() => {
     const current = readNuboVoiceProfile();
     setProfile(current);
-    const all = current.engine === "openai" ? NUBO_OPENAI_VOICES : NUBO_GEMINI_VOICES;
-    const selected = all.find((voice) => voice.id === current.voice) as
-      | NuboVoiceOption
-      | undefined;
 
-    if (isRecommendedVoice(selected) || isHighRealismVoice(selected)) {
-      setMode("realistic");
-    } else if (selected?.gender === "male") {
-      setMode("male");
-    } else {
-      setMode("female");
+    if (current.engine === "openai") {
+      setMode("openai");
+      return;
     }
+
+    const selected = NUBO_GEMINI_VOICES.find(
+      (voice) => voice.id === current.voice,
+    ) as NuboVoiceOption | undefined;
+
+    setMode(selected?.gender === "male" ? "male" : "female");
   }, []);
 
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
-    const all = (
-      profile.engine === "openai" ? NUBO_OPENAI_VOICES : NUBO_GEMINI_VOICES
-    ) as ReadonlyArray<NuboVoiceOption>;
-
-    if (mode === "realistic") {
-      const preferred = all.filter(
-        (voice) => isRecommendedVoice(voice) || isHighRealismVoice(voice),
-      );
-      return preferred.length ? preferred : all;
+    if (mode === "openai") {
+      return NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>;
     }
 
+    const all = NUBO_GEMINI_VOICES as ReadonlyArray<NuboVoiceOption>;
     return all.filter((voice) => voice.gender === (mode as NuboVoiceGender));
-  }, [mode, profile.engine]);
+  }, [mode]);
+
+  const chooseMode = (nextMode: QuickMode) => {
+    setMode(nextMode);
+
+    if (nextMode === "openai" && profile.engine !== "openai") {
+      const next = {
+        ...profile,
+        engine: "openai",
+        voice: "marin",
+        personality: "professional",
+      } as NuboVoiceProfile;
+      setProfile(next);
+      saveNuboVoiceProfile(next);
+    }
+  };
 
   const selectVoice = (voice: NuboVoiceOption) => {
-    const next = { ...profile, voice: voice.id } as NuboVoiceProfile;
+    const engine = mode === "openai" ? "openai" : "gemini";
+    const next = {
+      ...profile,
+      engine,
+      voice: voice.id,
+    } as NuboVoiceProfile;
+
     setProfile(next);
     saveNuboVoiceProfile(next);
   };
@@ -81,7 +95,7 @@ export function NuboVoiceQuickSelector() {
           <b>選擇 NUBO 真人管家語音</b>
           <small>所有聲線都套用溫柔、冷靜、可靠的說話方式</small>
         </div>
-        <span>V15.6</span>
+        <span>V15.6.1</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -92,7 +106,7 @@ export function NuboVoiceQuickSelector() {
             role="tab"
             aria-selected={mode === item.id}
             className={mode === item.id ? "active" : ""}
-            onClick={() => setMode(item.id)}
+            onClick={() => chooseMode(item.id)}
           >
             <strong>{item.label}</strong>
             <small>{item.note}</small>
@@ -127,7 +141,10 @@ export function NuboVoiceQuickSelector() {
           );
         })}
       </div>
-      <p>切換後，結束目前對話並重新啟動 NUBO，即會套用新聲音與 V15.6 語氣。</p>
+
+      <p>
+        OpenAI 模式預設使用 Marin。切換聲線時會自動重新載入語音核心，避免兩個聲音同時回答。
+      </p>
     </section>
   );
 }
