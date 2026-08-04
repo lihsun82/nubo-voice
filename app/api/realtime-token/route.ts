@@ -61,7 +61,7 @@ function buildMinimalSession(rawSession: string) {
 function buildMultipartBody(boundary: string, sdp: string, session: string) {
   return [
     `--${boundary}\r\n`,
-    'Content-Disposition: form-data; name="sdp"; filename="offer.sdp"\r\n',
+    'Content-Disposition: form-data; name="sdp"\r\n',
     "Content-Type: application/sdp\r\n\r\n",
     sdp,
     "\r\n",
