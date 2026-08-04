@@ -15,8 +15,8 @@ import {
 type QuickMode = "female" | "male" | "realistic";
 
 const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
-  { id: "female", label: "女生語音", note: "溫柔、親切的旅館管家聲線" },
-  { id: "male", label: "男生語音", note: "沉穩、專業的旅館管家聲線" },
+  { id: "female", label: "女生語音", note: "溫柔、自然的真人管家聲線" },
+  { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   { id: "realistic", label: "高擬真模式", note: "優先顯示高擬真與推薦聲線" },
 ];
 
@@ -78,10 +78,10 @@ export function NuboVoiceQuickSelector() {
     <section className="nubo-voice-quick" aria-label="快速選擇NUBO語音">
       <div className="nubo-voice-quick-head">
         <div>
-          <b>選擇 NUBO 管家語音</b>
-          <small>直接選男聲、女聲或高擬真模式</small>
+          <b>選擇 NUBO 真人管家語音</b>
+          <small>所有聲線都套用溫柔、冷靜、可靠的說話方式</small>
         </div>
-        <span>V15.5.1</span>
+        <span>V15.6</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -127,7 +127,7 @@ export function NuboVoiceQuickSelector() {
           );
         })}
       </div>
-      <p>切換後，結束目前對話並重新啟動 NUBO，即會套用新聲音。</p>
+      <p>切換後，結束目前對話並重新啟動 NUBO，即會套用新聲音與 V15.6 語氣。</p>
     </section>
   );
 }
