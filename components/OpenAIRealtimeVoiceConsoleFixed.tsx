@@ -5,12 +5,20 @@ import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceCons
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
-const NUBO_REALTIME_PROXY_URL = "/api/openai/realtime-call";
+const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
 
 async function formValueToText(value: FormDataEntryValue | null) {
   if (typeof value === "string") return value;
   if (value instanceof Blob) return value.text();
   return "";
+}
+
+function isHtmlResponse(contentType: string | null, body: string) {
+  return Boolean(
+    contentType?.includes("text/html") ||
+      /^\s*<!doctype html/i.test(body) ||
+      /^\s*<html/i.test(body),
+  );
 }
 
 export function OpenAIRealtimeVoiceConsoleFixed({
@@ -48,12 +56,33 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       proxyForm.append("sdp", sdp);
       if (session.trim()) proxyForm.append("session", session);
 
-      return nativeFetch(NUBO_REALTIME_PROXY_URL, {
+      const response = await nativeFetch(NUBO_REALTIME_PROXY_URL, {
         method: "POST",
-        headers: init.headers,
         body: proxyForm,
         cache: "no-store",
       });
+
+      if (response.ok) return response;
+
+      const body = await response.text();
+      const contentType = response.headers.get("content-type");
+
+      if (isHtmlResponse(contentType, body)) {
+        throw new Error("高擬人語音路由尚未就緒，請重新整理後再啟動 NUBO。");
+      }
+
+      try {
+        const payload = JSON.parse(body) as { error?: unknown };
+        if (typeof payload.error === "string" && payload.error.trim()) {
+          throw new Error(payload.error.trim());
+        }
+      } catch (cause) {
+        if (cause instanceof Error && cause.message !== "Unexpected end of JSON input") {
+          throw cause;
+        }
+      }
+
+      throw new Error("高擬人即時語音連線建立失敗，請稍後再試。");
     };
 
     return () => {
