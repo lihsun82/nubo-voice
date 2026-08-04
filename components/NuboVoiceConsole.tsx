@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GeminiVoiceConsole } from "@/components/GeminiVoiceConsole";
-import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
+import { OpenAIRealtimeVoiceConsoleFixed } from "@/components/OpenAIRealtimeVoiceConsoleFixed";
 import { NuboVoiceProfileRuntime } from "@/components/NuboVoiceProfileRuntime";
 import {
   NUBO_DEFAULT_VOICE_PROFILE,
@@ -97,7 +97,7 @@ export function NuboVoiceConsole() {
     <>
       <NuboVoiceProfileRuntime />
       {profile.engine === "openai" ? (
-        <OpenAIRealtimeVoiceConsole key={profileKey} profile={profile} />
+        <OpenAIRealtimeVoiceConsoleFixed key={profileKey} profile={profile} />
       ) : (
         <GeminiVoiceConsole key={profileKey} />
       )}
