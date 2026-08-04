@@ -24,11 +24,11 @@ const GENDER_FILTERS: Array<{
   id: VoiceFilter;
   label: string;
 }> = [
-  { id: "all", label: "全部" },
-  { id: "male", label: "男聲" },
-  { id: "female", label: "女聲" },
-  { id: "neutral", label: "中性" },
-  { id: "recommended", label: "擬真推薦" },
+  { id: "all", label: "全部聲線" },
+  { id: "male", label: "男生語音" },
+  { id: "female", label: "女生語音" },
+  { id: "neutral", label: "中性語音" },
+  { id: "recommended", label: "高擬真推薦" },
 ];
 
 export default function NuboVoiceModeSettings() {
@@ -86,15 +86,15 @@ export default function NuboVoiceModeSettings() {
     >
       <div className="nubo-panel-head">
         <div>
-          <h2>NUBO 語音模式與聲音庫</h2>
+          <h2>太空沉浸式語音與擬真模式</h2>
           <p>
-            AINUBO Hotel 智慧旅宿管家，已啟用台灣飯店營業日與報價日期校正。
+            NUBO 的 AINUBO Hotel 智慧旅館管家身份不變，可自由選擇男生、女生、中性聲線與各種高擬真模式。
           </p>
         </div>
-        <span>AINUBO Hotel V15.4</span>
+        <span>Space Voice V15.5</span>
       </div>
 
-      <div className="nubo-mode-presets" aria-label="快速模式">
+      <div className="nubo-mode-presets" aria-label="管家角色快速模式">
         {NUBO_MODE_PRESETS.map((preset) => {
           const active =
             preset.profile.engine === profile.engine &&
@@ -120,7 +120,7 @@ export default function NuboVoiceModeSettings() {
       </div>
 
       <fieldset className="nubo-voice-fieldset">
-        <legend>語音引擎</legend>
+        <legend>擬真語音核心</legend>
         <div className="nubo-choice-grid two-column">
           {NUBO_ENGINE_OPTIONS.map((option) => (
             <label
@@ -142,7 +142,7 @@ export default function NuboVoiceModeSettings() {
 
       <fieldset className="nubo-voice-fieldset">
         <div className="nubo-voice-legend-row">
-          <legend>聲音選擇</legend>
+          <legend>男生、女生與高擬真聲線</legend>
           <small>
             {profile.engine === "gemini"
               ? "30 種官方男女聲"
@@ -150,7 +150,7 @@ export default function NuboVoiceModeSettings() {
           </small>
         </div>
 
-        <div className="nubo-voice-filter" role="group" aria-label="聲音篩選">
+        <div className="nubo-voice-filter" role="group" aria-label="聲音性別與擬真篩選">
           {availableFilters.map((filter) => (
             <button
               key={filter.id}
@@ -163,7 +163,7 @@ export default function NuboVoiceModeSettings() {
           ))}
         </div>
 
-        <div className="nubo-voice-gallery" aria-label="可選聲音">
+        <div className="nubo-voice-gallery" aria-label="可選擬真聲音">
           <div
             className="nubo-choice-grid"
             role="radiogroup"
@@ -185,7 +185,7 @@ export default function NuboVoiceModeSettings() {
                   <div className="nubo-voice-badges">
                     <span>{option.genderLabel}</span>
                     {option.recommended ? <em>官方品質推薦</em> : null}
-                    {option.realism === "high" ? <i>高擬真</i> : null}
+                    {option.realism === "high" ? <i>高擬真模式</i> : <i>標準擬真</i>}
                     {selected ? <b>✓ 已選擇</b> : null}
                   </div>
                   <strong>{option.label}</strong>
@@ -197,12 +197,12 @@ export default function NuboVoiceModeSettings() {
         </div>
 
         <p className="nubo-voice-result-count">
-          顯示 {visibleVoiceOptions.length} 種聲音｜點擊整張卡片即可選擇
+          顯示 {visibleVoiceOptions.length} 種聲音｜點擊整張卡片即可套用
         </p>
       </fieldset>
 
       <fieldset className="nubo-voice-fieldset">
-        <legend>個性</legend>
+        <legend>旅館管家個性模式</legend>
         <div className="nubo-choice-grid two-column">
           {NUBO_PERSONALITY_OPTIONS.map((option) => (
             <label
@@ -224,22 +224,22 @@ export default function NuboVoiceModeSettings() {
 
       <div className="nubo-current-profile" aria-live="polite">
         <div>
-          <b>目前設定</b>
+          <b>目前啟用</b>
           <span>
             {labels.engine}｜{labels.voice}｜{labels.personality}
           </span>
         </div>
         <small>
           {savedAt
-            ? `已選擇「${labels.voice}」。正在對話中的語音工作階段會在重新連線後套用。`
-            : "設定儲存在這支裝置，不會寫入公開頁面。"}
+            ? `已選擇「${labels.voice}」。重新連線後會套用新的管家聲線。`
+            : "設定儲存在這支裝置；NUBO 仍維持 AINUBO Hotel 智慧旅館管家身份。"}
         </small>
       </div>
 
       <div className="nubo-mode-note">
-        <b>男女聲與擬真聲線說明</b>
+        <b>性別聲線與擬真模式說明</b>
         <p>
-          Gemini 的男聲／女聲依官方聲音資料標示。OpenAI Realtime 官方不以性別命名，介面中的「偏男聲／偏女聲／中性聲線」是方便選擇的聲線聽感分類；Marin 與 Cedar 標示為官方品質推薦。
+          男生、女生與中性分類依聲線聽感及官方資料呈現；高擬真模式適合自然對話與旅館接待。無論選擇哪一種聲音，AINUBO Hotel 管家知識、價格日期防呆、停車與服務規則都不會改變。
         </p>
       </div>
     </section>
