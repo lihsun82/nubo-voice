@@ -16,6 +16,8 @@ const OPENAI_VOICES = new Set([
   "cedar",
 ]);
 
+const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
+
 export async function GET(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -62,4 +64,78 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(data, {
     headers: { "Cache-Control": "no-store" },
   });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: "高擬人語音服務尚未設定憑證" },
+        { status: 500 },
+      );
+    }
+
+    const incomingForm = await request.formData();
+    const sdpValue = incomingForm.get("sdp");
+    const sessionValue = incomingForm.get("session");
+
+    const sdp =
+      typeof sdpValue === "string"
+        ? sdpValue
+        : sdpValue instanceof Blob
+          ? await sdpValue.text()
+          : "";
+    const session =
+      typeof sessionValue === "string"
+        ? sessionValue
+        : sessionValue instanceof Blob
+          ? await sessionValue.text()
+          : "";
+
+    if (!sdp.trim()) {
+      return NextResponse.json(
+        { error: "OpenAI Realtime SDP 內容缺失" },
+        { status: 400 },
+      );
+    }
+
+    const form = new FormData();
+    form.append("sdp", sdp);
+    if (session.trim()) form.append("session", session);
+
+    const response = await fetch(OPENAI_REALTIME_CALL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "OpenAI-Safety-Identifier":
+          process.env.OPENAI_SAFETY_IDENTIFIER ?? "nubo-owner",
+      },
+      body: form,
+      cache: "no-store",
+    });
+
+    const answer = await response.text();
+    if (!response.ok) {
+      console.error("NUBO realtime call error", response.status, answer.slice(0, 500));
+      return NextResponse.json(
+        { error: "高擬人即時語音連線建立失敗" },
+        { status: response.status },
+      );
+    }
+
+    return new Response(answer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/sdp",
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (cause) {
+    console.error("NUBO realtime proxy failure", cause);
+    return NextResponse.json(
+      { error: "NUBO 無法建立高擬人即時語音連線" },
+      { status: 502 },
+    );
+  }
 }
