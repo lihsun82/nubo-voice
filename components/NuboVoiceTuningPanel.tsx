@@ -21,7 +21,7 @@ const CONTROLS: Array<{
   {
     key: "speed",
     label: "語速",
-    description: "控制整體說話速度。",
+    description: "OpenAI Realtime 可直接套用；Gemini 聲線會以語氣指令盡量接近設定。",
     min: 0.85,
     max: 1.15,
     step: 0.01,
@@ -31,7 +31,7 @@ const CONTROLS: Array<{
   {
     key: "perceivedPitch",
     label: "聲線高低／感知音高",
-    description: "負值較低沉成熟，正值較輕亮年輕；不使用數位變調，不會改變語速或攔截手機音軌。",
+    description: "往右更輕亮、年輕；往左更低沉、成熟。這是語音表現指令，不是 DSP 變調。",
     min: -30,
     max: 30,
     step: 1,
@@ -117,7 +117,7 @@ const CONTROLS: Array<{
   {
     key: "outputGain",
     label: "輸出音量",
-    description: "目前維持原生 Realtime 音軌，避免手機再次靜音。",
+    description: "目前維持原生語音音軌，避免手機再次靜音。",
     min: 0.7,
     max: 1.3,
     step: 0.01,
@@ -153,13 +153,13 @@ export function NuboVoiceTuningPanel() {
   };
 
   return (
-    <section className="nubo-voice-quick" aria-label="LEO LLM 聲線與語氣調音工作台">
+    <section className="nubo-voice-quick" aria-label="NUBO 全語音調音工作台">
       <div className="nubo-voice-quick-head">
         <div>
-          <b>LEO LLM 聲線與語氣調音工作台</b>
-          <small>調整數據後重新啟動 NUBO，實際比較聲線與語氣表現</small>
+          <b>NUBO 全語音聲線與語氣調音工作台</b>
+          <small>女生語音、男生語音與 LEO LLM 共用同一組調音數據</small>
         </div>
-        <span>V15.6.14</span>
+        <span>V15.6.15</span>
       </div>
 
       <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
@@ -193,7 +193,7 @@ export function NuboVoiceTuningPanel() {
 
       <div className="actions" style={{ marginTop: 16 }}>
         <button className="primary" type="button" onClick={save}>
-          {saved ? "已儲存數據" : "儲存目前數據"}
+          {saved ? "已儲存全語音數據" : "儲存目前數據"}
         </button>
         <button className="secondary" type="button" onClick={reset}>
           恢復預設
@@ -201,7 +201,7 @@ export function NuboVoiceTuningPanel() {
       </div>
 
       <p>
-        年輕女聲建議先試：感知音高 +12、頓挫感 55%、情感 65%、語助詞 25%、慵懶感 20%。感知音高超過 +20 可能開始出現刻意或尖細感。
+        更換女生、男生或 LEO LLM 聲線後，請結束目前對話並重新啟動 NUBO，新的語氣數據才會完整套用。
       </p>
     </section>
   );
