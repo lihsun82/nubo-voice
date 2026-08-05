@@ -19,8 +19,8 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 溫柔真人管家",
-    note: "Coral 主聲線・Shimmer 備援・自然停頓與稍慢語速",
+    label: "LEO LLM 年輕台灣女聲",
+    note: "Shimmer 主聲線・約 28 歲・自然台灣口吻",
   },
 ];
 
@@ -38,8 +38,8 @@ function isHighRealismVoice(voice: NuboVoiceOption | undefined) {
 
 function openAiVoiceBadge(voice: NuboVoiceOption, selected: boolean) {
   if (selected) return "已選擇";
-  if (voice.id === "coral") return "主聲線";
-  if (voice.id === "shimmer") return "備援女聲";
+  if (voice.id === "shimmer") return "主聲線";
+  if (voice.id === "coral") return "備援女聲";
   return isHighRealismVoice(voice) || isRecommendedVoice(voice)
     ? "高擬真"
     : voice.genderLabel;
@@ -52,8 +52,9 @@ export function NuboVoiceQuickSelector() {
   useEffect(() => {
     const current = readNuboVoiceProfile();
     const migrated =
-      current.engine === "openai" && current.voice === "marin"
-        ? ({ ...current, voice: "coral" } as NuboVoiceProfile)
+      current.engine === "openai" &&
+      (current.voice === "marin" || current.voice === "coral")
+        ? ({ ...current, voice: "shimmer" } as NuboVoiceProfile)
         : current;
 
     if (migrated !== current) {
@@ -81,7 +82,7 @@ export function NuboVoiceQuickSelector() {
       );
       return [...all].sort((a, b) => {
         const priority = (voice: NuboVoiceOption) =>
-          voice.id === "coral" ? 0 : voice.id === "shimmer" ? 1 : 2;
+          voice.id === "shimmer" ? 0 : voice.id === "coral" ? 1 : 2;
         return priority(a) - priority(b);
       });
     }
@@ -97,7 +98,7 @@ export function NuboVoiceQuickSelector() {
       const next = {
         ...profile,
         engine: "openai",
-        voice: "coral",
+        voice: "shimmer",
         personality: "professional",
       } as NuboVoiceProfile;
       setProfile(next);
@@ -122,9 +123,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>LEO LLM 以自然、簡潔、有判斷力的真人對話為主</small>
+          <small>LEO LLM 以年輕、自然、台灣口吻的真人對話為主</small>
         </div>
-        <span>V15.6.3</span>
+        <span>V15.6.4</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -172,7 +173,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        Coral 是 LEO LLM 的主要女聲；Shimmer 是 Realtime 可用的備援女聲。Nova 僅用於文字轉語音，不會放進即時對話模式。
+        Shimmer 是 LEO LLM 的主要年輕女聲，Coral 作為備援。語速恢復自然，不再使用過度慵懶與低沉的表達。
       </p>
     </section>
   );
