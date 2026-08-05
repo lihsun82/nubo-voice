@@ -110,47 +110,6 @@ function playYouTubeInsideNubo(result: unknown) {
   };
 }
 
-function controlInlineMusic(args: Record<string, unknown>) {
-  const action = String(args.action ?? "").trim().toLowerCase();
-  const selectorByAction: Record<string, string> = {
-    pause: 'button[aria-label="暫停音樂"]',
-    resume: 'button[aria-label="繼續音樂"]',
-    stop: 'button[aria-label="停止音樂"]',
-    close: 'button[aria-label="停止音樂"]',
-  };
-  const selector = selectorByAction[action];
-
-  if (!selector) {
-    return { success: false, action, message: "不支援的音樂控制指令。" };
-  }
-
-  const button = document.querySelector<HTMLButtonElement>(selector);
-  if (!button || button.disabled) {
-    const message =
-      action === "resume"
-        ? "目前沒有已暫停、可繼續播放的音樂。"
-        : "目前沒有可控制的音樂。";
-    return { success: false, action, message };
-  }
-
-  button.click();
-
-  const messageByAction: Record<string, string> = {
-    pause: "音樂已暫停。",
-    resume: "音樂已繼續播放。",
-    stop: "音樂已停止。",
-    close: "音樂已關閉。",
-  };
-
-  return {
-    success: true,
-    action,
-    inlinePlayback: true,
-    message: messageByAction[action],
-    build: "voice-music-control-v1-20260806",
-  };
-}
-
 async function postSetting(
   target: "audio" | "brightness",
   action: string,
@@ -202,10 +161,6 @@ async function delegatedWorkStatus(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
-  if (call.name === "music_control") {
-    return controlInlineMusic(call.args ?? {});
-  }
-
   if (call.name === "device_setting") {
     const args = call.args ?? {};
     const target = args.target === "brightness" ? "brightness" : "audio";
@@ -277,22 +232,19 @@ export const geminiSystemInstruction = `
 8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
 9. open_youtube的query必須保留使用者說出的完整歌曲、歌手或影片名稱，service固定youtube。
 10. 使用者在歌曲播放中又指定另一首歌時，立即再次呼叫open_youtube；最新歌曲直接替換目前歌曲，不詢問確認、不建立第二個播放器、不離開NUBO頁面。
-11. 使用者說暫停音樂、先停一下、繼續播放、恢復音樂、停止音樂、關閉音樂或同義句時，立即使用music_control；不得只口頭回答已完成。
-12. 「閉嘴、安靜、退下」只控制NUBO語音，不得關閉音樂；只有明確提到音樂、歌曲或播放內容時才使用music_control。
-13. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
-14. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
-15. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
-16. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
-17. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
-18. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
+11. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
+12. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
+13. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
+14. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
+15. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
+16. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
 - 指定歌曲或影片必須先取得videoId，然後在NUBO頁面的持續播放器播放，不得跳出YouTube或YouTube Music。
 - 新歌曲指令永遠覆蓋上一首；不得詢問是否切換，不得同時播放兩首。
 - 音樂播放期間仍維持NUBO語音聆聽；語音核心回覆時播放器會自動降低音量。
-- 暫停音樂保留目前歌曲與進度；繼續播放恢復目前歌曲；停止或關閉音樂會收起播放器。
-- 工具失敗時不得聲稱已播放或已控制；應簡短說明目前沒有可控制的音樂。
+- 工具失敗時不得聲稱已播放；應簡短說明失敗原因。
 - 網站開在使用者目前裝置，不得說只能在Windows使用。
 - 不得聲稱可任意啟動所有App，只能使用已支援的官方App Link、Universal Link或安全白名單。
 
@@ -356,23 +308,6 @@ export const geminiFunctionDeclarations = [
 
     return declaration;
   }),
-  {
-    name: "music_control",
-    description:
-      "控制NUBO內正在播放的YouTube音樂。使用者要求暫停、繼續、停止或關閉音樂時立即使用。",
-    parameters: {
-      type: "OBJECT",
-      properties: {
-        action: {
-          type: "STRING",
-          enum: ["pause", "resume", "stop", "close"],
-          description:
-            "pause暫停並保留進度；resume繼續；stop停止並收起播放器；close關閉並收起播放器。",
-        },
-      },
-      required: ["action"],
-    },
-  },
   {
     name: "device_setting",
     description: "調整Windows音量、靜音狀態或內建螢幕亮度。",
