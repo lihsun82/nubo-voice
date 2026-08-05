@@ -2,6 +2,10 @@
 
 import { useEffect } from "react";
 import {
+  buildNuboLanguageInstruction,
+  readNuboLanguageMode,
+} from "@/lib/nubo-language-mode";
+import {
   getNuboPersonalityInstruction,
   readNuboVoiceProfile,
 } from "@/lib/nubo-voice-profile";
@@ -12,6 +16,7 @@ import {
 
 const PROFILE_MARKER = "NUBO_VOICE_PROFILE_V15";
 const TUNING_MARKER = "NUBO_SHARED_VOICE_TUNING_V15_6_15";
+const LANGUAGE_MARKER = "NUBO_TAIWAN_LANGUAGE_MODE_V15_6_21";
 
 function configureGeminiSetupPayload(value: string) {
   let payload: unknown;
@@ -55,12 +60,13 @@ function configureGeminiSetupPayload(value: string) {
   const personality = getNuboPersonalityInstruction(profile.personality);
   const tuning = readNuboVoiceTuning();
   const performance = buildNuboVoicePerformanceInstruction(tuning);
-  const sharedInstruction = `${PROFILE_MARKER}\n${personality}\n\n${TUNING_MARKER}\n${performance}`;
+  const language = buildNuboLanguageInstruction(readNuboLanguageMode());
+  const sharedInstruction = `${PROFILE_MARKER}\n${personality}\n\n${TUNING_MARKER}\n${performance}\n\n${LANGUAGE_MARKER}\n${language}`;
   const parts = setup.systemInstruction?.parts;
 
   if (Array.isArray(parts) && parts.length > 0) {
     const current = String(parts[0]?.text ?? "");
-    if (!current.includes(TUNING_MARKER)) {
+    if (!current.includes(LANGUAGE_MARKER)) {
       parts[0] = {
         ...parts[0],
         text: `${current}\n\n${sharedInstruction}`,
