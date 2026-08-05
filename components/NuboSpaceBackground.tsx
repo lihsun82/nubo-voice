@@ -36,13 +36,13 @@ export function NuboSpaceBackground() {
 
     const createStars = () => {
       const coarse = window.matchMedia("(pointer: coarse)").matches;
-      const count = reducedMotion ? 35 : coarse ? 80 : 150;
+      const count = reducedMotion ? 48 : coarse ? 130 : 240;
       stars = Array.from({ length: count }, () => ({
         x: Math.random() * width,
         y: Math.random() * height,
-        radius: 0.35 + Math.random() * 1.45,
+        radius: 0.45 + Math.random() * 1.7,
         depth: 0.25 + Math.random() * 0.75,
-        speed: 0.018 + Math.random() * 0.055,
+        speed: 0.012 + Math.random() * 0.045,
         phase: Math.random() * Math.PI * 2,
       }));
     };
@@ -61,32 +61,32 @@ export function NuboSpaceBackground() {
 
     const drawNebula = (time: number) => {
       const drift = reducedMotion ? 0 : Math.sin(time * 0.00008) * width * 0.035;
-      const nebula = context.createRadialGradient(
-        width * 0.68 + drift,
-        height * 0.22,
+      const upper = context.createRadialGradient(
+        width * 0.7 + drift,
+        height * 0.18,
         0,
-        width * 0.68 + drift,
-        height * 0.22,
-        Math.max(width, height) * 0.62,
+        width * 0.7 + drift,
+        height * 0.18,
+        Math.max(width, height) * 0.7,
       );
-      nebula.addColorStop(0, "rgba(54, 211, 255, 0.14)");
-      nebula.addColorStop(0.32, "rgba(71, 89, 255, 0.11)");
-      nebula.addColorStop(0.62, "rgba(166, 55, 255, 0.08)");
-      nebula.addColorStop(1, "rgba(2, 5, 18, 0)");
-      context.fillStyle = nebula;
+      upper.addColorStop(0, "rgba(86, 205, 255, 0.22)");
+      upper.addColorStop(0.34, "rgba(100, 121, 255, 0.14)");
+      upper.addColorStop(0.64, "rgba(157, 102, 255, 0.08)");
+      upper.addColorStop(1, "rgba(255, 255, 255, 0)");
+      context.fillStyle = upper;
       context.fillRect(0, 0, width, height);
 
       const lower = context.createRadialGradient(
-        width * 0.16 - drift * 0.5,
+        width * 0.15 - drift * 0.45,
         height * 0.82,
         0,
-        width * 0.16 - drift * 0.5,
+        width * 0.15 - drift * 0.45,
         height * 0.82,
-        Math.max(width, height) * 0.48,
+        Math.max(width, height) * 0.54,
       );
-      lower.addColorStop(0, "rgba(174, 46, 255, 0.1)");
-      lower.addColorStop(0.45, "rgba(45, 103, 255, 0.07)");
-      lower.addColorStop(1, "rgba(2, 5, 18, 0)");
+      lower.addColorStop(0, "rgba(173, 111, 255, 0.13)");
+      lower.addColorStop(0.48, "rgba(82, 180, 255, 0.09)");
+      lower.addColorStop(1, "rgba(255, 255, 255, 0)");
       context.fillStyle = lower;
       context.fillRect(0, 0, width, height);
     };
@@ -101,28 +101,41 @@ export function NuboSpaceBackground() {
       for (const star of stars) {
         if (!reducedMotion) {
           star.y += star.speed * star.depth;
-          star.x += Math.sin(time * 0.0001 + star.phase) * 0.012 * star.depth;
-          if (star.y > height + 4) {
-            star.y = -4;
+          star.x += Math.sin(time * 0.00012 + star.phase) * 0.016 * star.depth;
+          if (star.y > height + 5) {
+            star.y = -5;
             star.x = Math.random() * width;
           }
         }
 
         const twinkle = reducedMotion
-          ? 0.62
-          : 0.45 + Math.sin(time * 0.0012 + star.phase) * 0.28;
+          ? 0.5
+          : 0.42 + Math.sin(time * 0.0015 + star.phase) * 0.34;
+        const alpha = Math.max(0.1, twinkle);
+        const red = star.phase % 3 < 1 ? 84 : 124;
+        const green = star.phase % 3 < 1 ? 172 : 132;
+        const blue = 255;
+
         context.beginPath();
         context.arc(star.x, star.y, star.radius * star.depth, 0, Math.PI * 2);
-        context.fillStyle = `rgba(211, 242, 255, ${Math.max(0.12, twinkle)})`;
+        context.fillStyle = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
         context.fill();
 
-        if (star.depth > 0.78 && !reducedMotion) {
+        if (star.depth > 0.7 && !reducedMotion) {
+          const glow = context.createRadialGradient(
+            star.x,
+            star.y,
+            0,
+            star.x,
+            star.y,
+            star.radius * 8,
+          );
+          glow.addColorStop(0, `rgba(118, 184, 255, ${alpha * 0.26})`);
+          glow.addColorStop(1, "rgba(118, 184, 255, 0)");
+          context.fillStyle = glow;
           context.beginPath();
-          context.moveTo(star.x, star.y - star.radius * 5);
-          context.lineTo(star.x, star.y + star.radius * 5);
-          context.strokeStyle = `rgba(119, 224, 255, ${twinkle * 0.2})`;
-          context.lineWidth = 0.45;
-          context.stroke();
+          context.arc(star.x, star.y, star.radius * 8, 0, Math.PI * 2);
+          context.fill();
         }
       }
 
