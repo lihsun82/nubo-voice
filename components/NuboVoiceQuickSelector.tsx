@@ -14,21 +14,32 @@ import {
 
 type QuickMode = "female" | "male" | "openai";
 
-const LEO_TRIAL_VOICE_IDS = new Set(["shimmer", "verse", "alloy", "coral"]);
+const LEO_REALTIME_VOICE_IDS = new Set([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "sage",
+  "shimmer",
+  "verse",
+  "marin",
+  "cedar",
+]);
 
 const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "female", label: "女生語音", note: "溫柔、自然的真人管家聲線" },
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 年輕聲線試聽",
-    note: "Shimmer・Verse・Alloy・Coral 四種即時比較",
+    label: "LEO LLM 聲線調音",
+    note: "10 種 Realtime 聲線＋可調式音色工作台",
   },
 ];
 
 function openAiVoiceBadge(voice: NuboVoiceOption, selected: boolean) {
   if (selected) return "已選擇";
-  if (voice.id === "shimmer") return "預設年輕聲線";
+  if (voice.id === "shimmer") return "預設";
   return "點選試聽";
 }
 
@@ -39,14 +50,11 @@ export function NuboVoiceQuickSelector() {
   useEffect(() => {
     const current = readNuboVoiceProfile();
     const migrated =
-      current.engine === "openai" && !LEO_TRIAL_VOICE_IDS.has(current.voice)
+      current.engine === "openai" && !LEO_REALTIME_VOICE_IDS.has(current.voice)
         ? ({ ...current, voice: "shimmer" } as NuboVoiceProfile)
         : current;
 
-    if (migrated !== current) {
-      saveNuboVoiceProfile(migrated);
-    }
-
+    if (migrated !== current) saveNuboVoiceProfile(migrated);
     setProfile(migrated);
 
     if (migrated.engine === "openai") {
@@ -57,19 +65,27 @@ export function NuboVoiceQuickSelector() {
     const selected = NUBO_GEMINI_VOICES.find(
       (voice) => voice.id === migrated.voice,
     ) as NuboVoiceOption | undefined;
-
     setMode(selected?.gender === "male" ? "male" : "female");
   }, []);
 
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
     if (mode === "openai") {
       const all = NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>;
+      const order = [
+        "shimmer",
+        "verse",
+        "alloy",
+        "coral",
+        "ash",
+        "ballad",
+        "echo",
+        "sage",
+        "marin",
+        "cedar",
+      ];
       return all
-        .filter((voice) => LEO_TRIAL_VOICE_IDS.has(voice.id))
-        .sort((a, b) => {
-          const order = ["shimmer", "verse", "alloy", "coral"];
-          return order.indexOf(a.id) - order.indexOf(b.id);
-        });
+        .filter((voice) => LEO_REALTIME_VOICE_IDS.has(voice.id))
+        .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     }
 
     const all = NUBO_GEMINI_VOICES as ReadonlyArray<NuboVoiceOption>;
@@ -78,12 +94,11 @@ export function NuboVoiceQuickSelector() {
 
   const chooseMode = (nextMode: QuickMode) => {
     setMode(nextMode);
-
     if (nextMode === "openai") {
       const next = {
         ...profile,
         engine: "openai",
-        voice: LEO_TRIAL_VOICE_IDS.has(profile.voice) ? profile.voice : "shimmer",
+        voice: LEO_REALTIME_VOICE_IDS.has(profile.voice) ? profile.voice : "shimmer",
         personality: "professional",
       } as NuboVoiceProfile;
       setProfile(next);
@@ -92,13 +107,11 @@ export function NuboVoiceQuickSelector() {
   };
 
   const selectVoice = (voice: NuboVoiceOption) => {
-    const engine = mode === "openai" ? "openai" : "gemini";
     const next = {
       ...profile,
-      engine,
+      engine: mode === "openai" ? "openai" : "gemini",
       voice: voice.id,
     } as NuboVoiceProfile;
-
     setProfile(next);
     saveNuboVoiceProfile(next);
   };
@@ -108,9 +121,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>切換聲線後會完整重建語音工作階段，實際比較年齡感</small>
+          <small>先選底層聲線，再用下方調音台調整亮度、厚度與清晰度</small>
         </div>
-        <span>V15.6.11</span>
+        <span>V15.6.12</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -158,7 +171,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        預設 Shimmer，語速 1.0。可直接比較 Verse、Alloy、Coral；若 Railway 已設定自訂聲線 ID，則自訂聲線會優先套用。
+        Realtime 聲線開始輸出後不能在同一個工作階段更換；點選另一個聲線時，NUBO 會完整重建語音連線。
       </p>
     </section>
   );
