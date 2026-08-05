@@ -5,8 +5,8 @@ export const dynamic = "force-dynamic";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
-const DEFAULT_OPENAI_VOICE = "coral";
-const LEO_LLM_SPEECH_SPEED = 0.92;
+const DEFAULT_OPENAI_VOICE = "shimmer";
+const LEO_LLM_SPEECH_SPEED = 0.98;
 
 type UnknownRecord = Record<string, unknown>;
 
