@@ -8,6 +8,10 @@ export type NuboVoiceTuning = {
   presence: number;
   compression: number;
   outputGain: number;
+  cadence: number;
+  emotion: number;
+  fillers: number;
+  relaxed: number;
 };
 
 export const NUBO_DEFAULT_VOICE_TUNING: NuboVoiceTuning = {
@@ -17,6 +21,10 @@ export const NUBO_DEFAULT_VOICE_TUNING: NuboVoiceTuning = {
   presence: 2,
   compression: 35,
   outputGain: 1,
+  cadence: 45,
+  emotion: 55,
+  fillers: 25,
+  relaxed: 20,
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -33,7 +41,46 @@ export function normalizeNuboVoiceTuning(
     presence: clamp(Number(value?.presence ?? 2), -8, 8),
     compression: clamp(Number(value?.compression ?? 35), 0, 100),
     outputGain: clamp(Number(value?.outputGain ?? 1), 0.7, 1.3),
+    cadence: clamp(Number(value?.cadence ?? 45), 0, 100),
+    emotion: clamp(Number(value?.emotion ?? 55), 0, 100),
+    fillers: clamp(Number(value?.fillers ?? 25), 0, 100),
+    relaxed: clamp(Number(value?.relaxed ?? 20), 0, 100),
   };
+}
+
+function intensity(value: number, low: string, medium: string, high: string) {
+  if (value < 34) return low;
+  if (value < 67) return medium;
+  return high;
+}
+
+export function buildNuboVoicePerformanceInstruction(tuning: NuboVoiceTuning) {
+  const cadence = intensity(
+    tuning.cadence,
+    "節奏平順自然，避免刻意加重音或戲劇化斷句。",
+    "說話要有適度頓挫，重點字自然加重，句尾有收放，長短句交替。",
+    "頓挫感明顯但仍像真人：重點清楚、節奏有變化、適度停頓，不可像舞台朗誦。",
+  );
+  const emotion = intensity(
+    tuning.emotion,
+    "情緒表達克制，保持自然親切。",
+    "依內容帶出溫柔、關心、驚喜或認真等自然情緒，不要整段同一表情。",
+    "情感反應鮮明、有共感，但不可誇張、哭腔、演戲或犧牲資訊準確度。",
+  );
+  const fillers = intensity(
+    tuning.fillers,
+    "幾乎不使用語助詞，除非口語情境非常自然。",
+    "偶爾自然使用「嗯」「哦」「啊，對」「對耶」等語助詞，但不要每句都加。",
+    "可以較常使用自然語助詞與短反應，但必須分散、符合情境，禁止固定口頭禪或連續堆疊。",
+  );
+  const relaxed = intensity(
+    tuning.relaxed,
+    "保持清爽俐落，不刻意拉長語尾。",
+    "帶一點放鬆慵懶感，語尾柔和、節奏從容，但不要拖字或沒精神。",
+    "呈現明顯但舒服的慵懶感：放鬆、柔軟、從容，仍須咬字清楚且反應可靠，不可含糊或昏沉。",
+  );
+
+  return `LEO LLM 動態語氣調音：\n- ${cadence}\n- ${emotion}\n- ${fillers}\n- ${relaxed}\n- 以上參數只調整表達方式，不得改變事實、身份、安全規則或工具使用準確度。`;
 }
 
 export function readNuboVoiceTuning(): NuboVoiceTuning {
