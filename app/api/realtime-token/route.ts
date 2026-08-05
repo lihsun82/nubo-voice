@@ -18,8 +18,7 @@ const OPENAI_VOICES = new Set([
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
-const DEFAULT_OPENAI_VOICE = "shimmer";
-const LEO_LLM_SPEECH_SPEED = 0.96;
+const DEFAULT_OPENAI_VOICE = "marin";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -30,7 +29,6 @@ function asRecord(value: unknown): UnknownRecord | null {
 }
 
 function normalizeVoice(value: unknown) {
-  if (value === "marin") return DEFAULT_OPENAI_VOICE;
   return typeof value === "string" && OPENAI_VOICES.has(value)
     ? value
     : DEFAULT_OPENAI_VOICE;
@@ -59,7 +57,6 @@ function buildRealtimeSession(rawSession: string) {
     audio: {
       output: {
         voice: parseRequestedVoice(source),
-        speed: LEO_LLM_SPEECH_SPEED,
       },
     },
   };
@@ -114,10 +111,7 @@ export async function GET(request: NextRequest) {
         model: DEFAULT_REALTIME_MODEL,
         output_modalities: ["audio"],
         audio: {
-          output: {
-            voice,
-            speed: LEO_LLM_SPEECH_SPEED,
-          },
+          output: { voice },
         },
       },
     }),
