@@ -19,8 +19,8 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 年輕台灣女聲",
-    note: "Shimmer 主聲線・偏亮音色・自然思考停頓",
+    label: "LEO LLM 年輕輕快台灣女聲",
+    note: "Shimmer 主聲線・明亮有活力・自然台灣口吻",
   },
 ];
 
@@ -123,9 +123,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>LEO LLM 以年輕、偏亮、自然台灣口吻的真人對話為主</small>
+          <small>LEO LLM 以年輕、明亮、有活力又自然的台灣口吻為主</small>
         </div>
-        <span>V15.6.5</span>
+        <span>V15.6.6</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -173,7 +173,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        Shimmer 為主聲線，Coral 為備援。新版加入偏亮音色、0.3～0.6 秒自然思考停頓與少量語助詞。
+        Shimmer 為主聲線，Coral 為備援。新版強化年輕亮度、活力與台灣口吻，同時把語速維持在自然範圍。
       </p>
     </section>
   );
