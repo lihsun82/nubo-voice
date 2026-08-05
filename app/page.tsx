@@ -2,7 +2,6 @@ import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters"
 import { NuboAudioPrimeGuard } from "@/components/NuboAudioPrimeGuard";
 import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboMusicSoundEnhancer } from "@/components/NuboMusicSoundEnhancer";
-import { NuboVoiceAudioTuningRuntime } from "@/components/NuboVoiceAudioTuningRuntime";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboVoiceQuickSelector } from "@/components/NuboVoiceQuickSelector";
 import { NuboVoiceTuningPanel } from "@/components/NuboVoiceTuningPanel";
@@ -13,7 +12,6 @@ export default function HomePage() {
   return (
     <main className="shell">
       <NuboAudioPrimeGuard />
-      <NuboVoiceAudioTuningRuntime />
       <NuboVoiceConsole />
       <NuboVoiceQuickSelector />
       <NuboVoiceTuningPanel />
@@ -28,8 +26,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.12｜LEO LLM 聲線調音工作台</span>
-        <span>10 種聲線｜語速・明亮度・溫暖度・清晰度・壓縮・音量｜管家身份不變</span>
+        <span>v0.5.1 NUBO V15.6.12.1｜Realtime 音訊恢復版</span>
+        <span>原生音軌直接播放｜聲線與語速可調｜Android 相容｜管家身份不變</span>
       </footer>
     </main>
   );
