@@ -21,13 +21,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜女生・男生・LEO LLM 共用語氣調音
+          AINUBO Hotel 智慧旅館管家｜邊聊天・邊調整・下一句立即比較
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.15｜全語音共用調音工作台</span>
-        <span>Gemini 女聲・男聲・LEO LLM｜感知音高・頓挫・情感・語助詞・慵懶感</span>
+        <span>v0.5.1 NUBO V15.6.16｜LEO LLM 邊聊邊調版</span>
+        <span>下一句即時生效｜語速・感知音高・頓挫・情感・語助詞・慵懶感</span>
       </footer>
     </main>
   );
