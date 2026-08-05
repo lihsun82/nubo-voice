@@ -26,9 +26,9 @@ export function NuboLanguageModeSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>NUBO 臺灣語言模式</b>
-          <small>臺灣台語專指臺灣本地台語，不使用其他國家或地區的閩南語腔調</small>
+          <small>臺灣台語強化：先用台語思考，再自然說出台灣人真正會用的句型</small>
         </div>
-        <span>V15.6.21</span>
+        <span>V15.6.22</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="radiogroup" aria-label="語言模式">
@@ -48,7 +48,7 @@ export function NuboLanguageModeSelector() {
       </div>
 
       <p>
-        更換語言模式後，LEO LLM 從下一句即時生效；Gemini 會在下一次語音續接時完整套用。
+        更換語言模式後，LEO LLM 從下一句即時生效；Gemini 會在下一次語音續接時完整套用。臺灣台語模式會避免華語逐字翻譯與其他地區閩南語腔調。
       </p>
     </section>
   );
