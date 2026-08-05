@@ -19,8 +19,8 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 年輕自然女聲",
-    note: "Coral 固定聲線・約 24–27 歲・自然台灣華語",
+    label: "LEO LLM 青春自然女聲",
+    note: "Shimmer 固定聲線・約 18–21 歲感・自然台灣華語",
   },
 ];
 
@@ -31,8 +31,8 @@ export function NuboVoiceQuickSelector() {
   useEffect(() => {
     const current = readNuboVoiceProfile();
     const migrated =
-      current.engine === "openai" && current.voice !== "coral"
-        ? ({ ...current, voice: "coral" } as NuboVoiceProfile)
+      current.engine === "openai" && current.voice !== "shimmer"
+        ? ({ ...current, voice: "shimmer" } as NuboVoiceProfile)
         : current;
 
     if (migrated !== current) {
@@ -56,7 +56,7 @@ export function NuboVoiceQuickSelector() {
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
     if (mode === "openai") {
       return (NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>).filter(
-        (voice) => voice.id === "coral",
+        (voice) => voice.id === "shimmer",
       );
     }
 
@@ -71,7 +71,7 @@ export function NuboVoiceQuickSelector() {
       const next = {
         ...profile,
         engine: "openai",
-        voice: "coral",
+        voice: "shimmer",
         personality: "professional",
       } as NuboVoiceProfile;
       setProfile(next);
@@ -84,7 +84,7 @@ export function NuboVoiceQuickSelector() {
     const next = {
       ...profile,
       engine,
-      voice: mode === "openai" ? "coral" : voice.id,
+      voice: mode === "openai" ? "shimmer" : voice.id,
     } as NuboVoiceProfile;
 
     setProfile(next);
@@ -96,9 +96,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>LEO LLM 固定 Coral：更年輕、柔和、自然，不像配音</small>
+          <small>LEO LLM 已從 Coral 實際換成更年輕、輕亮的 Shimmer</small>
         </div>
-        <span>V15.6.9</span>
+        <span>V15.6.10</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -140,7 +140,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        Coral 維持 0.92 語速，聲線定位調整為約 24–27 歲；保留自然起伏與短句節奏，不強迫語助詞或固定停頓。
+        Shimmer 固定聲線，語速 0.98。這次是實際更換底層聲線，不是只靠提示詞調整年齡感。
       </p>
     </section>
   );
