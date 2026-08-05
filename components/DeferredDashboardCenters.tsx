@@ -3,14 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
-const AgentWorkCenter = dynamic(
-  () =>
-    import("@/components/AgentWorkCenter").then(
-      (module) => module.AgentWorkCenter,
-    ),
-  { ssr: false },
-);
-
 const IntegrationCenter = dynamic(
   () =>
     import("@/components/IntegrationCenter").then(
@@ -57,11 +49,6 @@ export function DeferredDashboardCenters() {
       observer.observe(marker);
     }
 
-    /*
-     * 手機優先保留Gemini Live、麥克風和音訊處理資源。
-     * 使用者未向下捲動時，控制中心延後到12秒才載入；
-     * 一旦接近控制中心則立即載入。
-     */
     const fallbackTimer = window.setTimeout(
       load,
       mobile ? 12_000 : 2_500,
@@ -87,7 +74,6 @@ export function DeferredDashboardCenters() {
 
   return (
     <>
-      <AgentWorkCenter />
       <IntegrationCenter />
       <TaskCenter />
     </>
