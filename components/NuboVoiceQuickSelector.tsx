@@ -19,31 +19,10 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 自然真人女聲",
-    note: "Marin 主聲線・保留原生韻律・自然台灣口吻",
+    label: "LEO LLM 年輕溫柔女聲",
+    note: "Coral 固定聲線・語速 0.92・自然台灣華語",
   },
 ];
-
-function isRecommendedVoice(voice: NuboVoiceOption | undefined) {
-  return Boolean(
-    voice &&
-      "recommended" in voice &&
-      voice.recommended === true,
-  );
-}
-
-function isHighRealismVoice(voice: NuboVoiceOption | undefined) {
-  return voice?.realism === "high";
-}
-
-function openAiVoiceBadge(voice: NuboVoiceOption, selected: boolean) {
-  if (selected) return "已選擇";
-  if (voice.id === "marin") return "主聲線";
-  if (voice.id === "shimmer") return "備援女聲";
-  return isHighRealismVoice(voice) || isRecommendedVoice(voice)
-    ? "高擬真"
-    : voice.genderLabel;
-}
 
 export function NuboVoiceQuickSelector() {
   const [profile, setProfile] = useState<NuboVoiceProfile>(NUBO_DEFAULT_VOICE_PROFILE);
@@ -52,9 +31,8 @@ export function NuboVoiceQuickSelector() {
   useEffect(() => {
     const current = readNuboVoiceProfile();
     const migrated =
-      current.engine === "openai" &&
-      (current.voice === "shimmer" || current.voice === "coral")
-        ? ({ ...current, voice: "marin" } as NuboVoiceProfile)
+      current.engine === "openai" && current.voice !== "coral"
+        ? ({ ...current, voice: "coral" } as NuboVoiceProfile)
         : current;
 
     if (migrated !== current) {
@@ -77,12 +55,9 @@ export function NuboVoiceQuickSelector() {
 
   const voices = useMemo<ReadonlyArray<NuboVoiceOption>>(() => {
     if (mode === "openai") {
-      const all = NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>;
-      return [...all].sort((a, b) => {
-        const priority = (voice: NuboVoiceOption) =>
-          voice.id === "marin" ? 0 : voice.id === "shimmer" ? 1 : 2;
-        return priority(a) - priority(b);
-      });
+      return (NUBO_OPENAI_VOICES as ReadonlyArray<NuboVoiceOption>).filter(
+        (voice) => voice.id === "coral",
+      );
     }
 
     const all = NUBO_GEMINI_VOICES as ReadonlyArray<NuboVoiceOption>;
@@ -96,7 +71,7 @@ export function NuboVoiceQuickSelector() {
       const next = {
         ...profile,
         engine: "openai",
-        voice: "marin",
+        voice: "coral",
         personality: "professional",
       } as NuboVoiceProfile;
       setProfile(next);
@@ -109,7 +84,7 @@ export function NuboVoiceQuickSelector() {
     const next = {
       ...profile,
       engine,
-      voice: voice.id,
+      voice: mode === "openai" ? "coral" : voice.id,
     } as NuboVoiceProfile;
 
     setProfile(next);
@@ -121,9 +96,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>LEO LLM 取消人工配音參數，回到模型原生自然節奏</small>
+          <small>LEO LLM 固定 Coral：年輕、乾淨、溫柔，自然但不稚嫩</small>
         </div>
-        <span>V15.6.7</span>
+        <span>V15.6.8</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -158,20 +133,14 @@ export function NuboVoiceQuickSelector() {
                 <strong>{voice.label}</strong>
                 <small>{voice.tone}</small>
               </span>
-              <em>
-                {mode === "openai"
-                  ? openAiVoiceBadge(voice, selected)
-                  : selected
-                    ? "已選擇"
-                    : voice.genderLabel}
-              </em>
+              <em>{selected ? "已固定" : voice.genderLabel}</em>
             </button>
           );
         })}
       </div>
 
       <p>
-        Marin 為主聲線，Shimmer 為備援。新版移除固定音高、固定速度、固定停頓與語助詞配額，避免機械式配音感。
+        LEO LLM 已鎖定 Coral 與 0.92 語速，使用短句、自然起伏與適度停頓，避免客服、播報與書面朗讀感。
       </p>
     </section>
   );
