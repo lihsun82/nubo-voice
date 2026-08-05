@@ -3,7 +3,10 @@
 import { useEffect } from "react";
 import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
-import { readNuboVoiceTuning } from "@/lib/nubo-voice-tuning";
+import {
+  buildNuboVoicePerformanceInstruction,
+  readNuboVoiceTuning,
+} from "@/lib/nubo-voice-tuning";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
@@ -25,11 +28,20 @@ function normalizeSession(session: string) {
 
   try {
     const payload = JSON.parse(session) as Record<string, unknown>;
+    const tuning = readNuboVoiceTuning();
     const audio = asRecord(payload.audio);
     const output = asRecord(audio.output);
-    output.speed = readNuboVoiceTuning().speed;
+    output.speed = tuning.speed;
     audio.output = output;
     payload.audio = audio;
+
+    const baseInstructions =
+      typeof payload.instructions === "string" ? payload.instructions.trim() : "";
+    const performanceInstructions = buildNuboVoicePerformanceInstruction(tuning);
+    payload.instructions = [baseInstructions, performanceInstructions]
+      .filter(Boolean)
+      .join("\n\n");
+
     payload.type = "realtime";
     payload.model = "gpt-realtime";
     return JSON.stringify(payload);
@@ -71,7 +83,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
 
       const originalForm = init.body;
       const sdp = await formValueToText(originalForm.get("sdp"));
-      const session = normalizeSession(
+      const normalizedSession = normalizeSession(
         await formValueToText(originalForm.get("session")),
       );
 
@@ -81,7 +93,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
 
       const proxyForm = new FormData();
       proxyForm.append("sdp", sdp);
-      if (session) proxyForm.append("session", session);
+      if (normalizedSession) proxyForm.append("session", normalizedSession);
 
       const response = await nativeFetch(NUBO_REALTIME_PROXY_URL, {
         method: "POST",
