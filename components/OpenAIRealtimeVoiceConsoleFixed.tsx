@@ -4,12 +4,17 @@ import { useEffect } from "react";
 import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
 import {
+  NUBO_VOICE_TUNING_EVENT,
   buildNuboVoicePerformanceInstruction,
   readNuboVoiceTuning,
+  type NuboVoiceTuning,
 } from "@/lib/nubo-voice-tuning";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
+
+let realtimeChannel: RTCDataChannel | null = null;
+let realtimeBaseInstructions = "";
 
 async function formValueToText(value: FormDataEntryValue | null) {
   if (typeof value === "string") return value;
@@ -21,6 +26,15 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function buildInstructions(tuning: NuboVoiceTuning) {
+  return [
+    realtimeBaseInstructions,
+    buildNuboVoicePerformanceInstruction(tuning),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function normalizeSession(session: string) {
@@ -35,19 +49,34 @@ function normalizeSession(session: string) {
     audio.output = output;
     payload.audio = audio;
 
-    const baseInstructions =
+    realtimeBaseInstructions =
       typeof payload.instructions === "string" ? payload.instructions.trim() : "";
-    const performanceInstructions = buildNuboVoicePerformanceInstruction(tuning);
-    payload.instructions = [baseInstructions, performanceInstructions]
-      .filter(Boolean)
-      .join("\n\n");
-
+    payload.instructions = buildInstructions(tuning);
     payload.type = "realtime";
     payload.model = "gpt-realtime";
     return JSON.stringify(payload);
   } catch {
     throw new Error("高擬人語音設定格式不正確，請重新整理後再試。");
   }
+}
+
+function sendLiveTuningUpdate(tuning: NuboVoiceTuning) {
+  if (!realtimeChannel || realtimeChannel.readyState !== "open") return false;
+
+  realtimeChannel.send(
+    JSON.stringify({
+      type: "session.update",
+      session: {
+        instructions: buildInstructions(tuning),
+        audio: {
+          output: {
+            speed: tuning.speed,
+          },
+        },
+      },
+    }),
+  );
+  return true;
 }
 
 function isHtmlResponse(contentType: string | null, body: string) {
@@ -65,6 +94,32 @@ export function OpenAIRealtimeVoiceConsoleFixed({
 }) {
   useEffect(() => {
     const nativeFetch = window.fetch.bind(window);
+    const nativeCreateDataChannel = RTCPeerConnection.prototype.createDataChannel;
+    let tuningTimer: number | null = null;
+
+    RTCPeerConnection.prototype.createDataChannel = function patchedCreateDataChannel(
+      label: string,
+      dataChannelDict?: RTCDataChannelInit,
+    ) {
+      const channel = Reflect.apply(nativeCreateDataChannel, this, [
+        label,
+        dataChannelDict,
+      ]) as RTCDataChannel;
+      if (label === "oai-events") realtimeChannel = channel;
+      return channel;
+    };
+
+    const handleLiveTuning = (event: Event) => {
+      const tuning =
+        (event as CustomEvent<NuboVoiceTuning>).detail ?? readNuboVoiceTuning();
+      if (tuningTimer) window.clearTimeout(tuningTimer);
+      tuningTimer = window.setTimeout(() => {
+        tuningTimer = null;
+        sendLiveTuningUpdate(tuning);
+      }, 220);
+    };
+
+    window.addEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url =
@@ -132,7 +187,12 @@ export function OpenAIRealtimeVoiceConsoleFixed({
     };
 
     return () => {
+      if (tuningTimer) window.clearTimeout(tuningTimer);
+      window.removeEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
+      RTCPeerConnection.prototype.createDataChannel = nativeCreateDataChannel;
       window.fetch = nativeFetch;
+      realtimeChannel = null;
+      realtimeBaseInstructions = "";
     };
   }, []);
 
