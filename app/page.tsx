@@ -5,6 +5,8 @@ import { NuboMusicSoundEnhancer } from "@/components/NuboMusicSoundEnhancer";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboVoiceQuickSelector } from "@/components/NuboVoiceQuickSelector";
 
+export const dynamic = "force-dynamic";
+
 export default function HomePage() {
   return (
     <main className="shell">
@@ -17,13 +19,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜溫柔、冷靜、可靠的真人助理語氣
+          AINUBO Hotel 智慧旅館管家｜年輕、偏亮、自然台灣口吻
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.1｜溫柔真人管家語氣版</span>
-        <span>單一語音工作階段｜OpenAI 高擬真選項｜AINUBO Hotel 管家身份不變</span>
+        <span>v0.5.1 NUBO V15.6.5｜LEO LLM 年輕台灣女聲版</span>
+        <span>Shimmer 主聲線｜自然思考停頓｜OpenAI Realtime｜AINUBO Hotel 管家身份不變</span>
       </footer>
     </main>
   );
