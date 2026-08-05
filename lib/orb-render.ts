@@ -8,26 +8,49 @@ function drawTrack(
   offset: number,
   alpha: number,
   violet: boolean,
+  dashed = false,
 ) {
   const center = ORB_SIZE / 2;
+  ctx.save();
+  if (dashed) ctx.setLineDash([5, 8]);
   ctx.beginPath();
-  for (let index = 0; index <= 140; index += 1) {
-    const ratio = index / 140;
+  for (let index = 0; index <= 160; index += 1) {
+    const ratio = index / 160;
     const angle = ratio * Math.PI * 2 + time * 0.00031 + offset;
-    const localRadius = radius + Math.sin(angle * 4 + time * 0.001) * 8;
+    const localRadius = radius + Math.sin(angle * 4 + time * 0.001) * 7;
     const x = center + Math.cos(angle) * localRadius;
     const y = center + Math.sin(angle) * localRadius * tilt;
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   ctx.strokeStyle = violet
-    ? `rgba(195,78,255,${alpha})`
-    : `rgba(86,196,255,${alpha})`;
-  ctx.lineWidth = 1.1;
-  ctx.shadowColor = violet ? "#c454ff" : "#64d5ff";
-  ctx.shadowBlur = 14;
+    ? `rgba(185,96,255,${alpha})`
+    : `rgba(70,185,255,${alpha})`;
+  ctx.lineWidth = dashed ? 0.8 : 1.05;
+  ctx.shadowColor = violet ? "#b85cff" : "#58cfff";
+  ctx.shadowBlur = dashed ? 8 : 14;
   ctx.stroke();
-  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  const nodeCount = dashed ? 10 : 14;
+  for (let index = 0; index < nodeCount; index += 1) {
+    const angle =
+      (index / nodeCount) * Math.PI * 2 +
+      time * (0.00042 + radius * 0.0000002) +
+      offset;
+    const x = center + Math.cos(angle) * radius;
+    const y = center + Math.sin(angle) * radius * tilt;
+    const twinkle = 0.46 + Math.sin(time * 0.002 + index * 1.7 + offset) * 0.34;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.4 + Math.max(0, twinkle) * 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = violet
+      ? `rgba(225,185,255,${0.45 + twinkle * 0.45})`
+      : `rgba(190,240,255,${0.5 + twinkle * 0.42})`;
+    ctx.shadowColor = violet ? "#d98cff" : "#7ee6ff";
+    ctx.shadowBlur = 12;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
 }
 
 function drawParticles(
@@ -37,39 +60,40 @@ function drawParticles(
   power: number,
 ) {
   const center = ORB_SIZE / 2;
-  const cloudRadius = 182 + power * 4;
+  const cloudRadius = 188 + power * 4;
   const rotation = time * 0.000115 * power;
 
   for (const particle of particles) {
     const theta =
-      particle.theta + rotation + Math.sin(time * particle.speed + particle.offset) * 0.035;
-    const phi = particle.phi + Math.sin(time * 0.00039 + particle.offset) * 0.09;
+      particle.theta + rotation + Math.sin(time * particle.speed + particle.offset) * 0.04;
+    const phi = particle.phi + Math.sin(time * 0.00039 + particle.offset) * 0.1;
     const x3 = Math.sin(phi) * Math.cos(theta);
     const y3 = Math.cos(phi);
     const z3 = Math.sin(phi) * Math.sin(theta);
     const depth = (z3 + 1) * 0.5;
-    const perspective = 0.66 + depth * 0.46;
-    const radius = cloudRadius + Math.sin(time * 0.00072 + particle.offset) * 9;
+    const perspective = 0.66 + depth * 0.48;
+    const radius = cloudRadius + Math.sin(time * 0.00072 + particle.offset) * 11;
     const x = center + x3 * radius * perspective;
     const y = center + y3 * radius * perspective;
-    const alpha = Math.min((0.11 + depth * 0.76) * power, 0.98);
+    const flicker = 0.78 + Math.sin(time * 0.0024 + particle.offset) * 0.22;
+    const alpha = Math.min((0.11 + depth * 0.76) * power * flicker, 0.98);
     const red = 90 + Math.floor(particle.hue * 100 + depth * 70);
-    const green = 72 + Math.floor(depth * 126);
+    const green = 78 + Math.floor(depth * 132);
 
     ctx.beginPath();
-    ctx.arc(x, y, particle.size * (0.5 + depth * 0.82), 0, Math.PI * 2);
+    ctx.arc(x, y, particle.size * (0.5 + depth * 0.88), 0, Math.PI * 2);
     ctx.fillStyle = `rgba(${red},${green},255,${alpha})`;
     ctx.fill();
 
-    if (depth > 0.45) {
-      const trail = 9 + depth * 25 * Math.min(power, 2.1);
+    if (depth > 0.42) {
+      const trail = 8 + depth * 27 * Math.min(power, 2.1);
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x - Math.sin(theta) * trail, y + Math.cos(theta) * trail * 0.4);
       ctx.strokeStyle = particle.hue > 0.5
-        ? `rgba(92,202,255,${0.04 + depth * 0.18})`
-        : `rgba(196,72,255,${0.035 + depth * 0.17})`;
-      ctx.lineWidth = 0.42 + depth * 0.9;
+        ? `rgba(92,202,255,${0.04 + depth * 0.19})`
+        : `rgba(196,72,255,${0.035 + depth * 0.18})`;
+      ctx.lineWidth = 0.42 + depth * 0.92;
       ctx.stroke();
     }
   }
@@ -102,8 +126,8 @@ function drawCore(
   ctx.arc(center, center, coreRadius, 0, Math.PI * 2);
   ctx.fill();
 
-  for (let index = 0; index < 22; index += 1) {
-    const angle = time * (0.00042 + index * 0.000012) + index * 0.41;
+  for (let index = 0; index < 26; index += 1) {
+    const angle = time * (0.00042 + index * 0.000012) + index * 0.37;
     ctx.beginPath();
     ctx.moveTo(center + Math.cos(angle) * 24, center + Math.sin(angle) * 24);
     ctx.quadraticCurveTo(
@@ -152,21 +176,23 @@ export function renderNuboOrb(
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  const aura = ctx.createRadialGradient(center, center, 20, center, center, 262);
+  const aura = ctx.createRadialGradient(center, center, 20, center, center, 266);
   aura.addColorStop(0, `rgba(184,234,255,${0.15 * power})`);
   aura.addColorStop(0.3, `rgba(73,128,255,${0.18 * power})`);
   aura.addColorStop(0.58, `rgba(151,58,255,${0.16 * power})`);
   aura.addColorStop(1, "rgba(10,3,36,0)");
   ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.arc(center, center, 264, 0, Math.PI * 2);
+  ctx.arc(center, center, 266, 0, Math.PI * 2);
   ctx.fill();
 
-  drawTrack(ctx, time, 173, 0.4, 0.1, 0.31 * power, false);
-  drawTrack(ctx, time, 194, 0.57, 1.35, 0.25 * power, true);
-  drawTrack(ctx, time, 216, 0.32, 2.65, 0.19 * power, false);
-  drawTrack(ctx, time, 235, 0.72, 4.05, 0.13 * power, true);
-  drawTrack(ctx, time, 249, 0.48, 5.25, 0.09 * power, false);
+  drawTrack(ctx, time, 162, 0.34, 0.1, 0.34 * power, false);
+  drawTrack(ctx, time, 176, 0.48, 0.75, 0.28 * power, true, true);
+  drawTrack(ctx, time, 192, 0.58, 1.35, 0.26 * power, true);
+  drawTrack(ctx, time, 207, 0.28, 2.05, 0.21 * power, false, true);
+  drawTrack(ctx, time, 222, 0.4, 2.65, 0.2 * power, false);
+  drawTrack(ctx, time, 237, 0.72, 4.05, 0.15 * power, true);
+  drawTrack(ctx, time, 249, 0.48, 5.25, 0.11 * power, false, true);
   drawParticles(ctx, particles, time, power);
   drawCore(ctx, time, power, coreRadius);
 
