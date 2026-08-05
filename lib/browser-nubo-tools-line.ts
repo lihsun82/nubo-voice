@@ -59,6 +59,34 @@ function routeYouTubePlayback(call: FunctionCall): FunctionCall {
   };
 }
 
+function ensureExternalYouTubeResult(result: unknown) {
+  if (!result || typeof result !== "object") return result;
+
+  const payload = result as Record<string, unknown>;
+  const videoId = String(payload.videoId ?? "").trim();
+  const existingUrl = String(payload.mobileUrl ?? payload.url ?? "").trim();
+
+  if (!videoId && !existingUrl) return result;
+
+  const watchUrl = videoId
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&autoplay=1`
+    : existingUrl;
+
+  return {
+    ...payload,
+    ok: payload.ok !== false,
+    mobileUrl: watchUrl,
+    url: watchUrl,
+    playerUrl: watchUrl,
+    mobileLabel: "YouTube",
+    autoOpen: true,
+    supported: true,
+    inlinePlayback: false,
+    preserveNubo: true,
+    build: "youtube-external-videoid-fix-v2-20260806",
+  };
+}
+
 async function postSetting(
   target: "audio" | "brightness",
   action: string,
@@ -140,15 +168,17 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     );
   }
 
-  if (
-    call.name === "open_mobile_app" ||
-    call.name === "open_youtube"
-  ) {
+  if (call.name === "open_mobile_app" || call.name === "open_youtube") {
     const routedCall = routeYouTubePlayback(call);
     const result = await executeBaseTool(routedCall);
 
-    // 指定歌曲或影片一律交給外部 YouTube App／新分頁播放。
-    // 不再建立 NUBO 內嵌播放器，避免 iframe、自動播放及音源衝突。
+    if (routedCall.name === "open_youtube") {
+      return forceDirectMobileOpen(
+        ensureExternalYouTubeResult(result),
+        "open_youtube",
+      );
+    }
+
     return forceDirectMobileOpen(result, routedCall.name ?? call.name);
   }
 
@@ -175,7 +205,7 @@ export const geminiSystemInstruction = `
 7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
 8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
 9. open_youtube的query必須保留使用者說出的完整歌曲、歌手或影片名稱，service固定youtube。
-10. open_youtube取得videoId後，直接開啟YouTube App；App無法處理時由瀏覽器開啟精確影片網址。不得在NUBO頁面內嵌播放。
+10. open_youtube取得videoId後，直接開啟YouTube App；App無法處理時開啟精確影片網址。不得在NUBO頁面內嵌播放。
 11. 使用者在播放期間指定另一首歌時，立即再次呼叫open_youtube，不詢問確認。
 12. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
 13. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
@@ -277,10 +307,7 @@ export const geminiFunctionDeclarations = [
     parameters: {
       type: "OBJECT",
       properties: {
-        title: {
-          type: "STRING",
-          description: "簡短任務名稱。",
-        },
+        title: { type: "STRING", description: "簡短任務名稱。" },
         instruction: {
           type: "STRING",
           description: "保留使用者全部要求、格式、對象、限制與完成標準。",
