@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
-const FALLBACK_OPENAI_VOICE = "shimmer";
-const LEO_LLM_SPEECH_SPEED = 0.98;
+const DEFAULT_OPENAI_VOICE = "shimmer";
+const LEO_LLM_SPEECH_SPEED = 1.0;
+const LEO_TRIAL_VOICES = new Set(["shimmer", "verse", "alloy", "coral"]);
 
 type UnknownRecord = Record<string, unknown>;
 type RealtimeVoice = string | { id: string };
@@ -17,17 +18,26 @@ function asRecord(value: unknown): UnknownRecord | null {
     : null;
 }
 
-function getLeoRealtimeVoice(): RealtimeVoice {
-  const customVoiceId = process.env.NUBO_OPENAI_CUSTOM_VOICE_ID?.trim();
-  return customVoiceId ? { id: customVoiceId } : FALLBACK_OPENAI_VOICE;
-}
-
 function parseSessionSource(rawSession: string) {
   try {
     return asRecord(JSON.parse(rawSession)) ?? {};
   } catch {
     return {};
   }
+}
+
+function parseRequestedVoice(source: UnknownRecord) {
+  const audio = asRecord(source.audio);
+  const output = asRecord(audio?.output);
+  const voice = output?.voice;
+  return typeof voice === "string" && LEO_TRIAL_VOICES.has(voice)
+    ? voice
+    : DEFAULT_OPENAI_VOICE;
+}
+
+function getLeoRealtimeVoice(source: UnknownRecord): RealtimeVoice {
+  const customVoiceId = process.env.NUBO_OPENAI_CUSTOM_VOICE_ID?.trim();
+  return customVoiceId ? { id: customVoiceId } : parseRequestedVoice(source);
 }
 
 function buildRealtimeSession(rawSession: string) {
@@ -38,7 +48,7 @@ function buildRealtimeSession(rawSession: string) {
     output_modalities: ["audio"],
     audio: {
       output: {
-        voice: getLeoRealtimeVoice(),
+        voice: getLeoRealtimeVoice(source),
         speed: LEO_LLM_SPEECH_SPEED,
       },
     },
@@ -67,7 +77,7 @@ function buildMultipartBody(boundary: string, sdp: string, session: string) {
   ].join("");
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -75,6 +85,11 @@ export async function GET() {
       { status: 500 },
     );
   }
+
+  const requestedVoice = new URL(request.url).searchParams.get("voice");
+  const source: UnknownRecord = {
+    audio: { output: { voice: requestedVoice ?? DEFAULT_OPENAI_VOICE } },
+  };
 
   const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
     method: "POST",
@@ -91,7 +106,7 @@ export async function GET() {
         output_modalities: ["audio"],
         audio: {
           output: {
-            voice: getLeoRealtimeVoice(),
+            voice: getLeoRealtimeVoice(source),
             speed: LEO_LLM_SPEECH_SPEED,
           },
         },
