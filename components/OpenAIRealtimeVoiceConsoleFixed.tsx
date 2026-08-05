@@ -2,6 +2,12 @@
 
 import { useEffect } from "react";
 import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
+import {
+  NUBO_LANGUAGE_MODE_EVENT,
+  buildNuboLanguageInstruction,
+  readNuboLanguageMode,
+  type NuboLanguageMode,
+} from "@/lib/nubo-language-mode";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
 import {
   NUBO_VOICE_TUNING_EVENT,
@@ -28,10 +34,11 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function buildInstructions(tuning: NuboVoiceTuning) {
+function buildInstructions(tuning: NuboVoiceTuning, languageMode = readNuboLanguageMode()) {
   return [
     realtimeBaseInstructions,
     buildNuboVoicePerformanceInstruction(tuning),
+    buildNuboLanguageInstruction(languageMode),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -60,14 +67,17 @@ function normalizeSession(session: string) {
   }
 }
 
-function sendLiveTuningUpdate(tuning: NuboVoiceTuning) {
+function sendLiveSessionUpdate(
+  tuning = readNuboVoiceTuning(),
+  languageMode = readNuboLanguageMode(),
+) {
   if (!realtimeChannel || realtimeChannel.readyState !== "open") return false;
 
   realtimeChannel.send(
     JSON.stringify({
       type: "session.update",
       session: {
-        instructions: buildInstructions(tuning),
+        instructions: buildInstructions(tuning, languageMode),
         audio: {
           output: {
             speed: tuning.speed,
@@ -95,7 +105,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
   useEffect(() => {
     const nativeFetch = window.fetch.bind(window);
     const nativeCreateDataChannel = RTCPeerConnection.prototype.createDataChannel;
-    let tuningTimer: number | null = null;
+    let updateTimer: number | null = null;
 
     RTCPeerConnection.prototype.createDataChannel = function patchedCreateDataChannel(
       label: string,
@@ -109,17 +119,31 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       return channel;
     };
 
-    const handleLiveTuning = (event: Event) => {
-      const tuning =
-        (event as CustomEvent<NuboVoiceTuning>).detail ?? readNuboVoiceTuning();
-      if (tuningTimer) window.clearTimeout(tuningTimer);
-      tuningTimer = window.setTimeout(() => {
-        tuningTimer = null;
-        sendLiveTuningUpdate(tuning);
+    const scheduleLiveUpdate = (
+      tuning = readNuboVoiceTuning(),
+      languageMode = readNuboLanguageMode(),
+    ) => {
+      if (updateTimer) window.clearTimeout(updateTimer);
+      updateTimer = window.setTimeout(() => {
+        updateTimer = null;
+        sendLiveSessionUpdate(tuning, languageMode);
       }, 220);
     };
 
+    const handleLiveTuning = (event: Event) => {
+      const tuning =
+        (event as CustomEvent<NuboVoiceTuning>).detail ?? readNuboVoiceTuning();
+      scheduleLiveUpdate(tuning, readNuboLanguageMode());
+    };
+
+    const handleLanguageMode = (event: Event) => {
+      const languageMode =
+        (event as CustomEvent<NuboLanguageMode>).detail ?? readNuboLanguageMode();
+      scheduleLiveUpdate(readNuboVoiceTuning(), languageMode);
+    };
+
     window.addEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
+    window.addEventListener(NUBO_LANGUAGE_MODE_EVENT, handleLanguageMode);
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url =
@@ -187,8 +211,9 @@ export function OpenAIRealtimeVoiceConsoleFixed({
     };
 
     return () => {
-      if (tuningTimer) window.clearTimeout(tuningTimer);
+      if (updateTimer) window.clearTimeout(updateTimer);
       window.removeEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
+      window.removeEventListener(NUBO_LANGUAGE_MODE_EVENT, handleLanguageMode);
       RTCPeerConnection.prototype.createDataChannel = nativeCreateDataChannel;
       window.fetch = nativeFetch;
       realtimeChannel = null;
