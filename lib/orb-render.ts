@@ -7,10 +7,16 @@ function drawTrack(
   tilt: number,
   offset: number,
   alpha: number,
-  violet: boolean,
+  tone: "blue" | "violet" | "gold",
   dashed = false,
 ) {
   const center = ORB_SIZE / 2;
+  const colors = {
+    blue: { stroke: [70, 185, 255], shadow: "#58cfff", node: [190, 240, 255] },
+    violet: { stroke: [185, 96, 255], shadow: "#b85cff", node: [225, 185, 255] },
+    gold: { stroke: [222, 170, 70], shadow: "#e9bd63", node: [255, 226, 154] },
+  }[tone];
+
   ctx.save();
   if (dashed) ctx.setLineDash([5, 8]);
   ctx.beginPath();
@@ -23,11 +29,9 @@ function drawTrack(
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
-  ctx.strokeStyle = violet
-    ? `rgba(185,96,255,${alpha})`
-    : `rgba(70,185,255,${alpha})`;
+  ctx.strokeStyle = `rgba(${colors.stroke[0]},${colors.stroke[1]},${colors.stroke[2]},${alpha})`;
   ctx.lineWidth = dashed ? 0.8 : 1.05;
-  ctx.shadowColor = violet ? "#b85cff" : "#58cfff";
+  ctx.shadowColor = colors.shadow;
   ctx.shadowBlur = dashed ? 8 : 14;
   ctx.stroke();
   ctx.restore();
@@ -43,10 +47,8 @@ function drawTrack(
     const twinkle = 0.46 + Math.sin(time * 0.002 + index * 1.7 + offset) * 0.34;
     ctx.beginPath();
     ctx.arc(x, y, 1.4 + Math.max(0, twinkle) * 1.8, 0, Math.PI * 2);
-    ctx.fillStyle = violet
-      ? `rgba(225,185,255,${0.45 + twinkle * 0.45})`
-      : `rgba(190,240,255,${0.5 + twinkle * 0.42})`;
-    ctx.shadowColor = violet ? "#d98cff" : "#7ee6ff";
+    ctx.fillStyle = `rgba(${colors.node[0]},${colors.node[1]},${colors.node[2]},${0.45 + twinkle * 0.45})`;
+    ctx.shadowColor = colors.shadow;
     ctx.shadowBlur = 12;
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -77,12 +79,14 @@ function drawParticles(
     const y = center + y3 * radius * perspective;
     const flicker = 0.78 + Math.sin(time * 0.0024 + particle.offset) * 0.22;
     const alpha = Math.min((0.11 + depth * 0.76) * power * flicker, 0.98);
-    const red = 90 + Math.floor(particle.hue * 100 + depth * 70);
-    const green = 78 + Math.floor(depth * 132);
+    const gold = particle.hue > 0.9;
+    const red = gold ? 232 : 90 + Math.floor(particle.hue * 100 + depth * 70);
+    const green = gold ? 180 : 78 + Math.floor(depth * 132);
+    const blue = gold ? 80 : 255;
 
     ctx.beginPath();
     ctx.arc(x, y, particle.size * (0.5 + depth * 0.88), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${red},${green},255,${alpha})`;
+    ctx.fillStyle = `rgba(${red},${green},${blue},${alpha})`;
     ctx.fill();
 
     if (depth > 0.42) {
@@ -90,9 +94,11 @@ function drawParticles(
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x - Math.sin(theta) * trail, y + Math.cos(theta) * trail * 0.4);
-      ctx.strokeStyle = particle.hue > 0.5
-        ? `rgba(92,202,255,${0.04 + depth * 0.19})`
-        : `rgba(196,72,255,${0.035 + depth * 0.18})`;
+      ctx.strokeStyle = gold
+        ? `rgba(232,180,80,${0.04 + depth * 0.2})`
+        : particle.hue > 0.5
+          ? `rgba(92,202,255,${0.04 + depth * 0.19})`
+          : `rgba(196,72,255,${0.035 + depth * 0.18})`;
       ctx.lineWidth = 0.42 + depth * 0.92;
       ctx.stroke();
     }
@@ -115,9 +121,10 @@ function drawCore(
     coreRadius,
   );
   shell.addColorStop(0, "rgba(255,255,255,.99)");
-  shell.addColorStop(0.08, "rgba(184,246,255,.98)");
-  shell.addColorStop(0.25, "rgba(63,179,255,.95)");
-  shell.addColorStop(0.48, "rgba(80,88,255,.93)");
+  shell.addColorStop(0.07, "rgba(255,239,190,.96)");
+  shell.addColorStop(0.15, "rgba(184,246,255,.98)");
+  shell.addColorStop(0.3, "rgba(63,179,255,.95)");
+  shell.addColorStop(0.5, "rgba(80,88,255,.93)");
   shell.addColorStop(0.7, "rgba(157,45,255,.9)");
   shell.addColorStop(0.88, "rgba(51,10,108,.97)");
   shell.addColorStop(1, "rgba(3,5,19,1)");
@@ -136,9 +143,11 @@ function drawCore(
       center + Math.cos(angle + 1.18) * coreRadius * 0.76,
       center + Math.sin(angle + 1.18) * coreRadius * 0.76,
     );
-    ctx.strokeStyle = index % 2
-      ? `rgba(82,215,255,${0.08 + power * 0.05})`
-      : `rgba(210,70,255,${0.07 + power * 0.045})`;
+    ctx.strokeStyle = index % 6 === 0
+      ? `rgba(236,190,92,${0.08 + power * 0.05})`
+      : index % 2
+        ? `rgba(82,215,255,${0.08 + power * 0.05})`
+        : `rgba(210,70,255,${0.07 + power * 0.045})`;
     ctx.lineWidth = 0.65 + (index % 4) * 0.24;
     ctx.stroke();
   }
@@ -151,7 +160,7 @@ function drawCore(
     center + scanY + 22,
   );
   scan.addColorStop(0, "rgba(79,203,255,0)");
-  scan.addColorStop(0.5, `rgba(200,246,255,${0.54 * power})`);
+  scan.addColorStop(0.5, `rgba(255,238,185,${0.5 * power})`);
   scan.addColorStop(1, "rgba(143,68,255,0)");
   ctx.save();
   ctx.beginPath();
@@ -176,23 +185,23 @@ export function renderNuboOrb(
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  const aura = ctx.createRadialGradient(center, center, 20, center, center, 266);
-  aura.addColorStop(0, `rgba(184,234,255,${0.15 * power})`);
-  aura.addColorStop(0.3, `rgba(73,128,255,${0.18 * power})`);
-  aura.addColorStop(0.58, `rgba(151,58,255,${0.16 * power})`);
-  aura.addColorStop(1, "rgba(10,3,36,0)");
+  const aura = ctx.createRadialGradient(center, center, 36, center, center, 220);
+  aura.addColorStop(0, `rgba(255,238,190,${0.08 * power})`);
+  aura.addColorStop(0.3, `rgba(73,128,255,${0.11 * power})`);
+  aura.addColorStop(0.58, `rgba(151,58,255,${0.09 * power})`);
+  aura.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = aura;
   ctx.beginPath();
-  ctx.arc(center, center, 266, 0, Math.PI * 2);
+  ctx.arc(center, center, 220, 0, Math.PI * 2);
   ctx.fill();
 
-  drawTrack(ctx, time, 162, 0.34, 0.1, 0.34 * power, false);
-  drawTrack(ctx, time, 176, 0.48, 0.75, 0.28 * power, true, true);
-  drawTrack(ctx, time, 192, 0.58, 1.35, 0.26 * power, true);
-  drawTrack(ctx, time, 207, 0.28, 2.05, 0.21 * power, false, true);
-  drawTrack(ctx, time, 222, 0.4, 2.65, 0.2 * power, false);
-  drawTrack(ctx, time, 237, 0.72, 4.05, 0.15 * power, true);
-  drawTrack(ctx, time, 249, 0.48, 5.25, 0.11 * power, false, true);
+  drawTrack(ctx, time, 162, 0.34, 0.1, 0.34 * power, "blue");
+  drawTrack(ctx, time, 176, 0.48, 0.75, 0.27 * power, "gold", true);
+  drawTrack(ctx, time, 192, 0.58, 1.35, 0.26 * power, "violet");
+  drawTrack(ctx, time, 207, 0.28, 2.05, 0.21 * power, "blue", true);
+  drawTrack(ctx, time, 222, 0.4, 2.65, 0.19 * power, "gold");
+  drawTrack(ctx, time, 237, 0.72, 4.05, 0.15 * power, "violet");
+  drawTrack(ctx, time, 249, 0.48, 5.25, 0.1 * power, "blue", true);
   drawParticles(ctx, particles, time, power);
   drawCore(ctx, time, power, coreRadius);
 
