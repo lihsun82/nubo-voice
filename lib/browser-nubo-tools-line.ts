@@ -10,6 +10,7 @@ import {
 export type { FunctionCall };
 
 const NUBO_MOBILE_OPEN_FALLBACK_ID = "nubo-mobile-open-fallback";
+const NUBO_YOUTUBE_WINDOW_NAME = "nubo_youtube_player";
 
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalizedUrl = targetUrl.toLowerCase();
@@ -21,6 +22,34 @@ function getMobileOpenLabel(targetUrl: string, callName: string) {
   if (normalizedUrl.includes("mail.google.com")) return "Gmail";
   if (callName === "open_website") return "網站";
   return "手機工具";
+}
+
+function ensureYouTubeUrl(result: unknown) {
+  if (!result || typeof result !== "object") return result;
+
+  const payload = result as Record<string, unknown>;
+  const videoId = String(payload.videoId ?? "").trim();
+  const existingUrl = String(payload.mobileUrl ?? payload.url ?? payload.playerUrl ?? "").trim();
+
+  if (!videoId && !existingUrl) return result;
+
+  const targetUrl = videoId
+    ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}&autoplay=1`
+    : existingUrl;
+
+  return {
+    ...payload,
+    ok: payload.ok !== false,
+    mobileUrl: targetUrl,
+    url: targetUrl,
+    playerUrl: targetUrl,
+    mobileLabel: "YouTube",
+    autoOpen: true,
+    supported: true,
+    preserveNubo: true,
+    inlinePlayback: false,
+    build: "deployed-youtube-external-v3-20260806",
+  };
 }
 
 function showHardMobileOpenFallback(targetUrl: string, label: string) {
@@ -67,8 +96,9 @@ function showHardMobileOpenFallback(targetUrl: string, label: string) {
   button.style.cursor = "pointer";
   button.onclick = () => {
     window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
-    window.localStorage.setItem("nubo_external_app_return_v1", "true");
-    window.location.href = targetUrl;
+    const opened = window.open(targetUrl, NUBO_YOUTUBE_WINDOW_NAME);
+    if (!opened) window.location.href = targetUrl;
+    wrapper.remove();
   };
 
   const close = document.createElement("button");
@@ -87,24 +117,53 @@ function showHardMobileOpenFallback(targetUrl: string, label: string) {
   document.body.appendChild(wrapper);
 }
 
-function forceMobileOpen(result: unknown, callName: string) {
+function preopenYouTubeWindow() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const opened = window.open("about:blank", NUBO_YOUTUBE_WINDOW_NAME);
+    if (opened) {
+      opened.document.title = "正在開啟 YouTube…";
+      return opened;
+    }
+  } catch {
+    // 瀏覽器阻擋時，完成搜尋後顯示手動備援按鈕。
+  }
+
+  return null;
+}
+
+function forceMobileOpen(
+  result: unknown,
+  callName: string,
+  reservedWindow: Window | null = null,
+) {
   if (typeof window === "undefined") return result;
-  if (!result || typeof result !== "object") return result;
+  if (!result || typeof result !== "object") {
+    reservedWindow?.close();
+    return result;
+  }
 
   const payload = result as {
     mobileUrl?: unknown;
     mobileLabel?: unknown;
     url?: unknown;
+    playerUrl?: unknown;
   };
 
   const targetUrl =
-    typeof payload.mobileUrl === "string"
+    typeof payload.mobileUrl === "string" && payload.mobileUrl
       ? payload.mobileUrl
-      : typeof payload.url === "string"
+      : typeof payload.url === "string" && payload.url
         ? payload.url
-        : "";
+        : typeof payload.playerUrl === "string"
+          ? payload.playerUrl
+          : "";
 
-  if (!targetUrl) return result;
+  if (!targetUrl) {
+    reservedWindow?.close();
+    return result;
+  }
 
   const label =
     typeof payload.mobileLabel === "string"
@@ -112,23 +171,44 @@ function forceMobileOpen(result: unknown, callName: string) {
       : getMobileOpenLabel(targetUrl, callName);
 
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
-  window.localStorage.setItem("nubo_external_app_return_v1", "true");
-  showHardMobileOpenFallback(targetUrl, label);
 
-  try {
-    window.location.href = targetUrl;
-  } catch {
-    window.location.assign(targetUrl);
+  let opened = false;
+
+  if (reservedWindow && !reservedWindow.closed) {
+    try {
+      reservedWindow.location.replace(targetUrl);
+      reservedWindow.focus();
+      opened = true;
+    } catch {
+      reservedWindow.close();
+    }
   }
+
+  if (!opened) {
+    try {
+      const external = window.open(targetUrl, NUBO_YOUTUBE_WINDOW_NAME);
+      if (external) {
+        external.focus();
+        opened = true;
+      }
+    } catch {
+      // 交由下方備援處理。
+    }
+  }
+
+  if (!opened) showHardMobileOpenFallback(targetUrl, label);
 
   return {
     ...(result as Record<string, unknown>),
     autoOpen: false,
-    opened: true,
-    mode: "same-tab",
-    forcedSameTab: true,
+    opened,
+    mode: opened ? "external-tab" : "blocked-fallback",
+    forcedSameTab: false,
+    externalTab: true,
+    preserveNubo: true,
     mobileUrl: targetUrl,
     mobileLabel: label,
+    build: "deployed-youtube-external-v3-20260806",
   };
 }
 
@@ -176,11 +256,17 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       device: args.device || undefined,
     });
   }
-  if (
-    call.name === "open_mobile_app" ||
-    call.name === "open_youtube" ||
-    call.name === "open_website"
-  ) {
+  if (call.name === "open_youtube") {
+    const reservedWindow = preopenYouTubeWindow();
+    try {
+      const result = ensureYouTubeUrl(await executeBaseTool(call));
+      return forceMobileOpen(result, call.name, reservedWindow);
+    } catch (error) {
+      reservedWindow?.close();
+      throw error;
+    }
+  }
+  if (call.name === "open_mobile_app" || call.name === "open_website") {
     return forceMobileOpen(await executeBaseTool(call), call.name);
   }
   return executeBaseTool(call);
@@ -188,7 +274,8 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 
 export const geminiSystemInstruction = `${baseInstruction}
 手機開啟補充：使用者要求開啟Facebook、FB、臉書、Instagram、IG、YouTube、Google、Gmail、地圖或任何HTTP/HTTPS網站時，必須呼叫open_mobile_app或open_website，不得回答只能在Windows使用。
-手機開啟補充：手機瀏覽器會用目前分頁或畫面底部的強制備援按鈕開啟，不得宣稱已開啟但實際只開Windows。
+YouTube播放補充：使用者指定歌曲、歌手、MV、音樂或影片時，必須呼叫open_youtube，並在新的YouTube分頁播放，不得只口頭回答，也不得在NUBO頁面內嵌播放。
+手機開啟補充：若瀏覽器阻擋新分頁，必須顯示強制備援按鈕，不得宣稱已開啟。
 桌面應用程式補充：只有使用者明確要求Windows桌面程式時，才呼叫open_desktop_app。
 桌面應用程式補充：使用者要求開啟LINE或賴時，呼叫open_desktop_app，app參數使用line。
 桌面關閉補充：使用者要求關閉LINE、賴、計算機、記事本、小畫家、Chrome、Edge或Firefox時，呼叫close_desktop_app。
@@ -204,14 +291,21 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "手機/平板優先工具：開啟LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。使用者在手機要求開FB、IG、YouTube或LINE時必須使用此工具；不得改用Windows工具。",
+          "手機/平板優先工具：開啟LINE、Facebook、Instagram、Google Maps、Gmail、Google、NUBO計算機、電話、簡訊或Email。指定歌曲、歌手、MV或影片時禁止使用本工具，必須使用open_youtube。",
+      };
+    }
+    if (declaration.name === "open_youtube") {
+      return {
+        ...declaration,
+        description:
+          "指定歌曲、歌手、MV、音樂或影片的唯一播放工具。搜尋取得videoId後，在新的YouTube分頁開啟精確影片網址並嘗試自動播放；不得在NUBO內嵌播放。",
       };
     }
     if (declaration.name === "open_website") {
       return {
         ...declaration,
         description:
-          "在目前使用者裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。手機會在手機瀏覽器或強制備援按鈕開啟；不得回答只能在Windows使用。",
+          "在目前使用者裝置開啟HTTP/HTTPS網站、Facebook、Instagram、Google、Gmail、NUBO、網址或搜尋關鍵字。",
       };
     }
     if (declaration.name === "open_desktop_app") {
