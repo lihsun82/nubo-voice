@@ -1,0 +1,226 @@
+/* NUBO V15.6.17 WHITE TECH SYSTEM THEME */
+:root {
+  color-scheme: light;
+  --bg: #f8fbff;
+  --panel: rgba(255, 255, 255, 0.82);
+  --line: rgba(84, 118, 210, 0.18);
+  --text: #15264a;
+  --muted: #6f7f9f;
+  --accent: #6d63ff;
+  --accent-2: #54cfff;
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 18% 10%, rgba(111, 213, 255, 0.22), transparent 30%),
+    radial-gradient(circle at 82% 18%, rgba(155, 111, 255, 0.16), transparent 28%),
+    radial-gradient(circle at 50% 78%, rgba(111, 213, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, #ffffff 0%, #f7faff 48%, #f4f8ff 100%) !important;
+  color: var(--text) !important;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  opacity: 0.7;
+  background-image:
+    linear-gradient(rgba(85, 130, 220, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 130, 220, 0.04) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.55), transparent 86%);
+}
+
+.nubo-space-background {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+.nubo-space-grid {
+  opacity: 0.32 !important;
+  background-image:
+    linear-gradient(rgba(71, 120, 220, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(71, 120, 220, 0.08) 1px, transparent 1px) !important;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.32), transparent 88%) !important;
+}
+
+.nubo-space-horizon {
+  opacity: 0.5 !important;
+  background: radial-gradient(ellipse at center, rgba(104, 192, 255, .22), transparent 68%) !important;
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+}
+
+.console,
+.provider-switcher,
+.nubo-voice-quick,
+.integration-card,
+.task-card,
+.task-panel,
+.inbox-card,
+.run-history,
+.question-history,
+.question-category,
+.voice-transcript,
+.capability {
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  backdrop-filter: blur(22px) saturate(1.22) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.22) !important;
+  box-shadow:
+    0 18px 55px rgba(78, 108, 178, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+}
+
+.console,
+.nubo-voice-quick,
+.task-panel,
+.run-history {
+  border-radius: 28px !important;
+}
+
+.capability,
+.integration-card,
+.task-card,
+.question-category,
+.voice-transcript {
+  border-radius: 18px !important;
+}
+
+h1,
+h2,
+h3,
+strong,
+b,
+summary,
+.provider-switcher,
+.question-category > summary {
+  color: var(--text) !important;
+}
+
+.subtitle,
+.eyebrow,
+small,
+.status span,
+.provider-label,
+.provider-switcher small,
+.voice-transcript,
+footer,
+.run-history > summary,
+.question-item-content small,
+.question-history-empty {
+  color: var(--muted) !important;
+}
+
+.primary,
+.provider-buttons button.selected,
+.nubo-voice-quick .primary {
+  color: #ffffff !important;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, #52ceff 0%, #6679ff 48%, #9363ff 100%) !important;
+  box-shadow: 0 12px 28px rgba(99, 111, 255, 0.25) !important;
+}
+
+.secondary,
+.provider-buttons button,
+.task-actions button,
+.question-delete,
+.question-delete-all {
+  color: #38517c !important;
+  border-color: rgba(85, 113, 190, 0.2) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+input,
+textarea,
+select {
+  color: var(--text) !important;
+}
+
+input[type="range"] {
+  accent-color: #6578ff;
+}
+
+.question-history-count,
+.task-card .status,
+.task-card [class*="badge"],
+.task-card [class*="pill"] {
+  color: #4f6290 !important;
+  background: rgba(103, 126, 210, 0.1) !important;
+}
+
+.question-category > summary,
+.question-item,
+.capability {
+  background: rgba(248, 251, 255, 0.78) !important;
+}
+
+.question-item + .question-item,
+.question-list,
+.question-history-toolbar {
+  border-color: var(--line) !important;
+}
+
+.error {
+  color: #d34b64 !important;
+}
+
+.nubo-energy-orb {
+  position: relative;
+  isolation: isolate;
+  filter: drop-shadow(0 22px 42px rgba(67, 104, 222, 0.22));
+}
+
+.nubo-energy-orb::before,
+.nubo-energy-orb::after {
+  content: "";
+  position: absolute;
+  inset: 13%;
+  z-index: -1;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.nubo-energy-orb::before {
+  border: 1px solid rgba(101, 132, 255, 0.26);
+  box-shadow:
+    0 0 0 18px rgba(95, 207, 255, 0.05),
+    0 0 0 38px rgba(133, 100, 255, 0.035),
+    0 0 70px rgba(80, 160, 255, 0.2);
+  animation: nubo-white-orbit 9s linear infinite;
+}
+
+.nubo-energy-orb::after {
+  inset: 2%;
+  border: 1px dashed rgba(109, 99, 255, 0.25);
+  animation: nubo-white-orbit 15s linear infinite reverse, nubo-white-twinkle 2.8s ease-in-out infinite;
+}
+
+@keyframes nubo-white-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes nubo-white-twinkle {
+  0%, 100% { opacity: .45; filter: brightness(.95); }
+  50% { opacity: 1; filter: brightness(1.25); }
+}
+
+@media (max-width: 680px) {
+  .shell {
+    width: min(100% - 14px, 960px) !important;
+  }
+
+  .console,
+  .nubo-voice-quick,
+  .task-panel,
+  .run-history {
+    border-radius: 24px !important;
+  }
+}
