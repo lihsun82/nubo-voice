@@ -56,7 +56,7 @@ const CONTROLS: Array<{
   {
     key: "fillers",
     label: "語助詞",
-    description: "控制「嗯、哦、啊，對、對耶」等口語頻率；LEO LLM 從下一句即時生效。",
+    description: "控制「好啊、好咩、嗯、嗯…、哦、好啦」等口語頻率；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
@@ -152,7 +152,7 @@ export function NuboVoiceTuningPanel() {
           <b>NUBO 邊聊邊調聲線與語氣工作台</b>
           <small>LEO LLM 拉動滑桿後，從下一句開始立即套用，不必結束對話</small>
         </div>
-        <span>V15.6.16</span>
+        <span>V15.6.17</span>
       </div>
 
       <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
@@ -186,12 +186,12 @@ export function NuboVoiceTuningPanel() {
           {saved ? "已儲存目前數據" : "儲存目前數據"}
         </button>
         <button className="secondary" type="button" onClick={reset}>
-          恢復預設
+          恢復 V15.6.17 預設
         </button>
       </div>
 
       <p>
-        正在播放中的那一句不會被硬切換；滑桿停止約 0.2 秒後，LEO LLM 會把新設定套用到下一句。更換底層聲線仍需重建語音連線。
+        V15.6.17 預設：語速 0.99、頓挫感 45%、情感 67%、語助詞 87%、慵懶感 36%。正在播放中的句子不會被硬切換；新設定從下一句開始生效。
       </p>
     </section>
   );
