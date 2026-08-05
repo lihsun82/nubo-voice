@@ -57,14 +57,18 @@ export function NuboEnergyOrb() {
       : Math.min(window.devicePixelRatio || 1, 1.5);
     const particles = createOrbParticles().slice(
       0,
-      lowPower ? 180 : 920,
+      lowPower ? 280 : 1280,
     );
-    const frameInterval = lowPower ? 50 : 1000 / 60;
+    const frameInterval = lowPower ? 40 : 1000 / 60;
 
     canvas.width = ORB_SIZE * dpr;
     canvas.height = ORB_SIZE * dpr;
-    canvas.style.width = `${ORB_SIZE}px`;
-    canvas.style.height = `${ORB_SIZE}px`;
+    canvas.style.width = "100%";
+    canvas.style.height = "auto";
+    canvas.style.maxWidth = `${ORB_SIZE}px`;
+    canvas.style.aspectRatio = "1 / 1";
+    canvas.style.display = "block";
+    canvas.style.margin = "0 auto";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const onPhase = (event: Event) => {
