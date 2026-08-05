@@ -19,8 +19,8 @@ const QUICK_MODES: Array<{ id: QuickMode; label: string; note: string }> = [
   { id: "male", label: "男生語音", note: "沉穩、可靠的真人管家聲線" },
   {
     id: "openai",
-    label: "LEO LLM 年輕溫柔女聲",
-    note: "Coral 固定聲線・語速 0.92・自然台灣華語",
+    label: "LEO LLM 年輕自然女聲",
+    note: "Coral 固定聲線・約 24–27 歲・自然台灣華語",
   },
 ];
 
@@ -96,9 +96,9 @@ export function NuboVoiceQuickSelector() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>選擇 NUBO 真人管家語音</b>
-          <small>LEO LLM 固定 Coral：年輕、乾淨、溫柔，自然但不稚嫩</small>
+          <small>LEO LLM 固定 Coral：更年輕、柔和、自然，不像配音</small>
         </div>
-        <span>V15.6.8</span>
+        <span>V15.6.9</span>
       </div>
 
       <div className="nubo-voice-quick-modes" role="tablist" aria-label="語音類型">
@@ -140,7 +140,7 @@ export function NuboVoiceQuickSelector() {
       </div>
 
       <p>
-        LEO LLM 已鎖定 Coral 與 0.92 語速，使用短句、自然起伏與適度停頓，避免客服、播報與書面朗讀感。
+        Coral 維持 0.92 語速，聲線定位調整為約 24–27 歲；保留自然起伏與短句節奏，不強迫語助詞或固定停頓。
       </p>
     </section>
   );
