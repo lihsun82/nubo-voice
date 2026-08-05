@@ -47,7 +47,7 @@ const CONTROLS: Array<{
   {
     key: "emotion",
     label: "情感",
-    description: "控制溫柔、關心、驚喜與共感；LEO LLM 從下一句即時生效。",
+    description: "控制溫柔、關心、驚喜、黏人與撒嬌感；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
@@ -56,7 +56,7 @@ const CONTROLS: Array<{
   {
     key: "fillers",
     label: "語助詞",
-    description: "控制「好啊、好咩、嗯、嗯…、哦、好啦」等口語頻率與自然短拖尾；LEO LLM 從下一句即時生效。",
+    description: "控制「好啊、好咩、嗯、嗯…、哦、好啦」等口語頻率與拖尾強度；可更甜、更黏、更撒嬌。",
     min: 0,
     max: 100,
     step: 1,
@@ -65,7 +65,7 @@ const CONTROLS: Array<{
   {
     key: "relaxed",
     label: "慵懶感",
-    description: "控制放鬆、柔軟與從容感；語助詞可微微拖尾，正文仍保持清楚。",
+    description: "控制放鬆、柔軟、黏人與語尾延伸；一般聊天允許較明顯拖尾。",
     min: 0,
     max: 100,
     step: 1,
@@ -152,7 +152,7 @@ export function NuboVoiceTuningPanel() {
           <b>NUBO 邊聊邊調聲線與語氣工作台</b>
           <small>LEO LLM 拉動滑桿後，從下一句開始立即套用，不必結束對話</small>
         </div>
-        <span>V15.6.19</span>
+        <span>V15.6.20</span>
       </div>
 
       <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
@@ -186,12 +186,12 @@ export function NuboVoiceTuningPanel() {
           {saved ? "已儲存目前數據" : "儲存目前數據"}
         </button>
         <button className="secondary" type="button" onClick={reset}>
-          恢復 V15.6.19 預設
+          恢復 V15.6.20 預設
         </button>
       </div>
 
       <p>
-        V15.6.19 預設：語速 0.99、頓挫感 45%、情感 67%、語助詞 87%、慵懶感 36%。「哦」微升音高，「好啦」的「啦」可柔和拖尾；新設定從下一句開始生效。
+        V15.6.20：語助詞拖尾不再限制短促，可更甜、更黏、稍微油膩並明顯撒嬌；「哦」微升音高，「好啦」的「啦」可降低音高並拉長。新設定從下一句開始生效。
       </p>
     </section>
   );
