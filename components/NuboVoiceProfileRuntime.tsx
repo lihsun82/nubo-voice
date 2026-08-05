@@ -5,8 +5,13 @@ import {
   getNuboPersonalityInstruction,
   readNuboVoiceProfile,
 } from "@/lib/nubo-voice-profile";
+import {
+  buildNuboVoicePerformanceInstruction,
+  readNuboVoiceTuning,
+} from "@/lib/nubo-voice-tuning";
 
 const PROFILE_MARKER = "NUBO_VOICE_PROFILE_V15";
+const TUNING_MARKER = "NUBO_SHARED_VOICE_TUNING_V15_6_15";
 
 function configureGeminiSetupPayload(value: string) {
   let payload: unknown;
@@ -48,18 +53,22 @@ function configureGeminiSetupPayload(value: string) {
   };
 
   const personality = getNuboPersonalityInstruction(profile.personality);
+  const tuning = readNuboVoiceTuning();
+  const performance = buildNuboVoicePerformanceInstruction(tuning);
+  const sharedInstruction = `${PROFILE_MARKER}\n${personality}\n\n${TUNING_MARKER}\n${performance}`;
   const parts = setup.systemInstruction?.parts;
+
   if (Array.isArray(parts) && parts.length > 0) {
     const current = String(parts[0]?.text ?? "");
-    if (!current.includes(PROFILE_MARKER)) {
+    if (!current.includes(TUNING_MARKER)) {
       parts[0] = {
         ...parts[0],
-        text: `${current}\n\n${PROFILE_MARKER}\n${personality}`,
+        text: `${current}\n\n${sharedInstruction}`,
       };
     }
   } else {
     setup.systemInstruction = {
-      parts: [{ text: `${PROFILE_MARKER}\n${personality}` }],
+      parts: [{ text: sharedInstruction }],
     };
   }
 
