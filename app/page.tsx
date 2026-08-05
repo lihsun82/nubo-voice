@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜臺灣台語・臺灣華語・華台自然切換
+          AINUBO Hotel 智慧旅館管家｜臺灣台語強化・真人音量起伏・豐富語助詞
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.21｜臺灣台語語音模式版</span>
-        <span>自動辨識・臺灣台語・臺灣華語・華台混合</span>
+        <span>v0.5.1 NUBO V15.6.22｜臺灣台語強化動態語氣版</span>
+        <span>重點微升音量・思考稍小聲・語助詞 94%</span>
       </footer>
     </main>
   );
