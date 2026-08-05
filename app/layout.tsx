@@ -16,6 +16,7 @@ import "./voice-modes-v15.css";
 import "./space-v15-5.css";
 import "./voice-quick-v15-5-1.css";
 import "./white-tech-v15-6-17.css";
+import "./white-gold-v15-6-18.css";
 
 export const metadata: Metadata = {
   title: {
@@ -44,7 +45,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#f8fbff",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
