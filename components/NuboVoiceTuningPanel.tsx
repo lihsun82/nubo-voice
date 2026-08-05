@@ -16,67 +16,60 @@ const CONTROLS: Array<{
   max: number;
   step: number;
   suffix: string;
-  restartRequired?: boolean;
 }> = [
   {
     key: "speed",
     label: "語速",
-    description: "OpenAI Realtime 可直接套用；Gemini 聲線會以語氣指令盡量接近設定。",
+    description: "LEO LLM 會在目前回答結束後即時套用；Gemini 需快速續接。",
     min: 0.85,
     max: 1.15,
     step: 0.01,
     suffix: "x",
-    restartRequired: true,
   },
   {
     key: "perceivedPitch",
     label: "聲線高低／感知音高",
-    description: "往右更輕亮、年輕；往左更低沉、成熟。這是語音表現指令，不是 DSP 變調。",
+    description: "往右更輕亮、年輕；往左更低沉、成熟。LEO LLM 從下一句即時生效。",
     min: -30,
     max: 30,
     step: 1,
     suffix: "",
-    restartRequired: true,
   },
   {
     key: "cadence",
     label: "頓挫感",
-    description: "控制重音、句尾收放、長短句與節奏變化。",
+    description: "控制重音、句尾收放、長短句與節奏變化；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
     suffix: "%",
-    restartRequired: true,
   },
   {
     key: "emotion",
     label: "情感",
-    description: "控制溫柔、關心、驚喜與共感的表達強度。",
+    description: "控制溫柔、關心、驚喜與共感；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
     suffix: "%",
-    restartRequired: true,
   },
   {
     key: "fillers",
     label: "語助詞",
-    description: "控制「嗯、哦、啊，對、對耶」等自然口語頻率。",
+    description: "控制「嗯、哦、啊，對、對耶」等口語頻率；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
     suffix: "%",
-    restartRequired: true,
   },
   {
     key: "relaxed",
     label: "慵懶感",
-    description: "控制放鬆、柔軟與從容感，不等於拖慢或含糊。",
+    description: "控制放鬆、柔軟與從容感；LEO LLM 從下一句即時生效。",
     min: 0,
     max: 100,
     step: 1,
     suffix: "%",
-    restartRequired: true,
   },
   {
     key: "brightness",
@@ -153,13 +146,13 @@ export function NuboVoiceTuningPanel() {
   };
 
   return (
-    <section className="nubo-voice-quick" aria-label="NUBO 全語音調音工作台">
+    <section className="nubo-voice-quick" aria-label="NUBO 邊聊邊調語音工作台">
       <div className="nubo-voice-quick-head">
         <div>
-          <b>NUBO 全語音聲線與語氣調音工作台</b>
-          <small>女生語音、男生語音與 LEO LLM 共用同一組調音數據</small>
+          <b>NUBO 邊聊邊調聲線與語氣工作台</b>
+          <small>LEO LLM 拉動滑桿後，從下一句開始立即套用，不必結束對話</small>
         </div>
-        <span>V15.6.15</span>
+        <span>V15.6.16</span>
       </div>
 
       <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
@@ -174,10 +167,7 @@ export function NuboVoiceTuningPanel() {
                   {control.suffix}
                 </em>
               </span>
-              <small style={{ opacity: 0.7 }}>
-                {control.description}
-                {control.restartRequired ? " 下一次啟動語音時生效。" : ""}
-              </small>
+              <small style={{ opacity: 0.7 }}>{control.description}</small>
               <input
                 type="range"
                 min={control.min}
@@ -193,7 +183,7 @@ export function NuboVoiceTuningPanel() {
 
       <div className="actions" style={{ marginTop: 16 }}>
         <button className="primary" type="button" onClick={save}>
-          {saved ? "已儲存全語音數據" : "儲存目前數據"}
+          {saved ? "已儲存目前數據" : "儲存目前數據"}
         </button>
         <button className="secondary" type="button" onClick={reset}>
           恢復預設
@@ -201,7 +191,7 @@ export function NuboVoiceTuningPanel() {
       </div>
 
       <p>
-        更換女生、男生或 LEO LLM 聲線後，請結束目前對話並重新啟動 NUBO，新的語氣數據才會完整套用。
+        正在播放中的那一句不會被硬切換；滑桿停止約 0.2 秒後，LEO LLM 會把新設定套用到下一句。更換底層聲線仍需重建語音連線。
       </p>
     </section>
   );
