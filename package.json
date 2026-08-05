@@ -1,6 +1,6 @@
 {
   "name": "nubo-voice",
-  "version": "15.6.23",
+  "version": "15.6.24",
   "private": true,
   "description": "NUBO personal voice automation system",
   "scripts": {
