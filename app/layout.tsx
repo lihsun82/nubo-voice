@@ -15,6 +15,7 @@ import "./inline-music-quality-v14-6.css";
 import "./voice-modes-v15.css";
 import "./space-v15-5.css";
 import "./voice-quick-v15-5-1.css";
+import "./white-tech-v15-6-17.css";
 
 export const metadata: Metadata = {
   title: {
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "NUBO",
   },
   formatDetection: {
@@ -43,7 +44,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#030716",
+  themeColor: "#f8fbff",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
