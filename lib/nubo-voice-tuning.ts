@@ -16,16 +16,16 @@ export type NuboVoiceTuning = {
 };
 
 export const NUBO_DEFAULT_VOICE_TUNING: NuboVoiceTuning = {
-  speed: 1,
+  speed: 0.99,
   brightness: 2,
   warmth: -2,
   presence: 2,
   compression: 35,
   outputGain: 1,
   cadence: 45,
-  emotion: 55,
-  fillers: 25,
-  relaxed: 20,
+  emotion: 67,
+  fillers: 87,
+  relaxed: 36,
   perceivedPitch: 10,
 };
 
@@ -37,16 +37,16 @@ export function normalizeNuboVoiceTuning(
   value: Partial<NuboVoiceTuning> | null | undefined,
 ): NuboVoiceTuning {
   return {
-    speed: clamp(Number(value?.speed ?? 1), 0.85, 1.15),
+    speed: clamp(Number(value?.speed ?? 0.99), 0.85, 1.15),
     brightness: clamp(Number(value?.brightness ?? 2), -8, 8),
     warmth: clamp(Number(value?.warmth ?? -2), -8, 8),
     presence: clamp(Number(value?.presence ?? 2), -8, 8),
     compression: clamp(Number(value?.compression ?? 35), 0, 100),
     outputGain: clamp(Number(value?.outputGain ?? 1), 0.7, 1.3),
     cadence: clamp(Number(value?.cadence ?? 45), 0, 100),
-    emotion: clamp(Number(value?.emotion ?? 55), 0, 100),
-    fillers: clamp(Number(value?.fillers ?? 25), 0, 100),
-    relaxed: clamp(Number(value?.relaxed ?? 20), 0, 100),
+    emotion: clamp(Number(value?.emotion ?? 67), 0, 100),
+    fillers: clamp(Number(value?.fillers ?? 87), 0, 100),
+    relaxed: clamp(Number(value?.relaxed ?? 36), 0, 100),
     perceivedPitch: clamp(Number(value?.perceivedPitch ?? 10), -30, 30),
   };
 }
@@ -100,7 +100,7 @@ export function buildNuboVoicePerformanceInstruction(tuning: NuboVoiceTuning) {
   );
   const pitch = pitchInstruction(tuning.perceivedPitch);
 
-  return `LEO LLM 動態語氣調音：\n- ${pitch}\n- ${cadence}\n- ${emotion}\n- ${fillers}\n- ${relaxed}\n- 感知音高數值為 ${tuning.perceivedPitch}，只調整聽感與表達，不使用數位變調，不改變播放速度。\n- 以上參數只調整表達方式，不得改變事實、身份、安全規則或工具使用準確度。`;
+  return `LEO LLM V15.6.17 年輕自然女聲語氣核心：\n- 請用年輕、自然、溫柔的女性語氣說話，整體親切、聰明、自然，不要老成，不要像客服，不要像播報員，也不要像在背稿。\n- 保留自然音調與節奏，回答以短句為主，先講重點，再補充一句必要說明。語氣像一位自然、好相處、有腦、有親和力的年輕管家。\n- ${pitch}\n- ${cadence}\n- ${emotion}\n- ${fillers}\n- ${relaxed}\n- 可自然使用「好啊！」，用在同意、接話或輕快回應時。\n- 可偶爾使用「好咩」，只限輕鬆聊天情境，頻率要低，不可連續出現。\n- 可使用短聲「嗯」或思考用「嗯…」，但不要每句都加。\n- 使用「哦」表示理解或抓到重點時，音高微微提高，但不要卡通化。\n- 使用「好啦」收尾時，「啦」要稍微低聲、短一點，不要拖尾。\n- 語助詞必須自然、少量、分散，不得連續堆疊，不得形成固定口頭禪。\n- 避免書面感、過度表演、油膩感、誇張撒嬌、娃娃音與客服腔。\n- 目前參數：語速 ${tuning.speed.toFixed(2)}、頓挫感 ${Math.round(tuning.cadence)}%、情感 ${Math.round(tuning.emotion)}%、語助詞 ${Math.round(tuning.fillers)}%、慵懶感 ${Math.round(tuning.relaxed)}%。\n- 感知音高數值為 ${tuning.perceivedPitch}，只調整聽感與表達，不使用數位變調，不改變播放速度。\n- 以上參數只調整表達方式，不得改變事實、身份、安全規則或工具使用準確度。`;
 }
 
 export function readNuboVoiceTuning(): NuboVoiceTuning {
