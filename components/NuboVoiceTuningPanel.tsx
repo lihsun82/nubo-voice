@@ -29,6 +29,16 @@ const CONTROLS: Array<{
     restartRequired: true,
   },
   {
+    key: "perceivedPitch",
+    label: "聲線高低／感知音高",
+    description: "負值較低沉成熟，正值較輕亮年輕；不使用數位變調，不會改變語速或攔截手機音軌。",
+    min: -30,
+    max: 30,
+    step: 1,
+    suffix: "",
+    restartRequired: true,
+  },
+  {
     key: "cadence",
     label: "頓挫感",
     description: "控制重音、句尾收放、長短句與節奏變化。",
@@ -147,9 +157,9 @@ export function NuboVoiceTuningPanel() {
       <div className="nubo-voice-quick-head">
         <div>
           <b>LEO LLM 聲線與語氣調音工作台</b>
-          <small>調整數據後重新啟動 NUBO，實際比較語氣表現</small>
+          <small>調整數據後重新啟動 NUBO，實際比較聲線與語氣表現</small>
         </div>
-        <span>V15.6.13</span>
+        <span>V15.6.14</span>
       </div>
 
       <div style={{ display: "grid", gap: 16, marginTop: 14 }}>
@@ -191,7 +201,7 @@ export function NuboVoiceTuningPanel() {
       </div>
 
       <p>
-        建議先從：頓挫感 55%、情感 65%、語助詞 25%、慵懶感 20% 開始。過高可能變成刻意表演或拖腔。
+        年輕女聲建議先試：感知音高 +12、頓挫感 55%、情感 65%、語助詞 25%、慵懶感 20%。感知音高超過 +20 可能開始出現刻意或尖細感。
       </p>
     </section>
   );
