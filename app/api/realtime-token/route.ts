@@ -5,15 +5,21 @@ export const dynamic = "force-dynamic";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const DEFAULT_REALTIME_MODEL = "gpt-realtime";
-const DEFAULT_OPENAI_VOICE = "shimmer";
+const FALLBACK_OPENAI_VOICE = "shimmer";
 const LEO_LLM_SPEECH_SPEED = 0.98;
 
 type UnknownRecord = Record<string, unknown>;
+type RealtimeVoice = string | { id: string };
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
     : null;
+}
+
+function getLeoRealtimeVoice(): RealtimeVoice {
+  const customVoiceId = process.env.NUBO_OPENAI_CUSTOM_VOICE_ID?.trim();
+  return customVoiceId ? { id: customVoiceId } : FALLBACK_OPENAI_VOICE;
 }
 
 function parseSessionSource(rawSession: string) {
@@ -32,7 +38,7 @@ function buildRealtimeSession(rawSession: string) {
     output_modalities: ["audio"],
     audio: {
       output: {
-        voice: DEFAULT_OPENAI_VOICE,
+        voice: getLeoRealtimeVoice(),
         speed: LEO_LLM_SPEECH_SPEED,
       },
     },
@@ -85,7 +91,7 @@ export async function GET() {
         output_modalities: ["audio"],
         audio: {
           output: {
-            voice: DEFAULT_OPENAI_VOICE,
+            voice: getLeoRealtimeVoice(),
             speed: LEO_LLM_SPEECH_SPEED,
           },
         },
@@ -101,7 +107,7 @@ export async function GET() {
       {
         error:
           response.status === 401 || response.status === 403
-            ? "OpenAI API Key 無效或沒有 Realtime 權限"
+            ? "OpenAI API Key 無效、沒有 Realtime 權限，或自訂聲線尚未授權"
             : "高擬人即時語音憑證建立失敗",
         code: `realtime_token_${response.status}`,
       },
@@ -196,7 +202,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: isKeyProblem
-            ? "OpenAI API Key 無效或沒有 Realtime 權限"
+            ? "OpenAI API Key 無效、沒有 Realtime 權限，或自訂聲線尚未授權"
             : upstreamMessage
               ? `OpenAI Realtime：${upstreamMessage}`
               : "高擬人即時語音連線建立失敗",
