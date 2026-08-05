@@ -19,13 +19,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜年輕、明亮、有活力的自然台灣口吻
+          AINUBO Hotel 智慧旅館管家｜自然真人對話・台灣華語口吻
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.6｜LEO LLM 年輕輕快台灣女聲版</span>
-        <span>Shimmer 主聲線｜自然語速｜明亮活力｜OpenAI Realtime｜AINUBO Hotel 管家身份不變</span>
+        <span>v0.5.1 NUBO V15.6.7｜LEO LLM 自然真人女聲版</span>
+        <span>Marin 主聲線｜原生韻律｜OpenAI Realtime｜AINUBO Hotel 管家身份不變</span>
       </footer>
     </main>
   );
