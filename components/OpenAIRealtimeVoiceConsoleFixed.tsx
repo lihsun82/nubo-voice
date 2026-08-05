@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
+import { readNuboVoiceTuning } from "@/lib/nubo-voice-tuning";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
@@ -13,11 +14,22 @@ async function formValueToText(value: FormDataEntryValue | null) {
   return "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function normalizeSession(session: string) {
   if (!session.trim()) return "";
 
   try {
     const payload = JSON.parse(session) as Record<string, unknown>;
+    const audio = asRecord(payload.audio);
+    const output = asRecord(audio.output);
+    output.speed = readNuboVoiceTuning().speed;
+    audio.output = output;
+    payload.audio = audio;
     payload.type = "realtime";
     payload.model = "gpt-realtime";
     return JSON.stringify(payload);
