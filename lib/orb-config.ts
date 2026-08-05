@@ -10,15 +10,15 @@ export type OrbParticle = {
 };
 
 export const ORB_SIZE = 560;
-export const ORB_PARTICLE_COUNT = 920;
+export const ORB_PARTICLE_COUNT = 1280;
 
 export function createOrbParticles(): OrbParticle[] {
   return Array.from({ length: ORB_PARTICLE_COUNT }, (_, index) => ({
     theta: Math.random() * Math.PI * 2,
     phi: Math.acos(2 * Math.random() - 1),
-    speed: 0.00035 + Math.random() * 0.00135,
-    offset: index * 0.014 + Math.random() * 6,
-    size: 0.45 + Math.random() * 1.65,
+    speed: 0.00035 + Math.random() * 0.00155,
+    offset: index * 0.011 + Math.random() * 6,
+    size: 0.38 + Math.random() * 1.72,
     hue: Math.random(),
   }));
 }
