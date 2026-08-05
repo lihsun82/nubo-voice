@@ -172,10 +172,33 @@ input[type="range"] {
   color: #d34b64 !important;
 }
 
+.orb-wrap {
+  width: 100% !important;
+  display: grid !important;
+  place-items: center !important;
+  overflow: visible !important;
+}
+
 .nubo-energy-orb {
   position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(100%, 560px) !important;
+  max-width: 560px !important;
+  margin-inline: 0 !important;
+  display: grid !important;
+  place-items: center !important;
   isolation: isolate;
   filter: drop-shadow(0 22px 42px rgba(67, 104, 222, 0.22));
+}
+
+.nubo-energy-orb canvas {
+  width: 100% !important;
+  max-width: 560px !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1;
+  display: block !important;
+  margin: 0 auto !important;
 }
 
 .nubo-energy-orb::before,
@@ -222,5 +245,14 @@ input[type="range"] {
   .task-panel,
   .run-history {
     border-radius: 24px !important;
+  }
+
+  .nubo-energy-orb {
+    width: min(100%, 520px) !important;
+    max-width: 520px !important;
+  }
+
+  .nubo-energy-orb canvas {
+    max-width: 520px !important;
   }
 }
