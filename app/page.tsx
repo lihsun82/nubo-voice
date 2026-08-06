@@ -28,8 +28,8 @@ export default function HomePage() {
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>v0.5.1 NUBO V15.6.22｜臺灣台語強化動態語氣版</span>
-        <span>重點微升音量・思考稍小聲・語助詞 94%</span>
+        <span>NUBO V15.6.25｜YouTube 外開保證修正版</span>
+        <span>build: main-youtube-guaranteed-open-20260806</span>
       </footer>
     </main>
   );
