@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜臺灣台語強化・真人音量起伏・豐富語助詞
+          AINUBO Hotel 智慧旅館管家｜臺灣台語強化・真人音量起伏・動態分子科技球體
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.25｜YouTube 外開保證修正版</span>
-        <span>build: main-youtube-guaranteed-open-20260806</span>
+        <span>NUBO V15.6.26｜動態分子科技球體版</span>
+        <span>保留 V15.6.25 YouTube 外開保證修正｜build: molecular-orb-20260810</span>
       </footer>
     </main>
   );
