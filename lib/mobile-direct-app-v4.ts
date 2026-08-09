@@ -9,6 +9,7 @@ function getMobileOpenLabel(targetUrl: string, callName: string) {
   if (normalized.includes("line.me") || normalized.startsWith("line:")) return "LINE";
   if (normalized.includes("facebook.com") || normalized.includes("fb.com")) return "Facebook";
   if (normalized.includes("instagram.com")) return "Instagram";
+  if (normalized.includes("music.youtube.com")) return "YouTube Music";
   if (normalized.includes("youtube.com") || normalized.includes("youtu.be")) return "YouTube";
   if (normalized.includes("maps.google.") || normalized.includes("google.com/maps")) return "Google Maps";
   if (normalized.includes("mail.google.com")) return "Gmail";
@@ -29,6 +30,8 @@ export function resolveWebsiteMobileResult(call: FunctionCall) {
     賴: "https://line.me/R/nv/chat",
     youtube: "https://www.youtube.com/",
     yt: "https://www.youtube.com/",
+    youtubemusic: "https://music.youtube.com/",
+    youtube音樂: "https://music.youtube.com/",
     google: "https://www.google.com/",
     gmail: "https://mail.google.com/",
     maps: "https://www.google.com/maps/",
@@ -62,6 +65,10 @@ function isYouTubeUrl(url: string) {
   return normalized.includes("youtube.com") || normalized.includes("youtu.be");
 }
 
+function isYouTubeMusicUrl(url: string) {
+  return url.toLowerCase().includes("music.youtube.com");
+}
+
 function isAndroid() {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
 }
@@ -87,7 +94,10 @@ function normalizeYouTubeWatchUrl(url: string) {
     const parsed = new URL(url);
     const videoId = extractYouTubeVideoId(url);
     if (!videoId) return url;
-    const watch = new URL("https://www.youtube.com/watch");
+    const host = isYouTubeMusicUrl(url)
+      ? "https://music.youtube.com/watch"
+      : "https://www.youtube.com/watch";
+    const watch = new URL(host);
     watch.searchParams.set("v", videoId);
     watch.searchParams.set("autoplay", "1");
     watch.searchParams.set("mute", "0");
@@ -100,33 +110,41 @@ function normalizeYouTubeWatchUrl(url: string) {
 function buildAndroidYouTubeIntent(webUrl: string) {
   const videoId = extractYouTubeVideoId(webUrl);
   if (!videoId) return "";
-  const fallback = encodeURIComponent(normalizeYouTubeWatchUrl(webUrl));
+
+  const useMusicApp = isYouTubeMusicUrl(webUrl);
+  const host = useMusicApp ? "music.youtube.com" : "www.youtube.com";
+  const packageName = useMusicApp
+    ? "com.google.android.apps.youtube.music"
+    : "com.google.android.youtube";
+
+  // Deliberately do NOT set browser_fallback_url here. If the native app is
+  // unavailable, NUBO must remain visible and the caller may attempt a new tab.
+  // Never replace the current NUBO page with YouTube.
   return (
-    `intent://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` +
-    `#Intent;scheme=https;package=com.google.android.youtube;` +
-    `S.browser_fallback_url=${fallback};end`
+    `intent://${host}/watch?v=${encodeURIComponent(videoId)}` +
+    `#Intent;scheme=https;package=${packageName};end`
   );
 }
 
 function openExternal(url: string, label: string) {
   const webUrl = normalizeYouTubeWatchUrl(url);
+  const youtube = isYouTubeUrl(webUrl);
 
-  // Audible autoplay in a cross-origin YouTube web tab can be blocked by the
-  // browser. On Android, prefer the native YouTube app and keep an HTTPS
-  // fallback in the intent. This is the most reliable path for audible music.
-  if (isYouTubeUrl(webUrl) && isAndroid()) {
+  if (youtube && isAndroid()) {
     const intentUrl = buildAndroidYouTubeIntent(webUrl);
     if (intentUrl) {
       try {
         window.location.href = intentUrl;
         return {
           opened: true,
-          mode: "youtube-app-intent",
+          mode: isYouTubeMusicUrl(webUrl)
+            ? "youtube-music-app-intent"
+            : "youtube-app-intent",
           launchedUrl: intentUrl,
           fallbackUrl: webUrl,
         };
       } catch {
-        // Continue to the web fallback below.
+        // App launch failed; continue to a NEW TAB only.
       }
     }
   }
@@ -134,7 +152,7 @@ function openExternal(url: string, label: string) {
   let opened = false;
 
   try {
-    const targetName = isYouTubeUrl(webUrl) ? YOUTUBE_WINDOW_NAME : "nubo_mobile_external";
+    const targetName = youtube ? YOUTUBE_WINDOW_NAME : "nubo_mobile_external";
     const external = window.open(webUrl, targetName);
     if (external) {
       external.focus();
@@ -144,7 +162,20 @@ function openExternal(url: string, label: string) {
     opened = false;
   }
 
+  if (!opened && youtube) {
+    // Critical rule: never cover NUBO with YouTube. If both native-app launch
+    // and new-tab launch fail, keep NUBO on screen and report the block.
+    return {
+      opened: false,
+      mode: "youtube-launch-blocked",
+      launchedUrl: "",
+      fallbackUrl: webUrl,
+      error: `${label} App 或外部新分頁被系統阻擋，NUBO 已保留在目前頁面。`,
+    };
+  }
+
   if (!opened) {
+    // Non-YouTube websites keep the existing same-tab fallback behavior.
     window.location.assign(webUrl);
     opened = true;
   }
@@ -196,12 +227,18 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     opened: launch.opened,
     mode: launch.mode,
     externalTab: launch.mode === "external-or-same-tab",
-    youtubeAppPreferred: launch.mode === "youtube-app-intent",
+    youtubeAppPreferred:
+      launch.mode === "youtube-app-intent" ||
+      launch.mode === "youtube-music-app-intent",
     forcedSameTab: false,
     preserveNubo: true,
     launchedUrl: launch.launchedUrl,
     fallbackUrl: launch.fallbackUrl,
     mobileLabel: label,
-    build: "youtube-audible-app-first-v15-6-34-20260810",
+    error:
+      "error" in launch && typeof launch.error === "string"
+        ? launch.error
+        : undefined,
+    build: "youtube-native-app-preserve-nubo-v15-6-35-20260810",
   };
 }
