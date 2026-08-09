@@ -91,9 +91,6 @@ function buildYouTubeAppLink(url: string, preferMusic: boolean) {
     return music.toString();
   }
 
-  // youtu.be is a verified/supported Android link for the YouTube app on
-  // devices where "Open supported links" is enabled. It avoids the explicit
-  // intent:// browser hand-off that was producing Chrome's Continue prompt.
   return `https://youtu.be/${encodeURIComponent(videoId)}`;
 }
 
@@ -148,8 +145,6 @@ function openExternal(
     youtube ? "nubo_youtube_external" : "nubo_mobile_external",
   );
 
-  // Critical rule: YouTube must never replace the NUBO tab. If popup/app-link
-  // launch is blocked, stay on NUBO and let the voice layer report the block.
   if (!opened && youtube) {
     return {
       opened: false,
@@ -212,9 +207,43 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
   window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
-  const launch = openExternal(targetUrl, label, {
-    preferYouTubeMusic: payload.preferredYouTubeApp === "music",
-  });
+  const youtube = isYouTubeUrl(targetUrl);
+  const preferMusic = payload.preferredYouTubeApp === "music";
+
+  /*
+   * V15.6.38: YouTube must have exactly one launch owner.
+   * Do NOT open YouTube here. Return the final Android app-link target and let
+   * the visible NUBO "開啟：YouTube" DOM action appear first; NuboDirectOpenGuard
+   * will auto-click that action once. This removes the race where the early
+   * direct launch opened a web page before the button auto-click path existed.
+   */
+  if (youtube) {
+    const launchUrl = isAndroid()
+      ? buildYouTubeAppLink(targetUrl, preferMusic)
+      : targetUrl;
+
+    return {
+      ...(result as Record<string, unknown>),
+      mobileUrl: launchUrl,
+      url: launchUrl,
+      playerUrl: launchUrl,
+      autoOpen: false,
+      opened: false,
+      mode: "youtube-await-auto-click",
+      externalTab: false,
+      youtubeAppPreferred: isAndroid(),
+      forcedSameTab: false,
+      preserveNubo: true,
+      launchedUrl: "",
+      fallbackUrl: targetUrl,
+      mobileLabel: preferMusic ? "YouTube Music" : label,
+      launchBlocked: false,
+      singleLaunchOwner: "nubo-direct-open-guard",
+      build: "youtube-single-launch-v15-6-38-20260810",
+    };
+  }
+
+  const launch = openExternal(targetUrl, label);
 
   return {
     ...(result as Record<string, unknown>),
@@ -222,15 +251,13 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     opened: launch.opened,
     mode: launch.mode,
     externalTab: launch.mode === "external-tab",
-    youtubeAppPreferred:
-      launch.mode === "youtube-app-link" ||
-      launch.mode === "youtube-music-app-link",
+    youtubeAppPreferred: false,
     forcedSameTab: false,
     preserveNubo: true,
     launchedUrl: launch.launchedUrl,
     fallbackUrl: launch.fallbackUrl,
     mobileLabel: label,
-    launchBlocked: !launch.opened && isYouTubeUrl(targetUrl),
-    build: "youtube-verified-app-link-v15-6-36-20260810",
+    launchBlocked: false,
+    build: "mobile-direct-open-v15-6-38-20260810",
   };
 }
