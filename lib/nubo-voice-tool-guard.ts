@@ -1,6 +1,7 @@
 "use client";
 
 const RESEARCH_TIMEOUT_MS = 10_000;
+const CURRENT_INFO_TIMEOUT_MS = 8_500;
 
 function normalize(value: unknown) {
   return String(value ?? "")
@@ -35,10 +36,6 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
     };
   }
 
-  /*
-   * Gemini Live偶爾會把短中文誤辨識成Também、Ok、Yeah等外語片段。
-   * 這類片段不得進入約30秒的研究流程。
-   */
   if (
     question.length <= 24 &&
     chineseCount === 0 &&
@@ -79,6 +76,58 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
   return { blocked: false, reason: "" };
 }
 
+async function runFastCurrentInfo(question: string) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(
+    () => controller.abort(),
+    CURRENT_INFO_TIMEOUT_MS,
+  );
+
+  try {
+    const response = await fetch("/api/current-info", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        fastCurrentInfo: true,
+        timeout: response.status === 504 || payload.timeout === true,
+        reason:
+          payload.error ||
+          "即時資訊目前無法取得，請不要猜測或使用舊資料作答。",
+      };
+    }
+
+    return payload;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        ok: false,
+        timeout: true,
+        fastCurrentInfo: true,
+        reason:
+          "即時資訊查詢超過8.5秒，已停止等待。請明確告知目前無法確認，不要用舊資料猜測。",
+      };
+    }
+
+    return {
+      ok: false,
+      fastCurrentInfo: true,
+      reason:
+        error instanceof Error
+          ? error.message
+          : "即時資訊查詢失敗，請不要猜測。",
+    };
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export async function runVoiceResearchWithTimeout(
   questionValue: unknown,
   titleValue: unknown,
@@ -93,6 +142,13 @@ export async function runVoiceResearchWithTimeout(
       fastGuard: true,
       reason: guard.reason,
     };
+  }
+
+  // Current affairs, typhoons, politics, technology news and other volatile
+  // questions must take the low-latency web-search path. Do not send them to
+  // the long multi-provider research fallback used for deep research.
+  if (hasCurrentAffairsIntent(question)) {
+    return runFastCurrentInfo(question);
   }
 
   const controller = new AbortController();
@@ -125,7 +181,7 @@ export async function runVoiceResearchWithTimeout(
         timeout: true,
         fastGuard: true,
         reason:
-          "即時研究超過10秒，已停止等待。請先簡短回答目前能確定的內容；需要完整研究時再使用Agent交辦。",
+          "深入研究超過10秒，已停止等待。請先回答可確定內容；需要完整研究時再使用Agent交辦。",
       };
     }
 
