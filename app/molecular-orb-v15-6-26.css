@@ -1,23 +1,33 @@
-/* NUBO V15.6.26 MOLECULAR ORB */
+/* NUBO V15.6.27 DENSE REACTIVE MOLECULAR ORB */
 .nubo-energy-orb {
-  filter: drop-shadow(0 14px 28px rgba(55, 125, 205, 0.13)) !important;
+  filter:
+    drop-shadow(0 12px 30px rgba(46, 96, 205, 0.18))
+    drop-shadow(0 0 22px rgba(111, 80, 255, 0.10)) !important;
 }
 
-/* The molecular sphere is now rendered entirely by canvas. Remove the old
-   decorative halo rings so the result matches the reference video more closely. */
+/* Canvas owns all visual rings; prevent legacy CSS halos from leaking through. */
 .nubo-energy-orb::before,
 .nubo-energy-orb::after {
   content: none !important;
   display: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .nubo-energy-orb canvas {
   background: transparent !important;
-  filter: saturate(1.08) contrast(1.03);
+  filter: saturate(1.28) contrast(1.18) brightness(0.98) !important;
+  opacity: 1 !important;
 }
 
 @media (max-width: 680px) {
   .nubo-energy-orb {
-    filter: drop-shadow(0 10px 20px rgba(55, 125, 205, 0.11)) !important;
+    filter:
+      drop-shadow(0 10px 24px rgba(46, 96, 205, 0.17))
+      drop-shadow(0 0 16px rgba(111, 80, 255, 0.09)) !important;
+  }
+
+  .nubo-energy-orb canvas {
+    filter: saturate(1.32) contrast(1.22) brightness(0.97) !important;
   }
 }
