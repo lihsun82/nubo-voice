@@ -71,13 +71,13 @@ export function NuboDirectOpenGuard() {
       try {
         external.opener = null;
       } catch {
-        // 跨來源分頁不可修改opener時忽略。
+        // Cross-origin windows may not allow opener updates.
       }
 
       try {
         external.focus();
       } catch {
-        // 手機瀏覽器不允許程式控制焦點時忽略。
+        // Mobile browsers may ignore programmatic focus.
       }
 
       return external;
@@ -102,7 +102,7 @@ export function NuboDirectOpenGuard() {
 
       const now = Date.now();
       const last = lastLaunchRef.current;
-      if (last.url === targetUrl && now - last.at < 4000) return;
+      if (last.url === targetUrl && now - last.at < 5000) return;
 
       if (anchor.dataset.nuboAutoClicked === "true") return;
       anchor.dataset.nuboAutoClicked = "true";
@@ -112,28 +112,33 @@ export function NuboDirectOpenGuard() {
       window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
       /*
-       * V15.6.37：這顆「開啟：YouTube」是 NUBO 自己頁面的 DOM 按鈕，
-       * 因此先真的觸發它本身的 click，而不是只另外呼叫 window.open。
-       * 這能重現使用者手按這顆按鈕的 NUBO 端行為；若瀏覽器仍要求
-       * Android/Chrome 系統層確認，網頁無權再替使用者按系統提示。
-       */
-      window.setTimeout(() => {
-        try {
-          anchor.click();
-        } catch {
-          // 下面的外部分頁備援會再嘗試。
-        }
-      }, 120);
-
-      /*
-       * 如果 click 因瀏覽器政策沒有成功叫起 App，短暫等待後再用
-       * 既有的外部分頁路徑嘗試一次；全程不覆蓋 NUBO 本頁。
+       * V15.6.38 single-launch owner:
+       * YouTube is no longer launched before this DOM action exists. Trigger
+       * the exact NUBO action once, then only use a fallback if NUBO is still
+       * visible after enough time for Android to hand off to the app.
        */
       window.setTimeout(() => {
         if (!document.contains(anchor)) return;
+        try {
+          anchor.click();
+        } catch {
+          // The guarded fallback below gets one final chance.
+        }
+      }, 120);
+
+      window.setTimeout(() => {
+        if (!document.contains(anchor)) return;
+
+        // If YouTube/YouTube Music opened, Chrome normally backgrounds NUBO.
+        // Never launch a second tab in that case.
+        if (document.visibilityState !== "visible") {
+          removeFallbackContainer(anchor);
+          return;
+        }
+
         openInExternalTab(targetUrl);
         removeFallbackContainer(anchor);
-      }, 420);
+      }, 1000);
     };
 
     const scan = (root: ParentNode = document) => {
