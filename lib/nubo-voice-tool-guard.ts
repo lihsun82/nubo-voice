@@ -1,7 +1,7 @@
 "use client";
 
 const RESEARCH_TIMEOUT_MS = 10_000;
-const CURRENT_INFO_TIMEOUT_MS = 8_500;
+const CURRENT_INFO_TIMEOUT_MS = 5_200;
 
 function normalize(value: unknown) {
   return String(value ?? "")
@@ -99,7 +99,7 @@ async function runFastCurrentInfo(question: string) {
         timeout: response.status === 504 || payload.timeout === true,
         reason:
           payload.error ||
-          "即時資訊目前無法取得，請不要猜測或使用舊資料作答。",
+          "快速即時資料源目前沒有回傳可驗證內容，請不要猜測或使用舊資料作答。",
       };
     }
 
@@ -111,7 +111,7 @@ async function runFastCurrentInfo(question: string) {
         timeout: true,
         fastCurrentInfo: true,
         reason:
-          "即時資訊查詢超過8.5秒，已停止等待。請明確告知目前無法確認，不要用舊資料猜測。",
+          "快速即時資料查詢超過5.2秒，已停止等待。請明確告知目前無法確認，不要用舊資料猜測。",
       };
     }
 
@@ -121,7 +121,7 @@ async function runFastCurrentInfo(question: string) {
       reason:
         error instanceof Error
           ? error.message
-          : "即時資訊查詢失敗，請不要猜測。",
+          : "快速即時資料查詢失敗，請不要猜測。",
     };
   } finally {
     window.clearTimeout(timer);
@@ -144,9 +144,8 @@ export async function runVoiceResearchWithTimeout(
     };
   }
 
-  // Current affairs, typhoons, politics, technology news and other volatile
-  // questions must take the low-latency web-search path. Do not send them to
-  // the long multi-provider research fallback used for deep research.
+  // Volatile questions use the direct-source Fast Current Agent first.
+  // This path fetches official APIs / RSS and only falls back to paid web search.
   if (hasCurrentAffairsIntent(question)) {
     return runFastCurrentInfo(question);
   }
