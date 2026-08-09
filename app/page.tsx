@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜完整 360° DNA 分子球・持續語音閃爍
+          AINUBO Hotel 智慧旅館管家｜360° 3D／5D DNA 分子球・多軸旋轉・持續語音閃爍
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.29｜完整球形持續語音動態版</span>
-        <span>完整分子球・亮點疏化・DNA 細線・說話期間持續閃爍・保留 V15.6.25 YouTube 外開修正</span>
+        <span>NUBO V15.6.30｜360° 3D／5D 分子球體版</span>
+        <span>整球均勻取樣・X/Y/Z 多軸旋轉・透視縱深・DNA 細線・說話期間持續閃爍・保留 V15.6.25 YouTube 外開修正</span>
       </footer>
     </main>
   );
