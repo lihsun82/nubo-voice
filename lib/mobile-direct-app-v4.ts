@@ -62,12 +62,80 @@ function isYouTubeUrl(url: string) {
   return normalized.includes("youtube.com") || normalized.includes("youtu.be");
 }
 
+function isAndroid() {
+  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
+}
+
+function extractYouTubeVideoId(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes("youtu.be")) {
+      return parsed.pathname.split("/").filter(Boolean)[0] ?? "";
+    }
+    if (parsed.hostname.includes("youtube.com")) {
+      return parsed.searchParams.get("v") ?? "";
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function normalizeYouTubeWatchUrl(url: string) {
+  if (!isYouTubeUrl(url)) return url;
+  try {
+    const parsed = new URL(url);
+    const videoId = extractYouTubeVideoId(url);
+    if (!videoId) return url;
+    const watch = new URL("https://www.youtube.com/watch");
+    watch.searchParams.set("v", videoId);
+    watch.searchParams.set("autoplay", "1");
+    watch.searchParams.set("mute", "0");
+    return watch.toString();
+  } catch {
+    return url;
+  }
+}
+
+function buildAndroidYouTubeIntent(webUrl: string) {
+  const videoId = extractYouTubeVideoId(webUrl);
+  if (!videoId) return "";
+  const fallback = encodeURIComponent(normalizeYouTubeWatchUrl(webUrl));
+  return (
+    `intent://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` +
+    `#Intent;scheme=https;package=com.google.android.youtube;` +
+    `S.browser_fallback_url=${fallback};end`
+  );
+}
+
 function openExternal(url: string, label: string) {
+  const webUrl = normalizeYouTubeWatchUrl(url);
+
+  // Audible autoplay in a cross-origin YouTube web tab can be blocked by the
+  // browser. On Android, prefer the native YouTube app and keep an HTTPS
+  // fallback in the intent. This is the most reliable path for audible music.
+  if (isYouTubeUrl(webUrl) && isAndroid()) {
+    const intentUrl = buildAndroidYouTubeIntent(webUrl);
+    if (intentUrl) {
+      try {
+        window.location.href = intentUrl;
+        return {
+          opened: true,
+          mode: "youtube-app-intent",
+          launchedUrl: intentUrl,
+          fallbackUrl: webUrl,
+        };
+      } catch {
+        // Continue to the web fallback below.
+      }
+    }
+  }
+
   let opened = false;
 
   try {
-    const targetName = isYouTubeUrl(url) ? YOUTUBE_WINDOW_NAME : "nubo_mobile_external";
-    const external = window.open(url, targetName);
+    const targetName = isYouTubeUrl(webUrl) ? YOUTUBE_WINDOW_NAME : "nubo_mobile_external";
+    const external = window.open(webUrl, targetName);
     if (external) {
       external.focus();
       opened = true;
@@ -77,16 +145,15 @@ function openExternal(url: string, label: string) {
   }
 
   if (!opened) {
-    // 語音工具回呼通常不被手機瀏覽器視為直接點擊；新分頁遭封鎖時，
-    // 立即同頁跳轉，確保使用者至少能進入 YouTube，不再完全無反應。
-    window.location.assign(url);
+    window.location.assign(webUrl);
     opened = true;
   }
 
   return {
     opened,
     mode: opened ? "external-or-same-tab" : "blocked",
-    label,
+    launchedUrl: webUrl,
+    fallbackUrl: webUrl,
   };
 }
 
@@ -119,6 +186,8 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
       : getMobileOpenLabel(targetUrl, callName);
 
   window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
+  window.localStorage.setItem("nubo_external_app_return_v1", "true");
+
   const launch = openExternal(targetUrl, label);
 
   return {
@@ -126,12 +195,13 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     autoOpen: false,
     opened: launch.opened,
     mode: launch.mode,
-    externalTab: true,
+    externalTab: launch.mode === "external-or-same-tab",
+    youtubeAppPreferred: launch.mode === "youtube-app-intent",
     forcedSameTab: false,
-    preserveNubo: launch.mode !== "external-or-same-tab" ? true : undefined,
-    launchedUrl: targetUrl,
-    fallbackUrl: targetUrl,
+    preserveNubo: true,
+    launchedUrl: launch.launchedUrl,
+    fallbackUrl: launch.fallbackUrl,
     mobileLabel: label,
-    build: "youtube-guaranteed-open-v15-6-25-20260806",
+    build: "youtube-audible-app-first-v15-6-34-20260810",
   };
 }
