@@ -18,6 +18,12 @@ function hasExplicitResearchIntent(value: string) {
   );
 }
 
+function hasCurrentAffairsIntent(value: string) {
+  return /(最近|目前|現在|今天|昨日|昨天|本週|這週|近期|即時|剛剛|剛才|颱風|颱風警報|熱帶性低氣壓|豪雨|地震|國際時事|國際新聞|政治|選舉|政府|科技時事|科技新聞|AI新聞|人工智慧新聞|新機|新品|發表會|流行|趨勢|熱門|熱搜|股市|匯率|油價|金價|戰爭|衝突|外交|制裁|關稅|疫情|停班停課)/i.test(
+    value,
+  );
+}
+
 export function shouldBlockVoiceResearch(questionValue: unknown) {
   const question = normalize(questionValue);
   const chineseCount = chineseCharacterCount(question);
@@ -36,7 +42,8 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
   if (
     question.length <= 24 &&
     chineseCount === 0 &&
-    !hasExplicitResearchIntent(question)
+    !hasExplicitResearchIntent(question) &&
+    !hasCurrentAffairsIntent(question)
   ) {
     return {
       blocked: true,
@@ -48,7 +55,8 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
   if (
     question.length <= 8 &&
     chineseCount <= 2 &&
-    !hasExplicitResearchIntent(question)
+    !hasExplicitResearchIntent(question) &&
+    !hasCurrentAffairsIntent(question)
   ) {
     return {
       blocked: true,
@@ -57,11 +65,14 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
     };
   }
 
-  if (!hasExplicitResearchIntent(question)) {
+  if (
+    !hasExplicitResearchIntent(question) &&
+    !hasCurrentAffairsIntent(question)
+  ) {
     return {
       blocked: true,
       reason:
-        "這不是使用者明確要求的最新查證、搜尋、比較或深入研究。請直接回答；若無法理解就請使用者重說，不要呼叫研究工具。",
+        "這不是需要即時資料的問題。請直接回答；若無法理解就請使用者重說，不要呼叫研究工具。",
     };
   }
 
