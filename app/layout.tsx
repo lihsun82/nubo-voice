@@ -18,6 +18,7 @@ import "./voice-quick-v15-5-1.css";
 import "./white-tech-v15-6-17.css";
 import "./white-gold-v15-6-18.css";
 import "./molecular-orb-v15-6-26.css";
+import "./dark-dna-orb-v15-6-28.css";
 
 export const metadata: Metadata = {
   title: {
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "NUBO",
   },
   formatDetection: {
@@ -46,7 +47,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#ffffff",
+  themeColor: "#040711",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
