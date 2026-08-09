@@ -17,6 +17,7 @@ import "./space-v15-5.css";
 import "./voice-quick-v15-5-1.css";
 import "./white-tech-v15-6-17.css";
 import "./white-gold-v15-6-18.css";
+import "./molecular-orb-v15-6-26.css";
 
 export const metadata: Metadata = {
   title: {
