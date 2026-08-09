@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜即時時事路由・360° 3D／5D DNA 分子球・大中小分子層次
+          AINUBO Hotel 智慧旅館管家｜快速即時颱風／時事搜尋・360° 3D／5D DNA 分子球
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.32｜即時時事智慧路由版</span>
-        <span>颱風／災害・國際・政治・科技・流行趨勢自動查最新｜一般聊天維持低延遲</span>
+        <span>NUBO V15.6.33｜快速颱風即時搜尋修正版</span>
+        <span>颱風優先中央氣象署・即時時事走低延遲搜尋・深度研究與一般聊天分流</span>
       </footer>
     </main>
   );
