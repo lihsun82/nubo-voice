@@ -30,22 +30,22 @@ function getRenderProfile() {
     connection?.effectiveType === "2g";
 
   if (reducedMotion) {
-    return { particleCount: 560, frameInterval: 50, dpr: 1 };
+    return { particleCount: 420, frameInterval: 50, dpr: 1 };
   }
 
   if (lowCpu || slowNetwork) {
-    return { particleCount: 760, frameInterval: 40, dpr: 1 };
+    return { particleCount: 520, frameInterval: 40, dpr: 1 };
   }
 
   const mobile = window.matchMedia("(pointer: coarse)").matches;
   return mobile
     ? {
-        particleCount: 980,
+        particleCount: 680,
         frameInterval: 1000 / 30,
         dpr: Math.min(window.devicePixelRatio || 1, 1.2),
       }
     : {
-        particleCount: 2200,
+        particleCount: 1350,
         frameInterval: 1000 / 60,
         dpr: Math.min(window.devicePixelRatio || 1, 1.5),
       };
