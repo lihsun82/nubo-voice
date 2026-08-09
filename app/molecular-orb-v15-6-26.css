@@ -1,0 +1,23 @@
+/* NUBO V15.6.26 MOLECULAR ORB */
+.nubo-energy-orb {
+  filter: drop-shadow(0 14px 28px rgba(55, 125, 205, 0.13)) !important;
+}
+
+/* The molecular sphere is now rendered entirely by canvas. Remove the old
+   decorative halo rings so the result matches the reference video more closely. */
+.nubo-energy-orb::before,
+.nubo-energy-orb::after {
+  content: none !important;
+  display: none !important;
+}
+
+.nubo-energy-orb canvas {
+  background: transparent !important;
+  filter: saturate(1.08) contrast(1.03);
+}
+
+@media (max-width: 680px) {
+  .nubo-energy-orb {
+    filter: drop-shadow(0 10px 20px rgba(55, 125, 205, 0.11)) !important;
+  }
+}
