@@ -5,6 +5,7 @@ import {
   createOrbParticles,
   getOrbPower,
   ORB_SIZE,
+  type OrbParticle,
 } from "@/lib/orb-config";
 import { renderNuboOrb } from "@/lib/orb-render";
 import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
@@ -51,6 +52,23 @@ function getRenderProfile() {
       };
 }
 
+function sampleWholeSphere(source: OrbParticle[], count: number) {
+  if (count >= source.length) return source;
+
+  const sampled: OrbParticle[] = [];
+  const stride = source.length / count;
+
+  for (let index = 0; index < count; index += 1) {
+    const sourceIndex = Math.min(
+      source.length - 1,
+      Math.floor((index + 0.5) * stride),
+    );
+    sampled.push(source[sourceIndex]);
+  }
+
+  return sampled;
+}
+
 export function NuboEnergyOrb() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -68,7 +86,10 @@ export function NuboEnergyOrb() {
     let visible = document.visibilityState === "visible";
 
     const profile = getRenderProfile();
-    const particles = createOrbParticles().slice(0, profile.particleCount);
+    const particles = sampleWholeSphere(
+      createOrbParticles(),
+      profile.particleCount,
+    );
 
     canvas.width = Math.floor(ORB_SIZE * profile.dpr);
     canvas.height = Math.floor(ORB_SIZE * profile.dpr);
