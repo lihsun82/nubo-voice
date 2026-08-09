@@ -57,9 +57,9 @@ export function NuboEnergyOrb() {
       : Math.min(window.devicePixelRatio || 1, 1.5);
     const particles = createOrbParticles().slice(
       0,
-      lowPower ? 280 : 1280,
+      lowPower ? 460 : 1800,
     );
-    const frameInterval = lowPower ? 40 : 1000 / 60;
+    const frameInterval = lowPower ? 42 : 1000 / 60;
 
     canvas.width = ORB_SIZE * dpr;
     canvas.height = ORB_SIZE * dpr;
