@@ -22,13 +22,23 @@ export function createOrbParticles(): OrbParticle[] {
     const phi = Math.acos(Math.max(-1, Math.min(1, y)));
     const theta = index * goldenAngle;
     const shellBias = Math.random();
+    const sizeRoll = Math.random();
+
+    // Three explicit molecular scales create visual depth instead of a field
+    // of nearly identical tiny dots. Large nodes are intentionally rare.
+    const size =
+      sizeRoll < 0.68
+        ? 0.52 + Math.random() * 0.6 // small: 0.52–1.12
+        : sizeRoll < 0.93
+          ? 1.55 + Math.random() * 1.05 // medium: 1.55–2.60
+          : 3.15 + Math.random() * 1.45; // large: 3.15–4.60
 
     return {
       theta,
       phi,
       speed: 0.00034 + Math.random() * 0.00105,
       offset: index * 0.0127 + Math.random() * Math.PI * 2,
-      size: 0.55 + Math.random() * 1.45,
+      size,
       hue: Math.random(),
       layer: shellBias < 0.84
         ? 0.91 + Math.random() * 0.09
