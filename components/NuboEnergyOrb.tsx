@@ -9,10 +9,7 @@ import {
 import { renderNuboOrb } from "@/lib/orb-render";
 import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
-function isLowPowerDevice() {
-  const coarse = window.matchMedia(
-    "(pointer: coarse) and (max-width: 1100px)",
-  ).matches;
+function getRenderProfile() {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
@@ -32,7 +29,26 @@ function isLowPowerDevice() {
     connection?.effectiveType === "slow-2g" ||
     connection?.effectiveType === "2g";
 
-  return coarse || reducedMotion || lowCpu || slowNetwork;
+  if (reducedMotion) {
+    return { particleCount: 560, frameInterval: 50, dpr: 1 };
+  }
+
+  if (lowCpu || slowNetwork) {
+    return { particleCount: 760, frameInterval: 40, dpr: 1 };
+  }
+
+  const mobile = window.matchMedia("(pointer: coarse)").matches;
+  return mobile
+    ? {
+        particleCount: 980,
+        frameInterval: 1000 / 30,
+        dpr: Math.min(window.devicePixelRatio || 1, 1.2),
+      }
+    : {
+        particleCount: 2200,
+        frameInterval: 1000 / 60,
+        dpr: Math.min(window.devicePixelRatio || 1, 1.5),
+      };
 }
 
 export function NuboEnergyOrb() {
@@ -51,25 +67,18 @@ export function NuboEnergyOrb() {
     let lastFrameAt = 0;
     let visible = document.visibilityState === "visible";
 
-    const lowPower = isLowPowerDevice();
-    const dpr = lowPower
-      ? 1
-      : Math.min(window.devicePixelRatio || 1, 1.5);
-    const particles = createOrbParticles().slice(
-      0,
-      lowPower ? 460 : 1800,
-    );
-    const frameInterval = lowPower ? 42 : 1000 / 60;
+    const profile = getRenderProfile();
+    const particles = createOrbParticles().slice(0, profile.particleCount);
 
-    canvas.width = ORB_SIZE * dpr;
-    canvas.height = ORB_SIZE * dpr;
+    canvas.width = Math.floor(ORB_SIZE * profile.dpr);
+    canvas.height = Math.floor(ORB_SIZE * profile.dpr);
     canvas.style.width = "100%";
     canvas.style.height = "auto";
     canvas.style.maxWidth = `${ORB_SIZE}px`;
     canvas.style.aspectRatio = "1 / 1";
     canvas.style.display = "block";
     canvas.style.margin = "0 auto";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(profile.dpr, 0, 0, profile.dpr, 0, 0);
 
     const onPhase = (event: Event) => {
       const next = (
@@ -89,13 +98,14 @@ export function NuboEnergyOrb() {
       animationFrame = 0;
       if (!visible) return;
 
-      if (time - lastFrameAt >= frameInterval) {
+      if (time - lastFrameAt >= profile.frameInterval) {
         lastFrameAt = time;
         renderNuboOrb(
           ctx,
           particles,
           time,
           getOrbPower(phase),
+          phase,
         );
       }
 
@@ -103,10 +113,7 @@ export function NuboEnergyOrb() {
     };
 
     window.addEventListener("nubo-voice-phase", onPhase);
-    document.addEventListener(
-      "visibilitychange",
-      onVisibilityChange,
-    );
+    document.addEventListener("visibilitychange", onVisibilityChange);
     animationFrame = window.requestAnimationFrame(draw);
 
     return () => {
@@ -114,10 +121,7 @@ export function NuboEnergyOrb() {
         window.cancelAnimationFrame(animationFrame);
       }
       window.removeEventListener("nubo-voice-phase", onPhase);
-      document.removeEventListener(
-        "visibilitychange",
-        onVisibilityChange,
-      );
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, []);
 
