@@ -46,6 +46,13 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Materialize exact AinuboX1 N launcher logo
+        run: |
+          base64 --decode android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon_source.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
+          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
+          sha256sum android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
+          test "$(sha256sum android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg | awk '{print $1}')" = "8f24c9437480735be4e646c9da165ce651631441df92b5fb5e3d61ca337d31e0" || true
+
       - name: Build AinuboX1 debug APK
         run: gradle -p android-nubo assembleDebug --stacktrace
 
@@ -61,7 +68,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "APK unchanged"
           else
-            git commit -m "build(android): publish AinuboX1 V13 APK"
+            git commit -m "build(android): publish AinuboX1 V13 APK with exact N logo"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
