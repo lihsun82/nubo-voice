@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
-const FALLBACK_SELECTORS = [
-  ".mobile-youtube-action[href]",
+const AUTO_FALLBACK_SELECTORS = [
   "#nubo-mobile-open-fallback a[href]",
   "[data-nubo-mobile-open-fallback][href]",
   "[data-nubo-mobile-open-dialog] a[href]",
 ].join(",");
 
+const YOUTUBE_ACTION_SELECTOR = ".mobile-youtube-action[href]";
 const EXTERNAL_WINDOW_NAME = "nubo_mobile_external";
 const EXTERNAL_TARGET_NAMES = new Set([
   EXTERNAL_WINDOW_NAME,
@@ -31,11 +31,6 @@ function removeFallbackContainer(element: Element) {
 }
 
 export function NuboDirectOpenGuard() {
-  const lastLaunchRef = useRef<{ url: string; at: number }>({
-    url: "",
-    at: 0,
-  });
-
   useEffect(() => {
     if (!isMobileBrowser()) return;
 
@@ -51,10 +46,7 @@ export function NuboDirectOpenGuard() {
       );
 
       try {
-        external = originalOpen(
-          targetUrl,
-          EXTERNAL_WINDOW_NAME,
-        );
+        external = originalOpen(targetUrl, EXTERNAL_WINDOW_NAME);
       } catch {
         external = null;
       }
@@ -70,14 +62,9 @@ export function NuboDirectOpenGuard() {
 
       try {
         external.opener = null;
-      } catch {
-        // Cross-origin windows may not allow opener updates.
-      }
-
-      try {
         external.focus();
       } catch {
-        // Mobile browsers may ignore programmatic focus.
+        // Cross-origin/mobile focus restrictions are harmless here.
       }
 
       return external;
@@ -93,75 +80,55 @@ export function NuboDirectOpenGuard() {
       return originalOpen(url, target, features);
     }) as typeof window.open;
 
-    const launchFallback = (anchor: HTMLAnchorElement) => {
+    /*
+     * V15.6.40:
+     * Do NOT synthesize click() on the visible "開啟：YouTube" action.
+     * Synthetic clicks were opening a web tab and React immediately removed
+     * the button via its onClick handler, even when Android did not hand off
+     * to the YouTube app. Keep the action visible until the user performs a
+     * real trusted tap, which is the only browser event that can reliably
+     * carry user activation for an external-app handoff.
+     */
+    const onTrustedYouTubeClick = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>(YOUTUBE_ACTION_SELECTOR);
+      if (!anchor || !event.isTrusted) return;
+
+      window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
+      window.localStorage.setItem("nubo_external_app_return_v1", "true");
+    };
+
+    document.addEventListener("click", onTrustedYouTubeClick, true);
+
+    // Keep auto-cleanup only for legacy fallback/dialog elements. The visible
+    // YouTube action is intentionally excluded so it can never disappear just
+    // because a programmatic launch attempt ran.
+    const processLegacyFallback = (anchor: HTMLAnchorElement) => {
       const targetUrl = anchor.href || anchor.getAttribute("href") || "";
       if (!targetUrl) {
         removeFallbackContainer(anchor);
         return;
       }
 
-      const now = Date.now();
-      const last = lastLaunchRef.current;
-      if (last.url === targetUrl && now - last.at < 5000) return;
-
-      if (anchor.dataset.nuboAutoClicked === "true") return;
-      anchor.dataset.nuboAutoClicked = "true";
-      lastLaunchRef.current = { url: targetUrl, at: now };
-
       window.localStorage.setItem("nubo_voice_auto_resume_v1", "true");
       window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
-      /*
-       * V15.6.39: React often inserts the YouTube <a> itself as the added
-       * mutation node. The previous scan only searched descendants, so the
-       * button was never seen and never auto-clicked. The scan below now
-       * checks the root element itself before scanning its children.
-       */
-      window.requestAnimationFrame(() => {
-        window.setTimeout(() => {
-          if (!document.contains(anchor)) return;
-          try {
-            anchor.click();
-          } catch {
-            // The guarded fallback below gets one final chance.
-          }
-        }, 80);
-      });
-
-      window.setTimeout(() => {
-        if (!document.contains(anchor)) return;
-
-        if (document.visibilityState !== "visible") {
-          removeFallbackContainer(anchor);
-          return;
-        }
-
-        openInExternalTab(targetUrl);
-      }, 650);
+      const opened = openInExternalTab(targetUrl);
+      if (opened) removeFallbackContainer(anchor);
     };
 
     const scan = (root: ParentNode = document) => {
-      // querySelectorAll() does not include root itself.
       if (
         root instanceof HTMLAnchorElement &&
-        root.matches(FALLBACK_SELECTORS)
+        root.matches(AUTO_FALLBACK_SELECTORS)
       ) {
-        launchFallback(root);
+        processLegacyFallback(root);
       }
 
       root
-        .querySelectorAll<HTMLAnchorElement>(FALLBACK_SELECTORS)
-        .forEach(launchFallback);
-
-      root
-        .querySelectorAll<HTMLElement>(
-          "#nubo-mobile-open-fallback, [data-nubo-mobile-open-dialog]",
-        )
-        .forEach((element) => {
-          const anchor = element.querySelector<HTMLAnchorElement>("a[href]");
-          if (anchor) launchFallback(anchor);
-          else element.remove();
-        });
+        .querySelectorAll<HTMLAnchorElement>(AUTO_FALLBACK_SELECTORS)
+        .forEach(processLegacyFallback);
     };
 
     scan();
@@ -181,6 +148,7 @@ export function NuboDirectOpenGuard() {
 
     return () => {
       observer.disconnect();
+      document.removeEventListener("click", onTrustedYouTubeClick, true);
       window.open = originalOpen;
     };
   }, []);
