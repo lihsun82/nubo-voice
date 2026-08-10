@@ -6,12 +6,12 @@ function isCoarseMobileDevice() {
   if (typeof window === "undefined" || typeof navigator === "undefined") return false;
   return (
     /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
-    window.matchMedia?.("(pointer: coarse) and (max-width: 1100px)").matches === true
+    window.matchMedia("(pointer: coarse) and (max-width: 1100px)").matches
   );
 }
 
 export function isNuboNativeAndroid() {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined" || typeof document === "undefined") return false;
   const nativeWindow = window as Window & {
     NuboNative?: { isNativeApp?: () => boolean };
   };
@@ -29,30 +29,17 @@ export function isNuboNativeAndroid() {
 }
 
 export function getNuboNoiseReductionType(): NuboNoiseReductionType {
-  // NUBO is commonly used on a counter/table or handheld in public spaces.
-  // Mobile/native devices therefore default to far-field cleanup; desktop
-  // close-talk microphones keep the lower-latency near-field profile.
   return isNuboNativeAndroid() || isCoarseMobileDevice() ? "far_field" : "near_field";
 }
 
 export function getNuboMicrophoneConstraints(): MediaTrackConstraints {
-  const supported =
-    typeof navigator !== "undefined"
-      ? navigator.mediaDevices?.getSupportedConstraints?.() ?? {}
-      : {};
-
-  const constraints: MediaTrackConstraints = {
+  return {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
-    channelCount: { ideal: 1 },
-    sampleRate: { ideal: 48000 },
+    channelCount: 1,
+    sampleRate: 48000,
   };
-
-  if (supported.sampleSize) constraints.sampleSize = { ideal: 16 };
-  if (supported.latency) constraints.latency = { ideal: 0.02, max: 0.12 };
-
-  return constraints;
 }
 
 export function getNuboNoiseProfileLabel() {
