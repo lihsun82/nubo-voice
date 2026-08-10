@@ -20,6 +20,7 @@
     </queries>
 
     <application
+        android:name=".NuboSmartAudioApplication"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:label="@string/app_name"
