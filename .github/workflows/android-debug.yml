@@ -13,9 +13,14 @@ on:
       - "components/NuboSmartNoiseRuntime.tsx"
       - "components/OpenAIRealtimeVoiceConsole.tsx"
       - ".github/workflows/android-debug.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "android-nubo/**"
+      - ".github/workflows/android-debug.yml"
 
 concurrency:
-  group: ainubox1-android-debug
+  group: ainubox1-android-debug-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -50,6 +55,7 @@ jobs:
         run: gradle -p android-nubo assembleDebug --stacktrace
 
       - name: Publish APK into NUBO web downloads
+        if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
           cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v12.apk
@@ -61,7 +67,8 @@ jobs:
             echo "APK unchanged"
           else
             git commit -m "build(android): publish AinuboX1 V12 APK"
-            git push
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
