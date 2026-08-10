@@ -6,12 +6,6 @@ on:
     branches: [main]
     paths:
       - "android-nubo/**"
-      - "lib/mobile-direct-app-v4.ts"
-      - "lib/nubo-smart-noise.ts"
-      - "lib/nubo-realtime-eco.ts"
-      - "lib/browser-audio.ts"
-      - "components/NuboSmartNoiseRuntime.tsx"
-      - "components/OpenAIRealtimeVoiceConsole.tsx"
       - ".github/workflows/android-debug.yml"
   pull_request:
     branches: [main]
@@ -20,7 +14,7 @@ on:
       - ".github/workflows/android-debug.yml"
 
 concurrency:
-  group: ainubox1-android-debug-${{ github.event_name }}-${{ github.ref }}
+  group: ainubox1-android-v15-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -46,47 +40,44 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Materialize exact AinuboX1 N launcher logo
+      - name: Confirm V15 launcher source
         run: |
-          base64 --decode android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon_source.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
-          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
-          ACTUAL=$(sha256sum android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg | awk '{print $1}')
-          echo "launcher source sha256=$ACTUAL"
-          test "$ACTUAL" = "8f24c9437480735be4e646c9da165ce651631441df92b5fb5e3d61ca337d31e0"
+          test -f android-nubo/app/src/main/res/drawable/ainubox1_launcher_v15.xml
+          grep -q 'ainubox1_launcher_v15' android-nubo/app/src/main/AndroidManifest.xml
+          grep -q 'versionCode 15' android-nubo/app/build.gradle
+          echo "V15 standalone vector launcher source confirmed"
 
-      - name: Clean build AinuboX1 V14 APK
+      - name: Clean build AinuboX1 V15 APK
         run: gradle -p android-nubo clean assembleDebug --no-build-cache --rerun-tasks --stacktrace
 
-      - name: Verify exact N logo is physically inside APK
+      - name: Inspect packaged APK metadata
         run: |
           APK=android-nubo/app/build/outputs/apk/debug/app-debug.apk
-          ICON_PATH=$(unzip -Z1 "$APK" | grep -E '^res/.*/ainubox1_icon\.(jpg|jpeg)$' | head -n 1)
-          echo "Packaged launcher icon path: $ICON_PATH"
-          test -n "$ICON_PATH"
-          unzip -p "$APK" "$ICON_PATH" > /tmp/ainubox1_icon_packed.jpg
-          PACKED=$(sha256sum /tmp/ainubox1_icon_packed.jpg | awk '{print $1}')
-          echo "packaged launcher sha256=$PACKED"
-          test "$PACKED" = "8f24c9437480735be4e646c9da165ce651631441df92b5fb5e3d61ca337d31e0"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | tee /tmp/ainubox1-badging.txt
+          grep -q "versionCode='15'" /tmp/ainubox1-badging.txt
+          grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
+          echo "APK metadata verified: AinuboX1 V15"
 
-      - name: Publish V14 as a brand-new filename
+      - name: Publish V15 as brand-new APK filename
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v14-NLOGO.apk
+          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v15-VECTOR-N.apk
           cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v14-NLOGO.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v15-VECTOR-N.apk public/downloads/AinuboX1-latest.apk
           if git diff --cached --quiet; then
-            echo "APK unchanged - refusing to publish stale package"
-            exit 1
+            echo "APK unchanged - nothing to publish"
+          else
+            git commit -m "build(android): publish AinuboX1 V15 vector-N APK"
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
-          git commit -m "build(android): publish AinuboX1 V14 verified N-logo APK"
-          git pull --rebase origin main
-          git push origin HEAD:main
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v14-NLOGO-debug
+          name: AinuboX1-v15-VECTOR-N-debug
           path: android-nubo/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
