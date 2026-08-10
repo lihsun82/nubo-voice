@@ -2,6 +2,15 @@
 
 import type { FunctionCall } from "@/lib/browser-nubo-tools";
 
+type NuboNativeBridge = {
+  isNativeApp?: () => boolean;
+  openExternalApp?: (targetUrl: string, label: string) => boolean;
+};
+
+type NuboNativeWindow = Window & {
+  NuboNative?: NuboNativeBridge;
+};
+
 function getMobileOpenLabel(targetUrl: string, callName: string) {
   const normalized = targetUrl.toLowerCase();
   if (normalized.includes("line.me") || normalized.startsWith("line:")) return "LINE";
@@ -92,6 +101,21 @@ function buildYouTubeAppLink(url: string, preferMusic: boolean) {
   }
 
   return `https://youtu.be/${encodeURIComponent(videoId)}`;
+}
+
+function tryNativeAndroidLaunch(targetUrl: string, label: string) {
+  if (typeof window === "undefined") return false;
+
+  const host = window as NuboNativeWindow;
+  const bridge = host.NuboNative;
+  if (!bridge?.openExternalApp) return false;
+
+  try {
+    if (bridge.isNativeApp && bridge.isNativeApp() !== true) return false;
+    return bridge.openExternalApp(targetUrl, label) === true;
+  } catch {
+    return false;
+  }
 }
 
 function openInSeparateContext(url: string, targetName: string) {
@@ -199,8 +223,10 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
 
   if (!targetUrl) return result;
 
-  const label =
-    typeof payload.mobileLabel === "string" && payload.mobileLabel
+  const preferMusic = payload.preferredYouTubeApp === "music";
+  const label = preferMusic
+    ? "YouTube Music"
+    : typeof payload.mobileLabel === "string" && payload.mobileLabel
       ? payload.mobileLabel
       : getMobileOpenLabel(targetUrl, callName);
 
@@ -208,16 +234,42 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
   window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
   const youtube = isYouTubeUrl(targetUrl);
-  const preferMusic = payload.preferredYouTubeApp === "music";
 
-  /*
-   * V15.6.38: YouTube must have exactly one launch owner.
-   * Do NOT open YouTube here. Return the final Android app-link target and let
-   * the visible NUBO "開啟：YouTube" DOM action appear first; NuboDirectOpenGuard
-   * will auto-click that action once. This removes the race where the early
-   * direct launch opened a web page before the button auto-click path existed.
-   */
+  // V15.6.41: When NUBO is running inside the native Android WebView shell,
+  // bypass Chrome entirely. The trusted NuboNative bridge starts an explicit
+  // ACTION_VIEW intent for the YouTube / YouTube Music package, so no visible
+  // "開啟：YouTube" web button or synthetic click is required.
   if (youtube) {
+    const nativeTarget = buildYouTubeAppLink(targetUrl, preferMusic);
+    const nativeOpened = tryNativeAndroidLaunch(nativeTarget, label);
+
+    if (nativeOpened) {
+      return {
+        ...(result as Record<string, unknown>),
+        mobileUrl: undefined,
+        playerUrl: undefined,
+        autoOpen: false,
+        opened: true,
+        mode: preferMusic
+          ? "native-youtube-music-intent"
+          : "native-youtube-intent",
+        externalTab: false,
+        nativeBridge: true,
+        youtubeAppPreferred: true,
+        forcedSameTab: false,
+        preserveNubo: true,
+        launchedUrl: nativeTarget,
+        fallbackUrl: targetUrl,
+        mobileLabel: label,
+        launchBlocked: false,
+        singleLaunchOwner: "android-native-bridge",
+        build: "youtube-native-bridge-v15-6-41-20260810",
+      };
+    }
+
+    // Chrome/PWA fallback: keep the visible button. Chrome does not allow a
+    // script-generated click to count as a user gesture for launching an
+    // external Android app, so do not fake-click or open a web tab here.
     const launchUrl = isAndroid()
       ? buildYouTubeAppLink(targetUrl, preferMusic)
       : targetUrl;
@@ -229,17 +281,18 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
       playerUrl: launchUrl,
       autoOpen: false,
       opened: false,
-      mode: "youtube-await-auto-click",
+      mode: "youtube-native-bridge-unavailable",
       externalTab: false,
+      nativeBridge: false,
       youtubeAppPreferred: isAndroid(),
       forcedSameTab: false,
       preserveNubo: true,
       launchedUrl: "",
       fallbackUrl: targetUrl,
-      mobileLabel: preferMusic ? "YouTube Music" : label,
+      mobileLabel: label,
       launchBlocked: false,
-      singleLaunchOwner: "nubo-direct-open-guard",
-      build: "youtube-single-launch-v15-6-38-20260810",
+      singleLaunchOwner: "visible-user-action",
+      build: "youtube-native-bridge-fallback-v15-6-41-20260810",
     };
   }
 
@@ -258,6 +311,6 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     fallbackUrl: launch.fallbackUrl,
     mobileLabel: label,
     launchBlocked: false,
-    build: "mobile-direct-open-v15-6-38-20260810",
+    build: "mobile-direct-open-v15-6-41-20260810",
   };
 }
