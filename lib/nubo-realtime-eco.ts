@@ -48,14 +48,14 @@ export class NuboRealtimeEcoGate {
       this.mute.connect(this.captureDestination);
       await this.context.resume().catch(() => undefined);
     } catch {
-      // The eco gate still protects background sessions even if local RMS
-      // monitoring is unavailable on a specific browser/WebView.
       await this.closeMonitorGraph();
     }
 
     document.addEventListener("visibilitychange", this.handleVisibility, true);
     window.addEventListener("pagehide", this.handlePageHide, true);
     window.addEventListener("pageshow", this.handlePageShow, true);
+    window.addEventListener("nubo:native-background", this.handleNativeBackground, true);
+    window.addEventListener("nubo:native-foreground", this.handleNativeForeground, true);
 
     this.timer = window.setInterval(() => {
       void this.tick();
@@ -86,6 +86,15 @@ export class NuboRealtimeEcoGate {
   private readonly handlePageShow = () => {
     this.probeUntil = Date.now() + ECO_WAKE_PROBE_MS;
     void this.resume("pageshow");
+  };
+
+  private readonly handleNativeBackground = () => {
+    void this.suspend("native-background");
+  };
+
+  private readonly handleNativeForeground = () => {
+    this.probeUntil = Date.now() + ECO_WAKE_PROBE_MS;
+    void this.resume("native-foreground");
   };
 
   private async tick() {
@@ -137,13 +146,19 @@ export class NuboRealtimeEcoGate {
       this.sleeping = true;
       this.onModeChange?.("sleeping");
     } catch {
-      // Do not stop the live session if a browser rejects replaceTrack(null).
+      // Keep the active session if this browser rejects replaceTrack(null).
     }
   }
 
   private async resume(reason: string) {
     if (this.destroyed || !this.sleeping) return;
-    if (document.visibilityState !== "visible") return;
+    if (
+      document.visibilityState !== "visible" &&
+      reason !== "native-foreground"
+    ) {
+      return;
+    }
+
     const sender = this.sender;
     const track = this.sendTrack;
     if (!sender || !track || track.readyState !== "live") return;
@@ -180,6 +195,8 @@ export class NuboRealtimeEcoGate {
     document.removeEventListener("visibilitychange", this.handleVisibility, true);
     window.removeEventListener("pagehide", this.handlePageHide, true);
     window.removeEventListener("pageshow", this.handlePageShow, true);
+    window.removeEventListener("nubo:native-background", this.handleNativeBackground, true);
+    window.removeEventListener("nubo:native-foreground", this.handleNativeForeground, true);
     await this.closeMonitorGraph();
     this.sender = null;
     this.sendTrack = null;
