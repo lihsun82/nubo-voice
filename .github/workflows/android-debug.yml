@@ -7,6 +7,8 @@ on:
     paths:
       - "android-nubo/**"
       - "lib/mobile-direct-app-v4.ts"
+      - "lib/nubo-smart-noise.ts"
+      - "components/NuboSmartNoiseRuntime.tsx"
       - ".github/workflows/android-debug.yml"
 
 permissions:
@@ -38,19 +40,19 @@ jobs:
       - name: Publish APK into NUBO web downloads
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/nubo-android-v9.apk
+          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/nubo-android-v10.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/nubo-android-v9.apk
+          git add public/downloads/nubo-android-v10.apk
           if git diff --cached --quiet; then
             echo "APK unchanged"
           else
-            git commit -m "build(android): publish NUBO V9 APK"
+            git commit -m "build(android): publish NUBO V10 smart-noise APK"
             git push
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nubo-android-v9-debug
+          name: nubo-android-v10-debug
           path: android-nubo/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
