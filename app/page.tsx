@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜YouTube 開啟按鈕常駐・禁止合成點擊開網頁・360° DNA 分子球
+          AINUBO Hotel 智慧旅館管家｜Android 原生 YouTube Bridge・Chrome 安全備援・360° DNA 分子球
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.40｜YouTube 開啟按鈕常駐修正版</span>
-        <span>取消程式假點造成網頁分頁與按鈕消失・保留真人點擊 App Link 路徑</span>
+        <span>NUBO V15.6.41｜Android 原生 YouTube Bridge 版</span>
+        <span>Android App 直接 Intent 開 YouTube／YouTube Music・Chrome 保留手動安全備援</span>
       </footer>
     </main>
   );
