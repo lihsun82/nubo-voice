@@ -8,6 +8,7 @@ import {
   readNuboLanguageMode,
   type NuboLanguageMode,
 } from "@/lib/nubo-language-mode";
+import { getNuboNoiseReductionType } from "@/lib/nubo-smart-noise";
 import type { NuboVoiceProfile } from "@/lib/nubo-voice-profile";
 import {
   NUBO_VOICE_TUNING_EVENT,
@@ -51,8 +52,14 @@ function normalizeSession(session: string) {
     const payload = JSON.parse(session) as Record<string, unknown>;
     const tuning = readNuboVoiceTuning();
     const audio = asRecord(payload.audio);
+    const input = asRecord(audio.input);
     const output = asRecord(audio.output);
+
     output.speed = tuning.speed;
+    input.noise_reduction = {
+      type: getNuboNoiseReductionType(),
+    };
+    audio.input = input;
     audio.output = output;
     payload.audio = audio;
 
@@ -79,6 +86,11 @@ function sendLiveSessionUpdate(
       session: {
         instructions: buildInstructions(tuning, languageMode),
         audio: {
+          input: {
+            noise_reduction: {
+              type: getNuboNoiseReductionType(),
+            },
+          },
           output: {
             speed: tuning.speed,
           },
@@ -142,8 +154,13 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       scheduleLiveUpdate(readNuboVoiceTuning(), languageMode);
     };
 
+    const handleNoiseReady = () => {
+      scheduleLiveUpdate(readNuboVoiceTuning(), readNuboLanguageMode());
+    };
+
     window.addEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
     window.addEventListener(NUBO_LANGUAGE_MODE_EVENT, handleLanguageMode);
+    window.addEventListener("nubo:smart-noise-ready", handleNoiseReady);
 
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url =
@@ -214,6 +231,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       if (updateTimer) window.clearTimeout(updateTimer);
       window.removeEventListener(NUBO_VOICE_TUNING_EVENT, handleLiveTuning);
       window.removeEventListener(NUBO_LANGUAGE_MODE_EVENT, handleLanguageMode);
+      window.removeEventListener("nubo:smart-noise-ready", handleNoiseReady);
       RTCPeerConnection.prototype.createDataChannel = nativeCreateDataChannel;
       window.fetch = nativeFetch;
       realtimeChannel = null;
