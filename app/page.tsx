@@ -23,13 +23,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜YouTube 按鈕根節點自動觸發・Android App Link 優先・360° DNA 分子球
+          AINUBO Hotel 智慧旅館管家｜YouTube 開啟按鈕常駐・禁止合成點擊開網頁・360° DNA 分子球
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.39｜YouTube 自動點擊偵測修正版</span>
-        <span>修正 MutationObserver 漏掉新增按鈕本身・「開啟：YouTube」出現即自動觸發</span>
+        <span>NUBO V15.6.40｜YouTube 開啟按鈕常駐修正版</span>
+        <span>取消程式假點造成網頁分頁與按鈕消失・保留真人點擊 App Link 路徑</span>
       </footer>
     </main>
   );
