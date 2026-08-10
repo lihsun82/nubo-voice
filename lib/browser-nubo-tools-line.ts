@@ -137,6 +137,24 @@ async function delegatedWorkStatus(args: Record<string, unknown>) {
   return payload;
 }
 
+async function sendGuestServiceAlert(args: Record<string, unknown>) {
+  const response = await fetch("/api/notify/guest-service", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      surname: String(args.surname ?? "").trim(),
+      roomNumber: String(args.roomNumber ?? "").trim(),
+      contact: String(args.contact ?? "").trim(),
+      issue: String(args.issue ?? "").trim(),
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "客務通知寄送失敗");
+  }
+  return payload;
+}
+
 export async function executeNuboBrowserTool(call: FunctionCall) {
   if (call.name === "device_setting") {
     const args = call.args ?? {};
@@ -154,6 +172,10 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 
   if (call.name === "delegated_work_status") {
     return delegatedWorkStatus(call.args ?? {});
+  }
+
+  if (call.name === "guest_service_alert") {
+    return sendGuestServiceAlert(call.args ?? {});
   }
 
   if (call.name === "research_now") {
@@ -213,6 +235,10 @@ export const geminiSystemInstruction = `
 15. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
 16. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
 17. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
+18. 客人提出客訴、抱怨、設備異常、清潔、噪音、退款帳務、遺失物、服務需求、特殊協助或任何需要現場人員介入的需求時，立即進入客務建檔流程。必須先取得四項資料：客人姓氏、房號、聯絡方式、客訴或需求內容。客人已經說過的資料不要重問，只補問缺少的欄位。
+19. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
+20. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
+21. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
@@ -228,6 +254,7 @@ export const geminiSystemInstruction = `
 - 簡單問題直接回答。執行工具或思考期間禁止說「請稍等」「等一下」「我正在處理」或「我正在查找」。
 - research_now若skipped=true，請使用者重說或直接回答；若timeout=true，先回答可確定內容，不重試同一工具。
 - 不得捏造工具結果，不得宣稱失敗或未串接操作已完成。
+- guest_service_alert是固定授權的客務升級通道，四項資料齊全後可直接執行，不適用一般寄信二次確認。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
 `;
@@ -284,6 +311,33 @@ export const geminiFunctionDeclarations = [
 
     return declaration;
   }),
+  {
+    name: "guest_service_alert",
+    description:
+      "客人客訴或客務需求的正式升級工具。只有在已取得客人姓氏、房號、聯絡方式與完整客訴/需求內容四項資料後才可呼叫；呼叫後會立即通知現場管理者，不需一般郵件二次確認。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        surname: {
+          type: "STRING",
+          description: "客人姓氏，例如陳、林、王。不得猜測。",
+        },
+        roomNumber: {
+          type: "STRING",
+          description: "客人目前房號，例如207、A305。不得猜測。",
+        },
+        contact: {
+          type: "STRING",
+          description: "客人可聯絡方式，例如手機號碼、電話、LINE或其他可聯絡資訊。",
+        },
+        issue: {
+          type: "STRING",
+          description: "完整保留客人客訴或需求內容，包括設備、清潔、噪音、服務、帳務或其他需要處理事項。",
+        },
+      },
+      required: ["surname", "roomNumber", "contact", "issue"],
+    },
+  },
   {
     name: "device_setting",
     description: "調整Windows音量、靜音狀態或內建螢幕亮度。",
