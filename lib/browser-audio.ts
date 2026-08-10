@@ -3,6 +3,9 @@ import {
   preferMultimediaAudioContext,
 } from "@/lib/browser-speaker-output";
 
+const NUBO_AUDIO_ECO_IDLE_MS = 60_000;
+const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
+
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -44,6 +47,15 @@ function floatToPcm16(input: Float32Array): Uint8Array {
   return new Uint8Array(buffer);
 }
 
+function calculateRms(input: Float32Array) {
+  let sum = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    const value = input[i];
+    sum += value * value;
+  }
+  return Math.sqrt(sum / Math.max(1, input.length));
+}
+
 function addForegroundListeners(listener: () => void) {
   document.addEventListener("visibilitychange", listener, true);
   window.addEventListener("focus", listener, true);
@@ -64,10 +76,21 @@ export class MicrophonePcmStream {
   private mute: GainNode | null = null;
   private captureDestination: MediaStreamAudioDestinationNode | null = null;
   private foregroundListenersAttached = false;
+  private lastVoiceAt = Date.now();
+  private ecoSleeping = false;
+  private noiseFloor = 0.012;
+  private hotFrames = 0;
+  private preRoll: string[] = [];
 
   private readonly handleForeground = () => {
     if (document.visibilityState === "visible") {
+      this.ecoSleeping = false;
+      this.lastVoiceAt = Date.now();
+      this.preRoll = [];
       void this.resume();
+    } else {
+      this.ecoSleeping = true;
+      this.preRoll = [];
     }
   };
 
@@ -87,6 +110,12 @@ export class MicrophonePcmStream {
     if (this.stream || this.context) {
       await this.stop();
     }
+
+    this.lastVoiceAt = Date.now();
+    this.ecoSleeping = false;
+    this.noiseFloor = 0.012;
+    this.hotFrames = 0;
+    this.preRoll = [];
 
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -121,10 +150,53 @@ export class MicrophonePcmStream {
     this.mute.gain.value = 0;
     this.processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
+      const rms = calculateRms(input);
+      const threshold = Math.max(0.02, this.noiseFloor * 2.6);
+      const now = Date.now();
+
+      if (rms < threshold * 0.8) {
+        this.noiseFloor = this.noiseFloor * 0.985 + rms * 0.015;
+      }
+
+      if (rms >= threshold) this.hotFrames += 1;
+      else this.hotFrames = Math.max(0, this.hotFrames - 1);
+
+      const voiceDetected = this.hotFrames >= 2;
+      if (voiceDetected) this.lastVoiceAt = now;
+
       const pcm = floatToPcm16(
         downsample(input, event.inputBuffer.sampleRate, 16000),
       );
-      onAudio(toBase64(pcm));
+      const base64 = toBase64(pcm);
+
+      if (document.visibilityState !== "visible") {
+        this.ecoSleeping = true;
+        this.preRoll = [];
+        return;
+      }
+
+      if (!this.ecoSleeping && now - this.lastVoiceAt >= NUBO_AUDIO_ECO_IDLE_MS) {
+        this.ecoSleeping = true;
+        this.preRoll = [];
+      }
+
+      if (this.ecoSleeping) {
+        this.preRoll.push(base64);
+        if (this.preRoll.length > NUBO_AUDIO_ECO_PREROLL_CHUNKS) {
+          this.preRoll.shift();
+        }
+
+        if (!voiceDetected) return;
+
+        this.ecoSleeping = false;
+        this.lastVoiceAt = now;
+        const buffered = this.preRoll;
+        this.preRoll = [];
+        for (const chunk of buffered) onAudio(chunk);
+        return;
+      }
+
+      onAudio(base64);
     };
     this.source.connect(this.processor);
     this.processor.connect(this.mute);
@@ -163,6 +235,8 @@ export class MicrophonePcmStream {
     this.processor = null;
     this.mute = null;
     this.captureDestination = null;
+    this.ecoSleeping = false;
+    this.preRoll = [];
   }
 }
 
