@@ -37,7 +37,7 @@ export function NuboSmartNoiseRuntime() {
     document.documentElement.dataset.nuboNoiseMode = mode;
     document.documentElement.dataset.nuboNoiseProfile = getNuboNoiseProfileLabel();
 
-    mediaDevices.getUserMedia = async (constraints?: MediaStreamConstraints) => {
+    const wrappedGetUserMedia = async (constraints?: MediaStreamConstraints) => {
       const next: MediaStreamConstraints = {
         ...(constraints ?? {}),
         audio: mergeAudioConstraints(constraints?.audio),
@@ -62,6 +62,11 @@ export function NuboSmartNoiseRuntime() {
       return stream;
     };
 
+    Object.defineProperty(mediaDevices, "getUserMedia", {
+      configurable: true,
+      value: wrappedGetUserMedia,
+    });
+
     window.dispatchEvent(
       new CustomEvent("nubo:smart-noise-ready", {
         detail: { mode, profile: getNuboNoiseProfileLabel() },
@@ -69,7 +74,10 @@ export function NuboSmartNoiseRuntime() {
     );
 
     return () => {
-      mediaDevices.getUserMedia = nativeGetUserMedia;
+      Object.defineProperty(mediaDevices, "getUserMedia", {
+        configurable: true,
+        value: nativeGetUserMedia,
+      });
       delete document.documentElement.dataset.nuboNoiseMode;
       delete document.documentElement.dataset.nuboNoiseProfile;
     };
