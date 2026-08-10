@@ -112,36 +112,43 @@ export function NuboDirectOpenGuard() {
       window.localStorage.setItem("nubo_external_app_return_v1", "true");
 
       /*
-       * V15.6.38 single-launch owner:
-       * YouTube is no longer launched before this DOM action exists. Trigger
-       * the exact NUBO action once, then only use a fallback if NUBO is still
-       * visible after enough time for Android to hand off to the app.
+       * V15.6.39: React often inserts the YouTube <a> itself as the added
+       * mutation node. The previous scan only searched descendants, so the
+       * button was never seen and never auto-clicked. The scan below now
+       * checks the root element itself before scanning its children.
        */
-      window.setTimeout(() => {
-        if (!document.contains(anchor)) return;
-        try {
-          anchor.click();
-        } catch {
-          // The guarded fallback below gets one final chance.
-        }
-      }, 120);
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          if (!document.contains(anchor)) return;
+          try {
+            anchor.click();
+          } catch {
+            // The guarded fallback below gets one final chance.
+          }
+        }, 80);
+      });
 
       window.setTimeout(() => {
         if (!document.contains(anchor)) return;
 
-        // If YouTube/YouTube Music opened, Chrome normally backgrounds NUBO.
-        // Never launch a second tab in that case.
         if (document.visibilityState !== "visible") {
           removeFallbackContainer(anchor);
           return;
         }
 
         openInExternalTab(targetUrl);
-        removeFallbackContainer(anchor);
-      }, 1000);
+      }, 650);
     };
 
     const scan = (root: ParentNode = document) => {
+      // querySelectorAll() does not include root itself.
+      if (
+        root instanceof HTMLAnchorElement &&
+        root.matches(FALLBACK_SELECTORS)
+      ) {
+        launchFallback(root);
+      }
+
       root
         .querySelectorAll<HTMLAnchorElement>(FALLBACK_SELECTORS)
         .forEach(launchFallback);
