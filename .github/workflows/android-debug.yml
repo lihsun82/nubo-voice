@@ -37,25 +37,31 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Prepare AinuboX1 launcher icon
+        run: |
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          base64 --decode android-nubo/icon/ainubox1_icon.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_icon.jpg
+
       - name: Build debug APK
         run: gradle -p android-nubo assembleDebug --stacktrace
 
       - name: Publish APK into NUBO web downloads
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/nubo-android-v11.apk
+          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v12.apk
+          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/nubo-android-v11.apk
+          git add public/downloads/AinuboX1-v12.apk public/downloads/AinuboX1-latest.apk
           if git diff --cached --quiet; then
             echo "APK unchanged"
           else
-            git commit -m "build(android): publish NUBO V11 smart-token APK"
+            git commit -m "build(android): publish AinuboX1 V12 APK"
             git push
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nubo-android-v11-debug
+          name: AinuboX1-v12-debug
           path: android-nubo/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
