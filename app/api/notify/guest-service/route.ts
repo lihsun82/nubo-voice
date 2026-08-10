@@ -8,8 +8,12 @@ import {
 export const runtime = "nodejs";
 
 const DEFAULT_ALERT_EMAIL = "lihsun82@gmail.com";
-const DUPLICATE_WINDOW_MS = 90_000;
+const DUPLICATE_WINDOW_MS = 180_000;
 const recentAlerts = new Map<string, number>();
+
+function clean(value: unknown) {
+  return String(value ?? "").trim();
+}
 
 function normalize(value: string) {
   return value
@@ -34,9 +38,7 @@ function getTaipeiTime() {
 
 function cleanupRecentAlerts(now: number) {
   for (const [key, at] of recentAlerts.entries()) {
-    if (now - at > DUPLICATE_WINDOW_MS * 2) {
-      recentAlerts.delete(key);
-    }
+    if (now - at > DUPLICATE_WINDOW_MS * 2) recentAlerts.delete(key);
   }
 }
 
@@ -51,40 +53,35 @@ function isDuplicate(key: string, now: number) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const transcript = String(body.transcript || body.text || "").trim();
+    const surname = clean(body.surname);
+    const roomNumber = clean(body.roomNumber ?? body.room);
+    const contact = clean(body.contact);
+    const issue = clean(body.issue ?? body.transcript ?? body.text);
 
-    if (!transcript) {
+    const missing = [
+      !surname ? "surname" : "",
+      !roomNumber ? "roomNumber" : "",
+      !contact ? "contact" : "",
+      !issue ? "issue" : "",
+    ].filter(Boolean);
+
+    if (missing.length) {
       return NextResponse.json(
-        { ok: false, error: "Missing transcript." },
+        {
+          ok: false,
+          sent: false,
+          requiresCompleteIntake: true,
+          missing,
+          error: "客務資料未完整，必須先取得姓氏、房號、聯絡方式與客訴/需求內容。",
+        },
         { status: 400 },
       );
     }
 
-    const classification = classifyNuboGuestServiceTranscript(transcript);
-    if (!classification.matched) {
-      return NextResponse.json({
-        ok: true,
-        notified: false,
-        reason: "Not a guest-service request or complaint.",
-      });
-    }
-
-    const fingerprint = `${classification.category}:${normalize(transcript)}`;
-    const now = Date.now();
-    if (isDuplicate(fingerprint, now)) {
-      return NextResponse.json({
-        ok: true,
-        notified: false,
-        duplicate: true,
-        category: classification.category,
-      });
-    }
-
-    const recipient =
-      process.env.NUBO_GUEST_ALERT_EMAIL?.trim() || DEFAULT_ALERT_EMAIL;
-    const categoryLabel = getNuboGuestServiceCategoryLabel(
-      classification.category,
-    );
+    const classification = classifyNuboGuestServiceTranscript(issue);
+    const categoryLabel = classification.matched
+      ? getNuboGuestServiceCategoryLabel(classification.category)
+      : "客人需求／客訴";
     const urgencyLabel =
       classification.urgency === "critical"
         ? "緊急"
@@ -92,36 +89,53 @@ export async function POST(req: NextRequest) {
           ? "優先"
           : "一般";
 
+    const fingerprint = [roomNumber, surname, contact, issue]
+      .map(normalize)
+      .join(":");
+    const now = Date.now();
+    if (isDuplicate(fingerprint, now)) {
+      return NextResponse.json({
+        ok: true,
+        sent: false,
+        duplicate: true,
+        recipient: process.env.NUBO_GUEST_ALERT_EMAIL?.trim() || DEFAULT_ALERT_EMAIL,
+      });
+    }
+
+    const recipient =
+      process.env.NUBO_GUEST_ALERT_EMAIL?.trim() || DEFAULT_ALERT_EMAIL;
     const subject =
       classification.urgency === "critical"
-        ? `【NUBO緊急客務】${categoryLabel}`
-        : `【NUBO客務通知】${categoryLabel}`;
+        ? `【NUBO緊急客務】${roomNumber}房｜${surname}姓｜${categoryLabel}`
+        : `【NUBO客務通知】${roomNumber}房｜${surname}姓｜${categoryLabel}`;
 
     const emailBody = [
-      "NUBO 偵測到客人需求／客訴，請安排人員處理。",
+      "NUBO 已完成客人客務資料建檔，請立即安排人員處理。",
       "",
       `時間：${getTaipeiTime()}（Asia/Taipei）`,
+      `房號：${roomNumber}`,
+      `客人姓氏：${surname}`,
+      `聯絡方式：${contact}`,
       `類型：${categoryLabel}`,
       `優先級：${urgencyLabel}`,
-      classification.matchedKeywords.length
-        ? `判定關鍵：${classification.matchedKeywords.join("、")}`
-        : "",
       "",
-      "客人原話：",
-      transcript,
+      "客訴／需求內容：",
+      issue,
       "",
       "此信由 AinuboX1 / NUBO 客務升級機制自動寄送。",
-    ]
-      .filter((line) => line !== "")
-      .join("\n");
+    ].join("\n");
 
     await sendGmailMessage(recipient, subject, emailBody);
 
     return NextResponse.json({
       ok: true,
-      notified: true,
+      sent: true,
       recipient,
-      category: classification.category,
+      surname,
+      roomNumber,
+      contact,
+      issue,
+      category: classification.matched ? classification.category : "guest_request",
       urgency: classification.urgency,
     });
   } catch (error) {
@@ -129,6 +143,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
+        sent: false,
         error: error instanceof Error ? error.message : String(error),
       },
       { status: 500 },
