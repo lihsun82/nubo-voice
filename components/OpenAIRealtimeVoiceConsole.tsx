@@ -14,6 +14,7 @@ import {
 } from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
+import { NuboRealtimeEcoGate, type NuboEcoMode } from "@/lib/nubo-realtime-eco";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import {
   getNuboPersonalityInstruction,
@@ -77,9 +78,11 @@ export function OpenAIRealtimeVoiceConsole({
   const channelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ecoGateRef = useRef<NuboRealtimeEcoGate | null>(null);
   const transcriptBufferRef = useRef("");
   const closingRef = useRef(false);
   const [state, setState] = useState<ConnectionState>("idle");
+  const [ecoMode, setEcoMode] = useState<NuboEcoMode>("active");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
 
@@ -89,6 +92,10 @@ export function OpenAIRealtimeVoiceConsole({
     else if (state === "connected") notifyNuboVoicePhase("listening");
     else notifyNuboVoicePhase("error");
   }, [state]);
+
+  const noteEcoActivity = () => {
+    ecoGateRef.current?.noteActivity();
+  };
 
   const sendEvent = (event: Record<string, unknown>) => {
     const channel = channelRef.current;
@@ -102,6 +109,8 @@ export function OpenAIRealtimeVoiceConsole({
     sendEvent({ type: "response.cancel" });
     channelRef.current?.close();
     peerRef.current?.close();
+    await ecoGateRef.current?.destroy();
+    ecoGateRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     if (audioRef.current) {
       audioRef.current.pause();
@@ -113,6 +122,7 @@ export function OpenAIRealtimeVoiceConsole({
     streamRef.current = null;
     audioRef.current = null;
     transcriptBufferRef.current = "";
+    setEcoMode("active");
     setState("idle");
     setError("");
     notifyNuboVoicePhase("idle");
@@ -128,6 +138,8 @@ export function OpenAIRealtimeVoiceConsole({
 
   const handleFunctionCall = async (event: RealtimeEvent) => {
     if (!event.name) return;
+
+    noteEcoActivity();
 
     let args: Record<string, unknown> = {};
     try {
@@ -175,6 +187,7 @@ export function OpenAIRealtimeVoiceConsole({
     const type = event.type ?? "";
 
     if (type === "session.created" || type === "session.updated") {
+      noteEcoActivity();
       setState("connected");
       setError("");
       notifyNuboVoicePhase("listening");
@@ -182,6 +195,7 @@ export function OpenAIRealtimeVoiceConsole({
     }
 
     if (type === "input_audio_buffer.speech_started") {
+      noteEcoActivity();
       notifyNuboVoicePhase("listening");
       return;
     }
@@ -190,6 +204,7 @@ export function OpenAIRealtimeVoiceConsole({
       type === "conversation.item.input_audio_transcription.completed" &&
       event.transcript?.trim()
     ) {
+      noteEcoActivity();
       const text = event.transcript.trim();
       recordNuboQuestion(text);
       setTranscript(`你：${text}`);
@@ -204,6 +219,7 @@ export function OpenAIRealtimeVoiceConsole({
       type === "response.output_audio_transcript.delta" ||
       type === "response.audio_transcript.delta"
     ) {
+      noteEcoActivity();
       transcriptBufferRef.current += event.delta ?? "";
       if (transcriptBufferRef.current.trim()) {
         setTranscript(transcriptBufferRef.current.trim());
@@ -216,6 +232,7 @@ export function OpenAIRealtimeVoiceConsole({
       type === "response.output_audio_transcript.done" ||
       type === "response.audio_transcript.done"
     ) {
+      noteEcoActivity();
       const finalText =
         event.transcript?.trim() || transcriptBufferRef.current.trim();
       if (finalText) setTranscript(finalText);
@@ -228,16 +245,19 @@ export function OpenAIRealtimeVoiceConsole({
       type === "response.audio.delta" ||
       type === "response.created"
     ) {
+      noteEcoActivity();
       notifyNuboVoicePhase("speaking");
       return;
     }
 
     if (type === "response.function_call_arguments.done") {
+      noteEcoActivity();
       void handleFunctionCall(event);
       return;
     }
 
     if (type === "response.done") {
+      noteEcoActivity();
       transcriptBufferRef.current = "";
       notifyNuboVoicePhase("listening");
       if (event.response?.status === "failed") {
@@ -256,6 +276,7 @@ export function OpenAIRealtimeVoiceConsole({
     if (state === "connecting" || state === "connected") return;
 
     closingRef.current = false;
+    setEcoMode("active");
     setState("connecting");
     setError("");
     setTranscript("");
@@ -311,7 +332,18 @@ export function OpenAIRealtimeVoiceConsole({
         },
       });
       streamRef.current = stream;
-      stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+      const ecoGate = new NuboRealtimeEcoGate((mode) => {
+        setEcoMode(mode);
+        if (mode === "sleeping") {
+          notifyNuboVoicePhase("idle");
+        } else if (!closingRef.current) {
+          notifyNuboVoicePhase("listening");
+        }
+      });
+      ecoGateRef.current = ecoGate;
+      await ecoGate.attach(peer, stream);
+      ecoGate.noteActivity();
 
       const channel = peer.createDataChannel("oai-events");
       channelRef.current = channel;
@@ -337,6 +369,13 @@ export function OpenAIRealtimeVoiceConsole({
         model: "gpt-realtime-2",
         instructions,
         output_modalities: ["audio"],
+        truncation: {
+          type: "retention_ratio",
+          retention_ratio: 0.75,
+          token_limits: {
+            post_instructions: 8000,
+          },
+        },
         audio: {
           input: {
             transcription: {
@@ -392,12 +431,15 @@ export function OpenAIRealtimeVoiceConsole({
     }
   };
 
-  const stateLabel = {
-    idle: ["NUBO待命", "智慧服務已就緒"],
-    connecting: ["NUBO正在連線", "正在啟動高擬人語音服務"],
-    connected: ["NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
-    error: ["NUBO尚未連線", "請檢查語音設定或服務額度"],
-  }[state];
+  const stateLabel =
+    state === "connected" && ecoMode === "sleeping"
+      ? ["NUBO智慧節約待命", "雲端收音已暫停・偵測到近端語音會自動恢復"]
+      : {
+          idle: ["NUBO待命", "智慧服務已就緒"],
+          connecting: ["NUBO正在連線", "正在啟動高擬人語音服務"],
+          connected: ["NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
+          error: ["NUBO尚未連線", "請檢查語音設定或服務額度"],
+        }[state];
 
   return (
     <section className="console" aria-live="polite">
