@@ -53,21 +53,21 @@ jobs:
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v12.apk
+          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v13.apk
           cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v12.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v13.apk public/downloads/AinuboX1-latest.apk
           if git diff --cached --quiet; then
             echo "APK unchanged"
           else
-            git commit -m "build(android): publish AinuboX1 V12 APK"
+            git commit -m "build(android): publish AinuboX1 V13 APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v12-debug
+          name: AinuboX1-v13-debug
           path: android-nubo/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
