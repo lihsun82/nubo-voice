@@ -39,9 +39,7 @@ export default function SmartHomePage() {
     setBusy(true);
     setMessage(label);
     try {
-      const result = await task();
-      setMessage("完成");
-      return result;
+      return await task();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Google Home 操作失敗");
       return null;
@@ -81,20 +79,45 @@ export default function SmartHomePage() {
     setMessage(room ? `這台 NUBO 已綁定：${room}` : "已取消預設房間");
   }
 
-  async function control(action: "on" | "off") {
+  async function controlRoom(action: "on" | "off") {
     if (!selectedRoom) {
       setMessage("請先選擇這台 NUBO 所在的房間，避免誤控其他房間。");
       return;
     }
 
     const result = (await run(
-      action === "on" ? `正在開啟 ${selectedRoom} 的燈…` : `正在關閉 ${selectedRoom} 的燈…`,
+      action === "on" ? `正在開啟 ${selectedRoom} 的可控制裝置…` : `正在關閉 ${selectedRoom} 的可控制裝置…`,
       () => controlGoogleHome({ action, room: selectedRoom }),
+    )) as { controlled?: number; matched?: number; message?: string; failures?: Array<{ device?: string; error?: string }> } | null;
+
+    if (result) {
+      const failureCount = result.failures?.length ?? 0;
+      setMessage(
+        `${result.message || "控制完成"}；找到 ${result.matched ?? 0} 個，成功 ${result.controlled ?? 0} 個${failureCount ? `，失敗 ${failureCount} 個` : ""}。`,
+      );
+    }
+  }
+
+  async function controlDevice(device: GoogleHomeDevice, action: "on" | "off") {
+    const result = (await run(
+      action === "on" ? `正在開啟「${device.device}」…` : `正在關閉「${device.device}」…`,
+      () => controlGoogleHome({ action, room: device.room, device: device.device }),
     )) as { controlled?: number; message?: string } | null;
 
     if (result) {
-      setMessage(`${result.message || "控制完成"}；成功控制 ${result.controlled ?? 0} 個裝置。`);
+      setMessage(`${device.device}：${result.message || "控制完成"}；成功 ${result.controlled ?? 0} 個。`);
     }
+  }
+
+  function capabilityLabel(device: GoogleHomeDevice) {
+    if (!device.controllable) return "Read only";
+    if (device.onSupported === undefined && device.offSupported === undefined) return "On/Off";
+    const commands = [
+      device.onSupported ? "On" : "",
+      device.offSupported ? "Off" : "",
+      device.toggleSupported ? "Toggle" : "",
+    ].filter(Boolean);
+    return commands.length ? commands.join(" / ") : "On/Off";
   }
 
   return (
@@ -146,8 +169,8 @@ export default function SmartHomePage() {
           </label>
 
           <div className="nubo-action-row" style={{ marginTop: 16 }}>
-            <button disabled={!available || busy || !selectedRoom} onClick={() => control("on")}>測試開燈</button>
-            <button disabled={!available || busy || !selectedRoom} onClick={() => control("off")}>測試關燈</button>
+            <button disabled={!available || busy || !selectedRoom} onClick={() => controlRoom("on")}>測試開燈</button>
+            <button disabled={!available || busy || !selectedRoom} onClick={() => controlRoom("off")}>測試關燈</button>
           </div>
         </div>
 
@@ -165,12 +188,19 @@ export default function SmartHomePage() {
                 <div
                   className={`nubo-device-card ${device.controllable ? "" : "warning"}`}
                   key={`${device.structureId}-${device.deviceId}`}
+                  style={{ alignItems: "stretch", gap: 12 }}
                 >
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <strong>{device.device}</strong>
                     <p>{device.structure} / {device.room || "未分房"}</p>
+                    <span>{capabilityLabel(device)}</span>
                   </div>
-                  <span>{device.controllable ? "On/Off" : "Read only"}</span>
+                  {device.controllable ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <button disabled={busy} onClick={() => controlDevice(device, "on")}>開</button>
+                      <button disabled={busy} onClick={() => controlDevice(device, "off")}>關</button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
