@@ -19,6 +19,14 @@ import {
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
+const NUBO_MIN_FLUID_SPEED = 1.04;
+const NUBO_LOW_LATENCY_INSTRUCTION = `NUBO V20 低延遲流暢語音規則：
+- 使用者說完後要快速接話，不要故意留長空白等待。
+- 正文要連續、順暢地說完；不要在句子中間反覆停頓、切碎字詞或一字一頓。
+- 除非真的需要思考，不要加入「嗯…」「欸…」「我想一下…」這類會拖慢回覆的前導語。
+- 語助詞只在自然需要時使用，避免連續拖尾造成卡頓感。
+- 一般問答先在第一句直接回答核心答案，再補充必要資訊。
+- 數字、地址、日期與操作步驟仍需清楚，但不要因此刻意放慢整段語速。`;
 
 let realtimeChannel: RTCDataChannel | null = null;
 let realtimeBaseInstructions = "";
@@ -35,11 +43,19 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function buildInstructions(tuning: NuboVoiceTuning, languageMode = readNuboLanguageMode()) {
+function fluidSpeed(tuning: NuboVoiceTuning) {
+  return Math.max(NUBO_MIN_FLUID_SPEED, tuning.speed);
+}
+
+function buildInstructions(
+  tuning: NuboVoiceTuning,
+  languageMode = readNuboLanguageMode(),
+) {
   return [
     realtimeBaseInstructions,
     buildNuboVoicePerformanceInstruction(tuning),
     buildNuboLanguageInstruction(languageMode),
+    NUBO_LOW_LATENCY_INSTRUCTION,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -54,10 +70,18 @@ function normalizeSession(session: string) {
     const audio = asRecord(payload.audio);
     const input = asRecord(audio.input);
     const output = asRecord(audio.output);
+    const turnDetection = asRecord(input.turn_detection);
 
-    output.speed = tuning.speed;
+    output.speed = fluidSpeed(tuning);
     input.noise_reduction = {
       type: getNuboNoiseReductionType(),
+    };
+    input.turn_detection = {
+      ...turnDetection,
+      type: "semantic_vad",
+      eagerness: "high",
+      create_response: true,
+      interrupt_response: true,
     };
     audio.input = input;
     audio.output = output;
@@ -90,9 +114,15 @@ function sendLiveSessionUpdate(
             noise_reduction: {
               type: getNuboNoiseReductionType(),
             },
+            turn_detection: {
+              type: "semantic_vad",
+              eagerness: "high",
+              create_response: true,
+              interrupt_response: true,
+            },
           },
           output: {
-            speed: tuning.speed,
+            speed: fluidSpeed(tuning),
           },
         },
       },
@@ -139,7 +169,7 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       updateTimer = window.setTimeout(() => {
         updateTimer = null;
         sendLiveSessionUpdate(tuning, languageMode);
-      }, 220);
+      }, 120);
     };
 
     const handleLiveTuning = (event: Event) => {
@@ -219,7 +249,10 @@ export function OpenAIRealtimeVoiceConsoleFixed({
           throw new Error(`${payload.error.trim()}${code}`);
         }
       } catch (cause) {
-        if (cause instanceof Error && cause.message !== "Unexpected end of JSON input") {
+        if (
+          cause instanceof Error &&
+          cause.message !== "Unexpected end of JSON input"
+        ) {
           throw cause;
         }
       }
