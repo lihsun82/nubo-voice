@@ -54,14 +54,20 @@ jobs:
       - name: Build signed AinuboX1 V18 release APK
         run: gradle -p android-nubo clean assembleRelease --stacktrace
 
-      - name: Verify APK signature, package and uploaded icon
+      - name: Verify APK signature, package and actual packaged icon
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
           grep -q "versionCode='18'" /tmp/ainubox1-badging.txt
-          unzip -l "$APK" | grep -q 'ainubox1_launcher_uploaded.jpg'
+          grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
+          ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
+          test -n "$ICON_PATH"
+          echo "Packaged launcher icon: $ICON_PATH"
+          unzip -p "$APK" "$ICON_PATH" > /tmp/packaged-launcher-icon
+          test "$(xxd -p -l 3 /tmp/packaged-launcher-icon)" = "ffd8ff"
+          grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
 
       - name: Publish V18 APK
         if: github.event_name == 'push'
