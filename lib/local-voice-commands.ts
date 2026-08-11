@@ -1,5 +1,7 @@
 "use client";
 
+import { controlGoogleHome } from "@/lib/google-home-native";
+
 function readNumber(text: string, fallback = 10) {
   const match = text.match(/(\d{1,3})/);
   if (!match) return fallback;
@@ -40,11 +42,43 @@ function isWakePhrase(text: string) {
   );
 }
 
+function readGoogleHomeRoom(text: string) {
+  const roomNumber = text.match(/(?:房間|房號)?(\d{2,4})(?:號)?房?/);
+  if (roomNumber?.[1]) return roomNumber[1];
+
+  const namedRoom = text.match(/(客廳|臥室|主臥|次臥|玄關|浴室|廚房|餐廳|書房|陽台)/);
+  return namedRoom?.[1] ?? "";
+}
+
+function readLightAction(text: string): "on" | "off" | null {
+  if (/(關燈|燈關掉|把燈關掉|關掉燈|關閉燈|關房間燈|熄燈)/.test(text)) {
+    return "off";
+  }
+
+  if (/(開燈|燈打開|把燈打開|打開燈|開啟燈|開房間燈)/.test(text)) {
+    return "on";
+  }
+
+  return null;
+}
+
 export async function runLocalVoiceCommand(text: string) {
   const normalized = text.replace(/\s+/g, "").toLowerCase();
 
   if (isWakePhrase(normalized)) {
     return { handled: true, type: "nubo", result: await postJson("/api/system/show-nubo") };
+  }
+
+  const lightAction = readLightAction(normalized);
+  if (lightAction) {
+    return {
+      handled: true,
+      type: "google-home",
+      result: await controlGoogleHome({
+        action: lightAction,
+        room: readGoogleHomeRoom(normalized) || undefined,
+      }),
+    };
   }
 
   if (normalized.includes("解除靜音") || normalized.includes("取消靜音")) {
