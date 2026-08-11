@@ -16,7 +16,6 @@ import com.google.home.matter.standard.OnOff
 import com.google.home.matter.standard.OnOffLightDevice
 import com.google.home.matter.standard.OnOffLightSwitchDevice
 import com.google.home.matter.standard.OnOffPluginUnitDevice
-import com.google.home.matter.standard.OnOffTrait
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -63,6 +62,8 @@ class GoogleHomeGatewayImpl(
         .put("available", true)
         .put("enabled", true)
         .put("platform", "google-home")
+        .put("sdk", "1.10.0")
+        .put("homeArtifact", "17.1.0")
         .toString()
 
     override fun requestPermissions(callback: GoogleHomeGateway.Callback) {
@@ -222,7 +223,7 @@ class GoogleHomeGatewayImpl(
         scope.cancel()
     }
 
-    private suspend fun findOnOffTrait(device: HomeDevice): OnOffTrait? {
+    private suspend fun findOnOffTrait(device: HomeDevice): OnOff? {
         val types = device.types().first()
         for (type in types) {
             val trait = type.trait(OnOff)
