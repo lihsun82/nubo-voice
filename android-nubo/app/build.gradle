@@ -13,8 +13,8 @@ android {
         applicationId "com.ainubo.nubo"
         minSdk googleHomeEnabled ? 29 : 26
         targetSdk 35
-        versionCode 22
-        versionName "0.22.0"
+        versionCode 23
+        versionName "0.23.0-googlehome"
         buildConfigField "boolean", "GOOGLE_HOME_ENABLED", googleHomeEnabled.toString()
     }
 
