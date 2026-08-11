@@ -44,10 +44,11 @@ jobs:
       - name: Materialize and verify uploaded AinuboX1 launcher icon
         run: |
           mkdir -p android-nubo/app/src/main/res/drawable-nodpi
-          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v2.png.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
-          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
-          test "$(xxd -p -l 8 android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png)" = "89504e470d0a1a0a"
-          grep -q 'PNG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png)
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          test "$(xxd -p -l 3 android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)" = "ffd8ff"
+          grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
           grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
       - name: Build signed AinuboX1 V18 release APK
@@ -60,7 +61,7 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
           grep -q "versionCode='18'" /tmp/ainubox1-badging.txt
-          unzip -l "$APK" | grep -q 'ainubox1_launcher_uploaded.png'
+          unzip -l "$APK" | grep -q 'ainubox1_launcher_uploaded.jpg'
 
       - name: Publish V18 APK
         if: github.event_name == 'push'
