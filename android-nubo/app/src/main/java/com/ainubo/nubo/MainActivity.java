@@ -26,7 +26,7 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
-    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v11";
+    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v12";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
 
     private WebView webView;
@@ -70,7 +70,7 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(
-            settings.getUserAgentString() + " NUBO-Android/11"
+            settings.getUserAgentString() + " NUBO-Android/12"
         );
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -154,7 +154,7 @@ public final class MainActivity extends Activity {
             super.onPageFinished(view, url);
             if (isTrustedNuboUri(Uri.parse(url))) {
                 view.evaluateJavascript(
-                    "document.documentElement.dataset.nuboNative='android-v11';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v11'}}));",
+                    "document.documentElement.dataset.nuboNative='android-v12';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v12'}}));",
                     null
                 );
             }
@@ -175,7 +175,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getNativeVersion() {
-            return "android-v11";
+            return "android-v12";
         }
 
         @JavascriptInterface
@@ -407,6 +407,7 @@ public final class MainActivity extends Activity {
             null
         );
         webView.onPause();
+        webView.pauseTimers();
         super.onPause();
     }
 
