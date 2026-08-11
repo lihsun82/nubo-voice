@@ -11,6 +11,11 @@ export type GoogleHomeDevice = GoogleHomeRoom & {
   deviceId: string;
   device: string;
   controllable: boolean;
+  onSupported?: boolean;
+  offSupported?: boolean;
+  toggleSupported?: boolean;
+  stateSupported?: boolean;
+  state?: boolean | null;
 };
 
 type GoogleHomePayload = {
@@ -77,6 +82,15 @@ export function getGoogleHomeStatus(): GoogleHomePayload {
   return parseStatus(native.googleHomeStatus());
 }
 
+function formatFailure(detail: GoogleHomePayload) {
+  const failures = (detail.failures ?? [])
+    .map((item) => [item.device, item.error].filter(Boolean).join("："))
+    .filter(Boolean)
+    .join("；");
+  const base = detail.error || detail.message || "Google Home 操作失敗";
+  return failures ? `${base}｜${failures}` : base;
+}
+
 function runNativeRequest(
   invoke: (native: NativeBridge, id: string) => boolean,
 ): Promise<GoogleHomePayload> {
@@ -89,7 +103,7 @@ function runNativeRequest(
     const id = requestId();
     const timeout = window.setTimeout(() => {
       window.removeEventListener(RESULT_EVENT, onResult as EventListener);
-      reject(new Error("Google Home 回應逾時，請確認 Google Home App 與網路連線。"));
+      reject(new Error("Google Home 回應逾時，請確認 Google Home App、裝置連線與網路狀態。"));
     }, REQUEST_TIMEOUT_MS);
 
     const cleanup = () => {
@@ -102,7 +116,7 @@ function runNativeRequest(
       if (!detail || detail.requestId !== id) return;
       cleanup();
       if (detail.ok === false) {
-        reject(new Error(detail.error || detail.message || "Google Home 操作失敗"));
+        reject(new Error(formatFailure(detail)));
         return;
       }
       resolve(detail);
