@@ -114,7 +114,7 @@ if (-not (Test-Path $Apk)) { Fail "Build finished but app-release.apk was not pr
 
 Step "Publish local test APK"
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$Output = Join-Path $Desktop "AinuboX1-v22-GoogleHome-TEST.apk"
+$Output = Join-Path $Desktop "AinuboX1-v23-GoogleHome-TEST.apk"
 Copy-Item $Apk $Output -Force
 $Hash = (Get-FileHash $Output -Algorithm SHA256).Hash
 Write-Host ""
