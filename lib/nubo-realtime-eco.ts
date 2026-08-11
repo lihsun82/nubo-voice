@@ -2,7 +2,7 @@
 
 const ECO_IDLE_MS = 60_000;
 const ECO_WAKE_PROBE_MS = 8_000;
-const ECO_POLL_MS = 70;
+const ECO_POLL_MS = 250;
 
 export type NuboEcoMode = "active" | "sleeping";
 
@@ -16,6 +16,7 @@ export class NuboRealtimeEcoGate {
   private mute: GainNode | null = null;
   private captureDestination: MediaStreamAudioDestinationNode | null = null;
   private timer: number | null = null;
+  private samples = new Float32Array(256);
   private lastActivityAt = Date.now();
   private probeUntil = 0;
   private noiseFloor = 0.012;
@@ -34,19 +35,22 @@ export class NuboRealtimeEcoGate {
     this.monitorTrack = track.clone();
 
     try {
-      this.context = new AudioContext({ latencyHint: "interactive" });
+      this.context = new AudioContext({ latencyHint: "playback" });
       const monitorStream = new MediaStream([this.monitorTrack]);
       this.source = this.context.createMediaStreamSource(monitorStream);
       this.analyser = this.context.createAnalyser();
-      this.analyser.fftSize = 512;
-      this.analyser.smoothingTimeConstant = 0.55;
+      this.analyser.fftSize = 256;
+      this.analyser.smoothingTimeConstant = 0.5;
       this.mute = this.context.createGain();
       this.captureDestination = this.context.createMediaStreamDestination();
       this.mute.gain.value = 0;
       this.source.connect(this.analyser);
       this.analyser.connect(this.mute);
       this.mute.connect(this.captureDestination);
-      await this.context.resume().catch(() => undefined);
+
+      // While the cloud track is active we do not need a second local DSP graph.
+      // Keeping it suspended materially reduces CPU/DSP load and device heating.
+      await this.context.suspend().catch(() => undefined);
     } catch {
       await this.closeMonitorGraph();
     }
@@ -98,28 +102,25 @@ export class NuboRealtimeEcoGate {
   };
 
   private async tick() {
-    if (this.destroyed || document.visibilityState !== "visible") return;
-
-    const now = Date.now();
-
-    if (!this.sleeping) {
-      if (now > this.probeUntil && now - this.lastActivityAt >= ECO_IDLE_MS) {
-        await this.suspend("idle");
-      }
+    if (
+      this.destroyed ||
+      !this.sleeping ||
+      document.visibilityState !== "visible"
+    ) {
       return;
     }
 
     const analyser = this.analyser;
-    if (!analyser) return;
+    if (!analyser || this.context?.state !== "running") return;
 
-    const samples = new Float32Array(analyser.fftSize);
-    analyser.getFloatTimeDomainData(samples);
+    const now = Date.now();
+    analyser.getFloatTimeDomainData(this.samples);
     let sum = 0;
-    for (let i = 0; i < samples.length; i += 1) {
-      const value = samples[i];
+    for (let i = 0; i < this.samples.length; i += 1) {
+      const value = this.samples[i];
       sum += value * value;
     }
-    const rms = Math.sqrt(sum / Math.max(1, samples.length));
+    const rms = Math.sqrt(sum / Math.max(1, this.samples.length));
 
     const threshold = Math.max(0.026, this.noiseFloor * 2.8);
     if (rms < threshold * 0.8) {
@@ -136,7 +137,7 @@ export class NuboRealtimeEcoGate {
     }
   }
 
-  private async suspend(_reason: string) {
+  private async suspend(reason: string) {
     if (this.destroyed || this.sleeping) return;
     const sender = this.sender;
     if (!sender) return;
@@ -145,6 +146,14 @@ export class NuboRealtimeEcoGate {
       await sender.replaceTrack(null);
       this.sleeping = true;
       this.onModeChange?.("sleeping");
+
+      if (reason === "idle" && document.visibilityState === "visible") {
+        // Only wake the lightweight local analyser while idling in foreground.
+        await this.context?.resume().catch(() => undefined);
+      } else {
+        // In background there is nothing useful to analyse; stop the DSP graph.
+        await this.context?.suspend().catch(() => undefined);
+      }
     } catch {
       // Keep the active session if this browser rejects replaceTrack(null).
     }
@@ -166,6 +175,7 @@ export class NuboRealtimeEcoGate {
     try {
       await sender.replaceTrack(track);
       this.sleeping = false;
+      await this.context?.suspend().catch(() => undefined);
       if (reason !== "local-voice") this.lastActivityAt = Date.now();
       this.onModeChange?.("active");
     } catch {
