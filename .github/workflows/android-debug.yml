@@ -41,18 +41,19 @@ jobs:
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
           keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
 
-      - name: Materialize uploaded AinuboX1 launcher icon
+      - name: Materialize and verify uploaded AinuboX1 launcher icon
         run: |
           mkdir -p android-nubo/app/src/main/res/drawable-nodpi
-          base64 --decode android-nubo/assets/ainubox1_uploaded_logo.png.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v2.png.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
           file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
-          test -s android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          test "$(xxd -p -l 8 android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png)" = "89504e470d0a1a0a"
+          grep -q 'PNG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png)
           grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
       - name: Build signed AinuboX1 V18 release APK
-        run: gradle -p android-nubo assembleRelease --stacktrace
+        run: gradle -p android-nubo clean assembleRelease --stacktrace
 
-      - name: Verify APK signature and package
+      - name: Verify APK signature, package and uploaded icon
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
