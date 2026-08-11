@@ -1,7 +1,6 @@
 package com.ainubo.nubo;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -20,20 +19,27 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import androidx.activity.ComponentActivity;
+
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
     private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v12";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
 
     private WebView webView;
+    private GoogleHomeGateway googleHomeGateway;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        googleHomeGateway = GoogleHomeGateway.create(this);
 
         getWindow().setStatusBarColor(Color.rgb(7, 9, 13));
         getWindow().setNavigationBarColor(Color.rgb(7, 9, 13));
@@ -154,7 +160,7 @@ public final class MainActivity extends Activity {
             super.onPageFinished(view, url);
             if (isTrustedNuboUri(Uri.parse(url))) {
                 view.evaluateJavascript(
-                    "document.documentElement.dataset.nuboNative='android-v12';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v12'}}));",
+                    "document.documentElement.dataset.nuboNative='android-v12';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v12',googleHome:" + BuildConfig.GOOGLE_HOME_ENABLED + "}}));",
                     null
                 );
             }
@@ -179,6 +185,55 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String googleHomeStatus() {
+            return activity.googleHomeGateway.status();
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeRequestPermissions(String requestId) {
+            if (!isValidRequestId(requestId)) return false;
+            activity.runOnUiThread(
+                () -> activity.googleHomeGateway.requestPermissions(
+                    payload -> activity.emitGoogleHomeResult(requestId, payload)
+                )
+            );
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeListDevices(String requestId) {
+            if (!isValidRequestId(requestId)) return false;
+            activity.runOnUiThread(
+                () -> activity.googleHomeGateway.listDevices(
+                    payload -> activity.emitGoogleHomeResult(requestId, payload)
+                )
+            );
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeControl(
+            String requestId,
+            String action,
+            String roomName,
+            String deviceName
+        ) {
+            if (!isValidRequestId(requestId)) return false;
+            String safeAction = action == null ? "" : action.trim();
+            String safeRoom = roomName == null ? "" : roomName.trim();
+            String safeDevice = deviceName == null ? "" : deviceName.trim();
+            activity.runOnUiThread(
+                () -> activity.googleHomeGateway.control(
+                    safeAction,
+                    safeRoom,
+                    safeDevice,
+                    payload -> activity.emitGoogleHomeResult(requestId, payload)
+                )
+            );
+            return true;
+        }
+
+        @JavascriptInterface
         public boolean openExternalApp(String targetUrl, String label) {
             if (targetUrl == null || label == null) {
                 return false;
@@ -198,6 +253,35 @@ public final class MainActivity extends Activity {
                 () -> activity.launchExternalTarget(safeTarget, safeLabel)
             );
             return true;
+        }
+
+        private static boolean isValidRequestId(String requestId) {
+            return requestId != null
+                && requestId.length() >= 8
+                && requestId.length() <= 128;
+        }
+    }
+
+    private void emitGoogleHomeResult(String requestId, String payloadJson) {
+        if (webView == null) return;
+
+        try {
+            JSONObject payload;
+            try {
+                payload = new JSONObject(payloadJson == null ? "{}" : payloadJson);
+            } catch (Exception ignored) {
+                payload = new JSONObject();
+                payload.put("ok", false);
+                payload.put("error", "Google Home 回傳格式錯誤");
+            }
+            payload.put("requestId", requestId);
+            String javascript =
+                "window.dispatchEvent(new CustomEvent('nubo:google-home-result',{detail:"
+                    + payload.toString()
+                    + "}));";
+            webView.post(() -> webView.evaluateJavascript(javascript, null));
+        } catch (Exception ignored) {
+            // Keep the native shell alive even if a malformed callback reaches the bridge.
         }
     }
 
@@ -413,6 +497,9 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (googleHomeGateway != null) {
+            googleHomeGateway.destroy();
+        }
         webView.removeJavascriptInterface("NuboNative");
         webView.stopLoading();
         webView.destroy();

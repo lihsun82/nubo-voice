@@ -39,7 +39,7 @@ jobs:
       - name: Materialize stable AinuboX1 signing key
         run: |
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
-          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          keytool -list -v -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo | grep -E 'SHA1:|SHA256:'
 
       - name: Materialize and verify uploaded AinuboX1 launcher icon
         run: |
