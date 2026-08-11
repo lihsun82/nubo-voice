@@ -51,7 +51,7 @@ jobs:
           grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
           grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
-      - name: Build signed AinuboX1 V21 release APK
+      - name: Build signed AinuboX1 V22 release APK
         run: gradle -p android-nubo clean assembleRelease --stacktrace
 
       - name: Verify APK signature, package and actual packaged icon
@@ -60,7 +60,7 @@ jobs:
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='21'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='22'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
@@ -69,23 +69,23 @@ jobs:
           test "$(xxd -p -l 3 /tmp/packaged-launcher-icon)" = "ffd8ff"
           grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
 
-      - name: Publish V21 APK
+      - name: Publish V22 APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v21-LATENCY-DIAG.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v22-NATIVE-MULTILINGUAL.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v21-LATENCY-DIAG.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v22-NATIVE-MULTILINGUAL.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V21 latency diagnostics APK"
+            git commit -m "build(android): publish AinuboX1 V22 native multilingual APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v21-LATENCY-DIAG
+          name: AinuboX1-v22-NATIVE-MULTILINGUAL
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
