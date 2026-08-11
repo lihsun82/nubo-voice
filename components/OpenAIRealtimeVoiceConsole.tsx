@@ -69,6 +69,16 @@ function safeJson(value: unknown) {
   }
 }
 
+function removeStaleNuboAudioOutputs() {
+  document
+    .querySelectorAll<HTMLAudioElement>('audio[data-nubo-voice-output="true"]')
+    .forEach((audio) => {
+      audio.pause();
+      audio.srcObject = null;
+      audio.remove();
+    });
+}
+
 export function OpenAIRealtimeVoiceConsole({
   profile,
 }: {
@@ -81,6 +91,8 @@ export function OpenAIRealtimeVoiceConsole({
   const ecoGateRef = useRef<NuboRealtimeEcoGate | null>(null);
   const transcriptBufferRef = useRef("");
   const closingRef = useRef(false);
+  const connectGuardRef = useRef(false);
+  const connectionEpochRef = useRef(0);
   const [state, setState] = useState<ConnectionState>("idle");
   const [ecoMode, setEcoMode] = useState<NuboEcoMode>("active");
   const [transcript, setTranscript] = useState("");
@@ -105,6 +117,8 @@ export function OpenAIRealtimeVoiceConsole({
   };
 
   const disconnect = async () => {
+    connectionEpochRef.current += 1;
+    connectGuardRef.current = false;
     closingRef.current = true;
     sendEvent({ type: "response.cancel" });
     channelRef.current?.close();
@@ -117,6 +131,7 @@ export function OpenAIRealtimeVoiceConsole({
       audioRef.current.srcObject = null;
       audioRef.current.remove();
     }
+    removeStaleNuboAudioOutputs();
     channelRef.current = null;
     peerRef.current = null;
     streamRef.current = null;
@@ -273,9 +288,19 @@ export function OpenAIRealtimeVoiceConsole({
   };
 
   const connect = async () => {
-    if (state === "connecting" || state === "connected") return;
+    if (
+      connectGuardRef.current ||
+      state === "connecting" ||
+      state === "connected"
+    ) {
+      return;
+    }
 
+    connectGuardRef.current = true;
+    const epoch = connectionEpochRef.current + 1;
+    connectionEpochRef.current = epoch;
     closingRef.current = false;
+    removeStaleNuboAudioOutputs();
     setEcoMode("active");
     setState("connecting");
     setError("");
@@ -290,6 +315,7 @@ export function OpenAIRealtimeVoiceConsole({
       if (!tokenResponse.ok) {
         throw new Error(tokenPayload.error ?? "即時語音憑證建立失敗");
       }
+      if (connectionEpochRef.current !== epoch) return;
 
       const clientSecret = extractClientSecret(tokenPayload);
       if (!clientSecret) throw new Error("即時語音憑證格式不正確");
@@ -299,26 +325,36 @@ export function OpenAIRealtimeVoiceConsole({
 
       const remoteAudio = document.createElement("audio") as SinkAudioElement;
       remoteAudio.autoplay = true;
+      remoteAudio.dataset.nuboVoiceOutput = "true";
       remoteAudio.setAttribute("playsinline", "true");
       remoteAudio.style.display = "none";
       document.body.appendChild(remoteAudio);
       audioRef.current = remoteAudio;
 
       peer.ontrack = (event) => {
+        if (
+          closingRef.current ||
+          connectionEpochRef.current !== epoch ||
+          audioRef.current !== remoteAudio
+        ) {
+          return;
+        }
         remoteAudio.srcObject = event.streams[0];
         void remoteAudio.setSinkId?.("id-multimedia").catch(() => undefined);
         void remoteAudio.play().catch(() => undefined);
       };
 
       peer.onconnectionstatechange = () => {
-        if (closingRef.current) return;
+        if (closingRef.current || connectionEpochRef.current !== epoch) return;
         if (peer.connectionState === "connected") {
+          connectGuardRef.current = false;
           setState("connected");
           setError("");
         } else if (
           peer.connectionState === "failed" ||
           peer.connectionState === "disconnected"
         ) {
+          connectGuardRef.current = false;
           setState("error");
           setError("即時語音連線中斷，請重新啟動 NUBO。");
         }
@@ -329,7 +365,15 @@ export function OpenAIRealtimeVoiceConsole({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          channelCount: 1,
         },
+      });
+      if (connectionEpochRef.current !== epoch) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      stream.getAudioTracks().forEach((track) => {
+        track.contentHint = "speech";
       });
       streamRef.current = stream;
 
@@ -348,6 +392,7 @@ export function OpenAIRealtimeVoiceConsole({
       const channel = peer.createDataChannel("oai-events");
       channelRef.current = channel;
       channel.onmessage = (message) => {
+        if (connectionEpochRef.current !== epoch) return;
         try {
           handleRealtimeEvent(JSON.parse(message.data));
         } catch {
@@ -355,6 +400,7 @@ export function OpenAIRealtimeVoiceConsole({
         }
       };
       channel.onerror = () => {
+        if (connectionEpochRef.current !== epoch) return;
         setError("即時語音控制通道異常。");
       };
 
@@ -422,9 +468,13 @@ export function OpenAIRealtimeVoiceConsole({
       if (!callResponse.ok) {
         throw new Error(answerSdp || "即時語音 WebRTC 連線失敗");
       }
+      if (connectionEpochRef.current !== epoch) return;
 
       await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+      connectGuardRef.current = false;
     } catch (cause) {
+      if (connectionEpochRef.current !== epoch) return;
+      connectGuardRef.current = false;
       await disconnect();
       setState("error");
       setError(cause instanceof Error ? cause.message : "即時語音啟動失敗");
