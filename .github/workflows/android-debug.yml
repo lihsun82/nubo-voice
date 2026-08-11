@@ -41,7 +41,15 @@ jobs:
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
           keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
 
-      - name: Build signed AinuboX1 V17 release APK
+      - name: Materialize uploaded AinuboX1 launcher icon
+        run: |
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo.png.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          test -s android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
+
+      - name: Build signed AinuboX1 V18 release APK
         run: gradle -p android-nubo assembleRelease --stacktrace
 
       - name: Verify APK signature and package
@@ -49,25 +57,27 @@ jobs:
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -n 6
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
+          grep -q "versionCode='18'" /tmp/ainubox1-badging.txt
+          unzip -l "$APK" | grep -q 'ainubox1_launcher_uploaded.png'
 
-      - name: Publish V17 APK
+      - name: Publish V18 APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v17-STABLE.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v18-UPLOADED-N.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v17-STABLE.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v18-UPLOADED-N.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V17 stable-signed APK"
+            git commit -m "build(android): publish AinuboX1 V18 uploaded-logo APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v17-STABLE
+          name: AinuboX1-v18-UPLOADED-N
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
