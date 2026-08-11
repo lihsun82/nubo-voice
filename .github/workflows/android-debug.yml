@@ -41,33 +41,51 @@ jobs:
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
           keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
 
-      - name: Build signed AinuboX1 V17 release APK
-        run: gradle -p android-nubo assembleRelease --stacktrace
+      - name: Materialize and verify uploaded AinuboX1 launcher icon
+        run: |
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          test "$(xxd -p -l 3 android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)" = "ffd8ff"
+          grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
+          grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
-      - name: Verify APK signature and package
+      - name: Build signed AinuboX1 V18 release APK
+        run: gradle -p android-nubo clean assembleRelease --stacktrace
+
+      - name: Verify APK signature, package and actual packaged icon
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -n 6
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
+          grep -q "versionCode='18'" /tmp/ainubox1-badging.txt
+          grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
+          ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
+          test -n "$ICON_PATH"
+          echo "Packaged launcher icon: $ICON_PATH"
+          unzip -p "$APK" "$ICON_PATH" > /tmp/packaged-launcher-icon
+          test "$(xxd -p -l 3 /tmp/packaged-launcher-icon)" = "ffd8ff"
+          grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
 
-      - name: Publish V17 APK
+      - name: Publish V18 APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v17-STABLE.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v18-UPLOADED-N.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v17-STABLE.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v18-UPLOADED-N.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V17 stable-signed APK"
+            git commit -m "build(android): publish AinuboX1 V18 uploaded-logo APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v17-STABLE
+          name: AinuboX1-v18-UPLOADED-N
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
