@@ -25,13 +25,13 @@ export default function HomePage() {
         <div className="eyebrow">AINUBO HOTEL INTELLIGENT CONCIERGE</div>
         <h1>NUBO</h1>
         <p className="subtitle">
-          AINUBO Hotel 智慧旅館管家｜智慧降噪・背景停止雲端收音・60秒智慧節約待命
+          AINUBO Hotel 智慧旅館管家｜低延遲回覆・智慧降噪・背景停止雲端收音・60秒智慧節約待命
         </p>
       </section>
       <DeferredDashboardCenters />
       <footer>
-        <span>NUBO V15.6.43｜智慧 Token 節約版</span>
-        <span>背景立即停送音訊・閒置60秒雲端休眠・本機語音喚醒・Realtime Context 上限</span>
+        <span>NUBO V21｜低延遲診斷＋真人擬真語音版</span>
+        <span>Server VAD 400ms・WebRTC 延遲診斷・疊音防護・Pixel 熱管理・固定簽章同步</span>
       </footer>
     </main>
   );
