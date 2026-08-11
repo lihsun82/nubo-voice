@@ -10,8 +10,17 @@ android {
         applicationId "com.ainubo.nubo"
         minSdk 26
         targetSdk 35
-        versionCode 16
-        versionName "0.16.0"
+        versionCode 17
+        versionName "0.17.0"
+    }
+
+    signingConfigs {
+        ainuboStable {
+            storeFile file("../ainubo-debug.jks")
+            storePassword "ainubo123"
+            keyAlias "ainubo"
+            keyPassword "ainubo123"
+        }
     }
 
     buildFeatures {
@@ -22,9 +31,11 @@ android {
         debug {
             applicationIdSuffix ".debug"
             versionNameSuffix "-debug"
+            signingConfig signingConfigs.ainuboStable
         }
         release {
             minifyEnabled false
+            signingConfig signingConfigs.ainuboStable
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }

@@ -1,4 +1,4 @@
-name: Android Debug APK
+name: Android Stable APK
 
 on:
   workflow_dispatch:
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 jobs:
-  build-debug-apk:
+  build-stable-apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,28 +36,38 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Build AinuboX1 V16 APK
-        run: gradle -p android-nubo assembleDebug --stacktrace
+      - name: Materialize stable AinuboX1 signing key
+        run: |
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
 
-      - name: Publish V16 APK
+      - name: Build signed AinuboX1 V17 release APK
+        run: gradle -p android-nubo assembleRelease --stacktrace
+
+      - name: Verify APK signature and package
+        run: |
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -n 6
+
+      - name: Publish V17 APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-v16-NLOGO.apk
-          cp android-nubo/app/build/outputs/apk/debug/app-debug.apk public/downloads/AinuboX1-latest.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v17-STABLE.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v16-NLOGO.apk public/downloads/AinuboX1-latest.apk
-          if git diff --cached --quiet; then
-            echo "APK unchanged"
-          else
-            git commit -m "build(android): publish AinuboX1 V16 N-logo APK"
+          git add public/downloads/AinuboX1-v17-STABLE.apk public/downloads/AinuboX1-latest.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "build(android): publish AinuboX1 V17 stable-signed APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v16-NLOGO-debug
-          path: android-nubo/app/build/outputs/apk/debug/app-debug.apk
+          name: AinuboX1-v17-STABLE
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
