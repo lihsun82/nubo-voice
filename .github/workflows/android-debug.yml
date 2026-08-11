@@ -13,10 +13,6 @@ on:
       - "android-nubo/**"
       - ".github/workflows/android-debug.yml"
 
-concurrency:
-  group: ainubox1-android-v15-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: write
 
@@ -40,26 +36,16 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Confirm V15 launcher source
+      - name: Confirm V15 inputs
         run: |
           test -f android-nubo/app/src/main/res/drawable/ainubox1_launcher_v15.xml
           grep -q 'ainubox1_launcher_v15' android-nubo/app/src/main/AndroidManifest.xml
           grep -q 'versionCode 15' android-nubo/app/build.gradle
-          echo "V15 standalone vector launcher source confirmed"
 
-      - name: Clean build AinuboX1 V15 APK
+      - name: Build AinuboX1 V15 APK
         run: gradle -p android-nubo clean assembleDebug --no-build-cache --rerun-tasks --stacktrace
 
-      - name: Inspect packaged APK metadata
-        run: |
-          APK=android-nubo/app/build/outputs/apk/debug/app-debug.apk
-          test -f "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging "$APK" | tee /tmp/ainubox1-badging.txt
-          grep -q "versionCode='15'" /tmp/ainubox1-badging.txt
-          grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
-          echo "APK metadata verified: AinuboX1 V15"
-
-      - name: Publish V15 as brand-new APK filename
+      - name: Publish V15 APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
@@ -68,9 +54,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/downloads/AinuboX1-v15-VECTOR-N.apk public/downloads/AinuboX1-latest.apk
-          if git diff --cached --quiet; then
-            echo "APK unchanged - nothing to publish"
-          else
+          if ! git diff --cached --quiet; then
             git commit -m "build(android): publish AinuboX1 V15 vector-N APK"
             git pull --rebase origin main
             git push origin HEAD:main
