@@ -19,14 +19,7 @@ import {
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
 const NUBO_REALTIME_PROXY_URL = "/api/realtime-token";
-const NUBO_MIN_FLUID_SPEED = 1.04;
-const NUBO_LOW_LATENCY_INSTRUCTION = `NUBO V20 低延遲流暢語音規則：
-- 使用者說完後要快速接話，不要故意留長空白等待。
-- 正文要連續、順暢地說完；不要在句子中間反覆停頓、切碎字詞或一字一頓。
-- 除非真的需要思考，不要加入「嗯…」「欸…」「我想一下…」這類會拖慢回覆的前導語。
-- 語助詞只在自然需要時使用，避免連續拖尾造成卡頓感。
-- 一般問答先在第一句直接回答核心答案，再補充必要資訊。
-- 數字、地址、日期與操作步驟仍需清楚，但不要因此刻意放慢整段語速。`;
+const NUBO_SERVER_VAD_SILENCE_MS = 400;
 
 let realtimeChannel: RTCDataChannel | null = null;
 let realtimeBaseInstructions = "";
@@ -43,10 +36,6 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function fluidSpeed(tuning: NuboVoiceTuning) {
-  return Math.max(NUBO_MIN_FLUID_SPEED, tuning.speed);
-}
-
 function buildInstructions(
   tuning: NuboVoiceTuning,
   languageMode = readNuboLanguageMode(),
@@ -55,10 +44,20 @@ function buildInstructions(
     realtimeBaseInstructions,
     buildNuboVoicePerformanceInstruction(tuning),
     buildNuboLanguageInstruction(languageMode),
-    NUBO_LOW_LATENCY_INSTRUCTION,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function applyLowLatencyTurnDetection(input: Record<string, unknown>) {
+  input.turn_detection = {
+    type: "server_vad",
+    threshold: 0.5,
+    prefix_padding_ms: 300,
+    silence_duration_ms: NUBO_SERVER_VAD_SILENCE_MS,
+    create_response: true,
+    interrupt_response: true,
+  };
 }
 
 function normalizeSession(session: string) {
@@ -70,19 +69,13 @@ function normalizeSession(session: string) {
     const audio = asRecord(payload.audio);
     const input = asRecord(audio.input);
     const output = asRecord(audio.output);
-    const turnDetection = asRecord(input.turn_detection);
 
-    output.speed = fluidSpeed(tuning);
+    // Keep the user's human-like speaking style and exact selected speed.
+    output.speed = tuning.speed;
     input.noise_reduction = {
       type: getNuboNoiseReductionType(),
     };
-    input.turn_detection = {
-      ...turnDetection,
-      type: "semantic_vad",
-      eagerness: "high",
-      create_response: true,
-      interrupt_response: true,
-    };
+    applyLowLatencyTurnDetection(input);
     audio.input = input;
     audio.output = output;
     payload.audio = audio;
@@ -115,14 +108,16 @@ function sendLiveSessionUpdate(
               type: getNuboNoiseReductionType(),
             },
             turn_detection: {
-              type: "semantic_vad",
-              eagerness: "high",
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: NUBO_SERVER_VAD_SILENCE_MS,
               create_response: true,
               interrupt_response: true,
             },
           },
           output: {
-            speed: fluidSpeed(tuning),
+            speed: tuning.speed,
           },
         },
       },
@@ -139,6 +134,24 @@ function isHtmlResponse(contentType: string | null, body: string) {
   );
 }
 
+type TurnTiming = {
+  speechStoppedAt: number;
+  responseCreatedAt: number;
+  firstAudioAt: number;
+  toolStartedAt: number;
+  toolFinishedAt: number;
+};
+
+function createTurnTiming(): TurnTiming {
+  return {
+    speechStoppedAt: 0,
+    responseCreatedAt: 0,
+    firstAudioAt: 0,
+    toolStartedAt: 0,
+    toolFinishedAt: 0,
+  };
+}
+
 export function OpenAIRealtimeVoiceConsoleFixed({
   profile,
 }: {
@@ -148,16 +161,100 @@ export function OpenAIRealtimeVoiceConsoleFixed({
     const nativeFetch = window.fetch.bind(window);
     const nativeCreateDataChannel = RTCPeerConnection.prototype.createDataChannel;
     let updateTimer: number | null = null;
+    let turnTiming = createTurnTiming();
 
     RTCPeerConnection.prototype.createDataChannel = function patchedCreateDataChannel(
       label: string,
       dataChannelDict?: RTCDataChannelInit,
     ) {
+      const peer = this;
       const channel = Reflect.apply(nativeCreateDataChannel, this, [
         label,
         dataChannelDict,
       ]) as RTCDataChannel;
-      if (label === "oai-events") realtimeChannel = channel;
+
+      if (label === "oai-events") {
+        realtimeChannel = channel;
+        channel.addEventListener("message", (message) => {
+          try {
+            const event = JSON.parse(message.data) as {
+              type?: string;
+              name?: string;
+            };
+            const type = event.type ?? "";
+            const now = performance.now();
+
+            if (type === "input_audio_buffer.speech_stopped") {
+              turnTiming = createTurnTiming();
+              turnTiming.speechStoppedAt = now;
+            } else if (type === "response.created") {
+              turnTiming.responseCreatedAt = now;
+            } else if (type === "response.function_call_arguments.done") {
+              turnTiming.toolStartedAt = now;
+            } else if (type === "conversation.item.created" && turnTiming.toolStartedAt) {
+              turnTiming.toolFinishedAt = now;
+            } else if (
+              (type === "response.output_audio.delta" ||
+                type === "response.audio.delta") &&
+              !turnTiming.firstAudioAt
+            ) {
+              turnTiming.firstAudioAt = now;
+              const endpointMs = turnTiming.speechStoppedAt
+                ? Math.round(turnTiming.responseCreatedAt - turnTiming.speechStoppedAt)
+                : null;
+              const modelToAudioMs = turnTiming.responseCreatedAt
+                ? Math.round(turnTiming.firstAudioAt - turnTiming.responseCreatedAt)
+                : null;
+              const totalMs = turnTiming.speechStoppedAt
+                ? Math.round(turnTiming.firstAudioAt - turnTiming.speechStoppedAt)
+                : null;
+              const toolMs =
+                turnTiming.toolStartedAt && turnTiming.toolFinishedAt
+                  ? Math.round(turnTiming.toolFinishedAt - turnTiming.toolStartedAt)
+                  : null;
+
+              void peer.getStats().then((stats) => {
+                let rttMs: number | null = null;
+                let jitterMs: number | null = null;
+                let packetsLost: number | null = null;
+                stats.forEach((report) => {
+                  if (
+                    report.type === "candidate-pair" &&
+                    report.state === "succeeded" &&
+                    typeof report.currentRoundTripTime === "number"
+                  ) {
+                    rttMs = Math.round(report.currentRoundTripTime * 1000);
+                  }
+                  if (report.type === "inbound-rtp" && report.kind === "audio") {
+                    if (typeof report.jitter === "number") {
+                      jitterMs = Math.round(report.jitter * 1000);
+                    }
+                    if (typeof report.packetsLost === "number") {
+                      packetsLost = report.packetsLost;
+                    }
+                  }
+                });
+
+                const detail = {
+                  endpointMs,
+                  modelToAudioMs,
+                  totalMs,
+                  toolMs,
+                  rttMs,
+                  jitterMs,
+                  packetsLost,
+                };
+                console.info("[NUBO latency]", detail);
+                window.dispatchEvent(
+                  new CustomEvent("nubo:latency-sample", { detail }),
+                );
+              });
+            }
+          } catch {
+            // Ignore non-JSON Realtime control messages.
+          }
+        });
+      }
       return channel;
     };
 
