@@ -22,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -64,6 +65,7 @@ class GoogleHomeGatewayImpl(
         .put("platform", "google-home")
         .put("sdk", "1.10.0")
         .put("homeArtifact", "17.1.0")
+        .put("controlRevision", "r2")
         .toString()
 
     override fun requestPermissions(callback: GoogleHomeGateway.Callback) {
@@ -107,6 +109,13 @@ class GoogleHomeGatewayImpl(
 
                     for (device in structure.devices().list()) {
                         val roomId = device.roomId?.id ?: ""
+                        val trait = findOnOffTrait(device)
+                        val onSupported = trait?.supports(OnOff.Command.On) == true
+                        val offSupported = trait?.supports(OnOff.Command.Off) == true
+                        val toggleSupported = trait?.supports(OnOff.Command.Toggle) == true
+                        val stateSupported = trait?.supports(OnOff.Attribute.onOff) == true
+                        val controllable = onSupported || offSupported || (toggleSupported && stateSupported)
+
                         devicesJson.put(
                             JSONObject()
                                 .put("structureId", structure.id.id)
@@ -115,7 +124,12 @@ class GoogleHomeGatewayImpl(
                                 .put("room", roomNames[roomId] ?: "")
                                 .put("deviceId", device.id.id)
                                 .put("device", device.name)
-                                .put("controllable", findOnOffTrait(device) != null),
+                                .put("controllable", controllable)
+                                .put("onSupported", onSupported)
+                                .put("offSupported", offSupported)
+                                .put("toggleSupported", toggleSupported)
+                                .put("stateSupported", stateSupported)
+                                .put("state", if (stateSupported) trait?.onOff else JSONObject.NULL),
                         )
                     }
                 }
@@ -181,7 +195,7 @@ class GoogleHomeGatewayImpl(
                         val trait = findOnOffTrait(device) ?: continue
                         matched += 1
                         try {
-                            if (normalizedAction == "on") trait.on() else trait.off()
+                            executeOnOff(trait, normalizedAction)
                             controlled += 1
                         } catch (error: Exception) {
                             failures.put(
@@ -193,9 +207,10 @@ class GoogleHomeGatewayImpl(
                     }
                 }
 
+                val hasSuccess = controlled > 0
                 callback.onResult(
                     JSONObject()
-                        .put("ok", controlled > 0 && failures.length() == 0)
+                        .put("ok", hasSuccess)
                         .put("action", normalizedAction)
                         .put("room", wantedRoom)
                         .put("device", wantedDevice)
@@ -232,6 +247,36 @@ class GoogleHomeGatewayImpl(
         return null
     }
 
+    private suspend fun executeOnOff(trait: OnOff, action: String) {
+        val turnOn = action == "on"
+        val directCommand = if (turnOn) OnOff.Command.On else OnOff.Command.Off
+
+        if (trait.supports(directCommand)) {
+            withTimeout(7_000L) {
+                if (turnOn) trait.on() else trait.off()
+            }
+            return
+        }
+
+        val canToggle = trait.supports(OnOff.Command.Toggle)
+        val canReadState = trait.supports(OnOff.Attribute.onOff)
+        if (canToggle && canReadState) {
+            val currentState = trait.onOff
+                ?: throw IllegalStateException("裝置可讀取 OnOff，但目前沒有回傳開關狀態")
+            if (currentState != turnOn) {
+                withTimeout(7_000L) {
+                    trait.toggle()
+                }
+            }
+            return
+        }
+
+        throw UnsupportedOperationException(
+            if (turnOn) "此裝置的 Google Home OnOff trait 不支援 On 指令"
+            else "此裝置的 Google Home OnOff trait 不支援 Off 指令",
+        )
+    }
+
     private fun matches(actual: String, wanted: String): Boolean {
         val left = actual.trim().lowercase()
         val right = wanted.trim().lowercase()
@@ -243,6 +288,8 @@ class GoogleHomeGatewayImpl(
         .put("error", safeMessage(error))
         .toString()
 
-    private fun safeMessage(error: Throwable): String =
-        error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+    private fun safeMessage(error: Throwable): String {
+        val detail = error.message?.takeIf { it.isNotBlank() }
+        return if (detail != null) "${error.javaClass.simpleName}: $detail" else error.javaClass.simpleName
+    }
 }
