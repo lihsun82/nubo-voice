@@ -1,52 +1,122 @@
-﻿"use client";
+"use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import NuboV12Shell from "@/components/v12/NuboV12Shell";
+import {
+  connectGoogleHome,
+  controlGoogleHome,
+  getDefaultGoogleHomeRoom,
+  getGoogleHomeStatus,
+  listGoogleHomeDevices,
+  setDefaultGoogleHomeRoom,
+  type GoogleHomeDevice,
+  type GoogleHomeRoom,
+} from "@/lib/google-home-native";
 
 export default function SmartHomePage() {
-  const [message, setMessage] = useState("等待指令");
+  const [message, setMessage] = useState("準備連接 Google Home");
+  const [available, setAvailable] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [rooms, setRooms] = useState<GoogleHomeRoom[]>([]);
+  const [devices, setDevices] = useState<GoogleHomeDevice[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState("");
 
-  async function callLight(action: "on" | "off") {
-    setMessage(action === "on" ? "正在送出開燈指令..." : "正在送出關燈指令...");
+  useEffect(() => {
+    const status = getGoogleHomeStatus();
+    setAvailable(Boolean(status.available && status.enabled));
+    setSelectedRoom(getDefaultGoogleHomeRoom());
+    if (!status.available || !status.enabled) {
+      setMessage(status.message || status.error || "目前 APK 尚未啟用 Google Home 模組");
+    }
+  }, []);
 
-    const res = await fetch("/api/smart-home/light", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action }),
-    });
+  const roomDevices = useMemo(
+    () => devices.filter((device) => !selectedRoom || device.room === selectedRoom),
+    [devices, selectedRoom],
+  );
 
-    const data = await res.json().catch(() => ({}));
+  async function run(label: string, task: () => Promise<unknown>) {
+    setBusy(true);
+    setMessage(label);
+    try {
+      const result = await task();
+      setMessage("完成");
+      return result;
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Google Home 操作失敗");
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    if (!res.ok) {
-      setMessage(data.message || data.error || "智慧家庭指令失敗");
+  async function connect() {
+    const result = await run("請在 Google 畫面授權 NUBO 存取你的住宅與裝置…", connectGoogleHome);
+    if (!result) return;
+    setMessage("Google Home 授權完成，請掃描房間與裝置。");
+  }
+
+  async function scan() {
+    const result = (await run("正在讀取 Google Home 房間與裝置…", listGoogleHomeDevices)) as
+      | { rooms?: GoogleHomeRoom[]; devices?: GoogleHomeDevice[] }
+      | null;
+    if (!result) return;
+
+    const nextRooms = result.rooms ?? [];
+    const nextDevices = result.devices ?? [];
+    setRooms(nextRooms);
+    setDevices(nextDevices);
+
+    const savedRoom = getDefaultGoogleHomeRoom();
+    if (!savedRoom && nextRooms.length === 1) {
+      setSelectedRoom(nextRooms[0].room);
+      setDefaultGoogleHomeRoom(nextRooms[0].room);
+    }
+    setMessage(`找到 ${nextRooms.length} 個房間、${nextDevices.length} 個裝置。`);
+  }
+
+  function chooseRoom(room: string) {
+    setSelectedRoom(room);
+    setDefaultGoogleHomeRoom(room);
+    setMessage(room ? `這台 NUBO 已綁定：${room}` : "已取消預設房間");
+  }
+
+  async function control(action: "on" | "off") {
+    if (!selectedRoom) {
+      setMessage("請先選擇這台 NUBO 所在的房間，避免誤控其他房間。");
       return;
     }
 
-    setMessage(data.message || "已送出指令");
+    const result = (await run(
+      action === "on" ? `正在開啟 ${selectedRoom} 的燈…` : `正在關閉 ${selectedRoom} 的燈…`,
+      () => controlGoogleHome({ action, room: selectedRoom }),
+    )) as { controlled?: number; message?: string } | null;
+
+    if (result) {
+      setMessage(`${result.message || "控制完成"}；成功控制 ${result.controlled ?? 0} 個裝置。`);
+    }
   }
 
   return (
-    <NuboV12Shell title="Smart Home 智慧家庭">
+    <NuboV12Shell title="Google Home 智慧家庭">
       <section className="nubo-page-grid">
         <div className="nubo-panel">
           <div className="nubo-panel-head">
-            <h2>投射燈</h2>
-            <span>IFTTT / Tapo</span>
+            <h2>NUBO × Google Home</h2>
+            <span>{available ? "Native Home API" : "尚未啟用"}</span>
           </div>
 
-          <div className="nubo-device-card warning">
+          <div className={`nubo-device-card ${available ? "" : "warning"}`}>
             <div>
-              <strong>投射燈插座</strong>
-              <p>目前透過 IFTTT Webhook 控制；尚未具備實體狀態回讀。</p>
+              <strong>Google Home 授權</strong>
+              <p>授權後，NUBO 可直接控制 Google Home 已連接的燈、開關與智慧插座，不需要讓音箱再次聽語音。</p>
             </div>
-            <span>Webhook Mode</span>
+            <span>{available ? "Ready" : "APK Setup"}</span>
           </div>
 
           <div className="nubo-action-row">
-            <button onClick={() => callLight("on")}>開燈</button>
-            <button onClick={() => callLight("off")}>關燈</button>
+            <button disabled={!available || busy} onClick={connect}>連接 Google Home</button>
+            <button disabled={!available || busy} onClick={scan}>掃描房間／裝置</button>
           </div>
 
           <p className="nubo-live-message">{message}</p>
@@ -54,10 +124,67 @@ export default function SmartHomePage() {
 
         <div className="nubo-panel">
           <div className="nubo-panel-head">
-            <h2>狀態驗證</h2>
-            <span>下一版</span>
+            <h2>這台 NUBO 所在房間</h2>
+            <span>防止跨房誤控</span>
           </div>
-          <p>IFTTT 只能確認事件 fired，無法保證設備真的開啟。正式版建議接 Home Assistant 讀取狀態。</p>
+
+          <label style={{ display: "grid", gap: 8 }}>
+            <span>預設房間</span>
+            <select
+              value={selectedRoom}
+              onChange={(event) => chooseRoom(event.target.value)}
+              disabled={busy || rooms.length === 0}
+              style={{ padding: 12, borderRadius: 10 }}
+            >
+              <option value="">請選擇房間</option>
+              {rooms.map((room) => (
+                <option key={`${room.structureId}-${room.roomId}`} value={room.room}>
+                  {room.structure} / {room.room}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="nubo-action-row" style={{ marginTop: 16 }}>
+            <button disabled={!available || busy || !selectedRoom} onClick={() => control("on")}>測試開燈</button>
+            <button disabled={!available || busy || !selectedRoom} onClick={() => control("off")}>測試關燈</button>
+          </div>
+        </div>
+
+        <div className="nubo-panel">
+          <div className="nubo-panel-head">
+            <h2>可控制裝置</h2>
+            <span>{roomDevices.filter((device) => device.controllable).length} 個</span>
+          </div>
+
+          {roomDevices.length === 0 ? (
+            <p>完成 Google Home 授權後按「掃描房間／裝置」。</p>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {roomDevices.map((device) => (
+                <div
+                  className={`nubo-device-card ${device.controllable ? "" : "warning"}`}
+                  key={`${device.structureId}-${device.deviceId}`}
+                >
+                  <div>
+                    <strong>{device.device}</strong>
+                    <p>{device.structure} / {device.room || "未分房"}</p>
+                  </div>
+                  <span>{device.controllable ? "On/Off" : "Read only"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="nubo-panel">
+          <div className="nubo-panel-head">
+            <h2>語音範例</h2>
+            <span>本機快速路由</span>
+          </div>
+          <p>「NUBO，開燈」→ 控制本機綁定房間。</p>
+          <p>「NUBO，關燈」→ 控制本機綁定房間。</p>
+          <p>「207 房開燈」→ 優先控制語音指定的 207 房。</p>
         </div>
       </section>
     </NuboV12Shell>
