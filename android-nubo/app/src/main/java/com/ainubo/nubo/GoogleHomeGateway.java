@@ -2,12 +2,12 @@ package com.ainubo.nubo;
 
 import androidx.activity.ComponentActivity;
 
-final class GoogleHomeGateway {
-    interface Callback {
+public final class GoogleHomeGateway {
+    public interface Callback {
         void onResult(String payloadJson);
     }
 
-    interface Delegate {
+    public interface Delegate {
         String status();
         void requestPermissions(Callback callback);
         void listDevices(Callback callback);
