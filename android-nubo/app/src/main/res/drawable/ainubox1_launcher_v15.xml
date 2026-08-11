@@ -5,62 +5,28 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- dark circular tech badge -->
-    <path
-        android:fillColor="#111923"
-        android:pathData="M54,4 A50,50 0,1 1,53.999 4 Z" />
+    <path android:fillColor="#111923" android:pathData="M8,8 L100,8 L100,100 L8,100 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,12 L96,12 L96,16 L12,16 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,92 L96,92 L96,96 L12,96 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,16 L16,16 L16,92 L12,92 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M92,16 L96,16 L96,92 L92,92 Z" />
 
-    <!-- metallic outer ring -->
-    <path
-        android:fillColor="#9ADDF3"
-        android:fillAlpha="0.90"
-        android:pathData="M54,2 A52,52 0,1 1,53.999 2 Z M54,7 A47,47 0,1 0,54.001 7 Z" />
-    <path
-        android:fillColor="#B89CFF"
-        android:fillAlpha="0.45"
-        android:pathData="M54,5 A49,49 0,1 1,53.999 5 Z M54,8 A46,46 0,1 0,54.001 8 Z" />
+    <path android:fillColor="#176BFF" android:pathData="M26,26 L42,26 L42,82 L26,82 Z" />
+    <path android:fillColor="#3CC8FF" android:pathData="M34,34 L42,26 L42,82 L34,74 Z" />
+    <path android:fillColor="#2A33A5" android:pathData="M26,26 L34,34 L34,74 L26,82 Z" />
 
-    <!-- circuit traces top right -->
-    <path android:strokeColor="#72F5E4" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
-        android:pathData="M69,18 L82,18 L82,23 L93,23 M72,24 L88,24 L92,20 M70,30 L82,30 L88,36 L96,36 M84,14 L84,10" />
-    <path android:fillColor="#A5FFF2" android:pathData="M68,16 A2,2 0,1 1,67.999 16 Z M70,28 A2,2 0,1 1,69.999 28 Z M96,34 A2,2 0,1 1,95.999 34 Z M82,8 A2,2 0,1 1,81.999 8 Z" />
+    <path android:fillColor="#32D8D1" android:pathData="M42,26 L70,68 L61,78 L34,34 Z" />
+    <path android:fillColor="#5063E8" android:pathData="M50,42 L70,68 L61,78 Z" />
+    <path android:fillColor="#9D7BF1" android:pathData="M61,78 L70,68 L78,78 L68,84 Z" />
 
-    <!-- circuit traces lower left -->
-    <path android:strokeColor="#4BC9FF" android:strokeWidth="1.2" android:strokeLineCap="round" android:fillColor="#00000000"
-        android:pathData="M15,72 L27,72 L27,79 L38,79 M12,81 L22,81 L22,87 L34,87 L39,92 M18,66 L25,66 L31,72" />
-    <path android:fillColor="#8FE9FF" android:pathData="M13,64 A2,2 0,1 1,12.999 64 Z M39,90 A2,2 0,1 1,38.999 90 Z" />
+    <path android:fillColor="#7666E8" android:pathData="M68,26 L82,26 L82,82 L68,82 Z" />
+    <path android:fillColor="#B8A4FF" android:pathData="M68,26 L75,34 L75,74 L68,82 Z" />
+    <path android:fillColor="#72F5E4" android:pathData="M75,34 L82,26 L82,82 L75,74 Z" />
 
-    <!-- faceted N shadow -->
-    <path android:fillColor="#07152D" android:fillAlpha="0.72"
-        android:pathData="M28,31 L43,31 L67,67 L67,31 L82,31 L82,80 L67,80 L43,44 L43,80 L28,80 Z" />
-
-    <!-- N left blue facet -->
-    <path android:fillColor="#176BFF"
-        android:pathData="M28,29 L44,29 L44,79 L28,79 Z" />
-    <path android:fillColor="#2A33A5"
-        android:pathData="M28,29 L36,36 L36,72 L28,79 Z" />
-    <path android:fillColor="#48C8FF"
-        android:pathData="M36,36 L44,29 L44,79 L36,72 Z" />
-
-    <!-- N diagonal facets -->
-    <path android:fillColor="#2E79FF"
-        android:pathData="M44,29 L68,65 L60,73 L36,36 Z" />
-    <path android:fillColor="#39E1D3"
-        android:pathData="M36,36 L52,51 L60,73 L44,61 Z" />
-    <path android:fillColor="#7666E8"
-        android:pathData="M52,51 L68,65 L60,73 Z" />
-    <path android:fillColor="#B08CFF"
-        android:pathData="M60,73 L68,65 L76,76 L67,81 Z" />
-
-    <!-- N right violet/cyan facet -->
-    <path android:fillColor="#7767E8"
-        android:pathData="M67,29 L82,29 L82,79 L67,79 Z" />
-    <path android:fillColor="#B8A4FF"
-        android:pathData="M67,29 L75,36 L75,72 L67,79 Z" />
-    <path android:fillColor="#72F5E4"
-        android:pathData="M75,36 L82,29 L82,79 L75,72 Z" />
-
-    <!-- highlights -->
-    <path android:strokeColor="#DDFBFF" android:strokeWidth="0.9" android:strokeLineCap="round" android:fillColor="#00000000"
-        android:pathData="M29,29 L44,29 L68,65 M67,29 L82,29 L82,79" />
+    <path android:fillColor="#75F3E5" android:pathData="M72,18 L88,18 L88,21 L72,21 Z" />
+    <path android:fillColor="#75F3E5" android:pathData="M85,21 L88,21 L88,28 L85,28 Z" />
+    <path android:fillColor="#75F3E5" android:pathData="M78,27 L94,27 L94,30 L78,30 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M14,72 L30,72 L30,75 L14,75 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M27,75 L30,75 L30,84 L27,84 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M20,83 L38,83 L38,86 L20,86 Z" />
 </vector>
