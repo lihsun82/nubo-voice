@@ -8,6 +8,7 @@ import com.google.home.Home
 import com.google.home.HomeClient
 import com.google.home.HomeConfig
 import com.google.home.HomeDevice
+import com.google.home.HomeException
 import com.google.home.PermissionsResultStatus
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.DimmableLightDevice
@@ -65,7 +66,7 @@ class GoogleHomeGatewayImpl(
         .put("platform", "google-home")
         .put("sdk", "1.10.0")
         .put("homeArtifact", "17.1.0")
-        .put("controlRevision", "r2")
+        .put("controlRevision", "r3-typed-trait")
         .toString()
 
     override fun requestPermissions(callback: GoogleHomeGateway.Callback) {
@@ -124,6 +125,8 @@ class GoogleHomeGatewayImpl(
                                 .put("room", roomNames[roomId] ?: "")
                                 .put("deviceId", device.id.id)
                                 .put("device", device.name)
+                                .put("isMatterDevice", device.isMatterDevice)
+                                .put("controlPath", controlPath(device))
                                 .put("controllable", controllable)
                                 .put("onSupported", onSupported)
                                 .put("offSupported", offSupported)
@@ -201,6 +204,8 @@ class GoogleHomeGatewayImpl(
                             failures.put(
                                 JSONObject()
                                     .put("device", device.name)
+                                    .put("controlPath", controlPath(device))
+                                    .put("isMatterDevice", device.isMatterDevice)
                                     .put("error", safeMessage(error)),
                             )
                         }
@@ -239,12 +244,44 @@ class GoogleHomeGatewayImpl(
     }
 
     private suspend fun findOnOffTrait(device: HomeDevice): OnOff? {
+        // Use the generated type's standardTraits container first. Google documents
+        // this as the unambiguous way to access standard traits on a device type.
+        if (device.has(OnOffPluginUnitDevice)) {
+            return device.type(OnOffPluginUnitDevice).first().standardTraits.onOff
+        }
+        if (device.has(OnOffLightDevice)) {
+            return device.type(OnOffLightDevice).first().standardTraits.onOff
+        }
+        if (device.has(DimmableLightDevice)) {
+            return device.type(DimmableLightDevice).first().standardTraits.onOff
+        }
+        if (device.has(ExtendedColorLightDevice)) {
+            return device.type(ExtendedColorLightDevice).first().standardTraits.onOff
+        }
+        if (device.has(ColorTemperatureLightDevice)) {
+            return device.type(ColorTemperatureLightDevice).first().standardTraits.onOff
+        }
+        if (device.has(OnOffLightSwitchDevice)) {
+            return device.type(OnOffLightSwitchDevice).first().standardTraits.onOff
+        }
+
+        // Fallback for future registered types.
         val types = device.types().first()
         for (type in types) {
             val trait = type.trait(OnOff)
             if (trait != null) return trait
         }
         return null
+    }
+
+    private fun controlPath(device: HomeDevice): String = when {
+        device.has(OnOffPluginUnitDevice) -> "OnOffPluginUnitDevice.standardTraits.onOff"
+        device.has(OnOffLightDevice) -> "OnOffLightDevice.standardTraits.onOff"
+        device.has(DimmableLightDevice) -> "DimmableLightDevice.standardTraits.onOff"
+        device.has(ExtendedColorLightDevice) -> "ExtendedColorLightDevice.standardTraits.onOff"
+        device.has(ColorTemperatureLightDevice) -> "ColorTemperatureLightDevice.standardTraits.onOff"
+        device.has(OnOffLightSwitchDevice) -> "OnOffLightSwitchDevice.standardTraits.onOff"
+        else -> "generic type.trait(OnOff) fallback"
     }
 
     private suspend fun executeOnOff(trait: OnOff, action: String) {
@@ -289,6 +326,35 @@ class GoogleHomeGatewayImpl(
         .toString()
 
     private fun safeMessage(error: Throwable): String {
+        if (error is HomeException) {
+            val root = error.unwrap()
+            val subCodes = error.getSubErrorCodes().joinToString(",")
+            return buildString {
+                append("HomeException ")
+                append(error.error.code)
+                append(": ")
+                append(error.error.message)
+                if (subCodes.isNotBlank()) {
+                    append(" | subCodes=")
+                    append(subCodes)
+                }
+                if (root.error.code != error.error.code || root.error.message != error.error.message) {
+                    append(" | root=")
+                    append(root.error.code)
+                    append(":")
+                    append(root.error.message)
+                }
+                root.error.reason?.takeIf { it.isNotBlank() }?.let {
+                    append(" | reason=")
+                    append(it)
+                }
+                root.error.domain?.let {
+                    append(" | domain=")
+                    append(it)
+                }
+            }
+        }
+
         val detail = error.message?.takeIf { it.isNotBlank() }
         return if (detail != null) "${error.javaClass.simpleName}: $detail" else error.javaClass.simpleName
     }
