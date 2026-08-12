@@ -21,26 +21,21 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - uses: android-actions/setup-android@v3
 
       - name: Ensure Android SDK 35 toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Prepare stable signing material
-        shell: bash
-        run: |
-          set -euxo pipefail
-          base64 -d android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
 
-      - name: Seed fake local Home SDK metadata only for public dependency resolution
+      - name: Seed placeholder Home SDK only to resolve its public dependencies
         shell: bash
         run: |
           set -euxo pipefail
@@ -80,13 +75,12 @@ jobs:
           cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home-types/17.1.0/play-services-home-types-17.1.0.aar"
 
-      - name: Warm every public Gradle and Android dependency
+      - name: Warm every public dependency required by Home-enabled V23
         shell: bash
         run: |
           set -euxo pipefail
-          gradle -p android-nubo :app:dependencies --configuration releaseRuntimeClasspath -PnuboGoogleHome=true --refresh-dependencies
-          gradle -p android-nubo :app:dependencies --configuration releaseCompileClasspath -PnuboGoogleHome=true
-          gradle -p android-nubo assembleRelease -PnuboGoogleHome=false
+          gradle -p android-nubo :app:dependencies --configuration releaseCompileClasspath -PnuboGoogleHome=true --refresh-dependencies
+          gradle -p android-nubo :app:dependencies --configuration releaseRuntimeClasspath -PnuboGoogleHome=true
 
       - name: Package offline build kit
         shell: bash
@@ -94,19 +88,18 @@ jobs:
           set -euxo pipefail
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           echo "Gradle home: $GRADLE_HOME"
-          echo "Android SDK: $ANDROID_SDK_ROOT"
+          echo "Android SDK: $SDK_ROOT"
 
           STAGE="$RUNNER_TEMP/nubo-v23-buildkit"
-          mkdir -p "$STAGE/project" "$STAGE/gradle" "$STAGE/android-sdk" "$STAGE/gradle-user-home"
+          mkdir -p "$STAGE/project" "$STAGE/gradle" "$STAGE/android-sdk/platforms" "$STAGE/android-sdk/build-tools" "$STAGE/gradle-user-home"
           cp -a android-nubo "$STAGE/project/"
-          rm -f "$STAGE/project/android-nubo/ainubo-debug.jks"
           cp -a "$GRADLE_HOME/." "$STAGE/gradle/"
-          cp -a "$ANDROID_SDK_ROOT/platforms/android-35" "$STAGE/android-sdk/platforms-android-35"
-          cp -a "$ANDROID_SDK_ROOT/build-tools/35.0.0" "$STAGE/android-sdk/build-tools-35.0.0"
-          cp -a "$ANDROID_SDK_ROOT/platform-tools" "$STAGE/android-sdk/platform-tools"
-          cp -a "$HOME/.gradle/caches" "$STAGE/gradle-user-home/caches"
-          cp -a "$HOME/.gradle/kotlin-profile" "$STAGE/gradle-user-home/" 2>/dev/null || true
+          cp -a "$SDK_ROOT/platforms/android-35" "$STAGE/android-sdk/platforms/"
+          cp -a "$SDK_ROOT/build-tools/35.0.0" "$STAGE/android-sdk/build-tools/"
+          cp -a "$SDK_ROOT/platform-tools" "$STAGE/android-sdk/"
+          cp -a "$HOME/.gradle/caches" "$STAGE/gradle-user-home/"
 
           tar -I 'zstd -3 -T0' -cf "$RUNNER_TEMP/nubo-v23-buildkit.tar.zst" -C "$STAGE" .
           ls -lh "$RUNNER_TEMP/nubo-v23-buildkit.tar.zst"
