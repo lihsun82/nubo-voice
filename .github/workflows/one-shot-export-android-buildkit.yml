@@ -83,33 +83,54 @@ jobs:
           gradle -p android-nubo :app:dependencies --configuration releaseCompileClasspath -PnuboGoogleHome=true --refresh-dependencies
           gradle -p android-nubo :app:dependencies --configuration releaseRuntimeClasspath -PnuboGoogleHome=true
 
-      - name: Package offline build kit
+      - name: Package split offline build kit
         shell: bash
         run: |
           set -euxo pipefail
           GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
           GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
           SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
-          echo "Gradle home: $GRADLE_HOME"
-          echo "Android SDK: $SDK_ROOT"
-          echo "Java home: $JAVA_HOME"
+          OUT="$RUNNER_TEMP/v23-parts"
+          mkdir -p "$OUT"
 
-          STAGE="$RUNNER_TEMP/nubo-v23-buildkit"
-          mkdir -p "$STAGE/project" "$STAGE/gradle" "$STAGE/android-sdk/platforms" "$STAGE/android-sdk/build-tools" "$STAGE/gradle-user-home" "$STAGE/java17"
-          cp -a android-nubo "$STAGE/project/"
-          cp -a "$GRADLE_HOME/." "$STAGE/gradle/"
-          cp -a "$JAVA_HOME/." "$STAGE/java17/"
-          cp -a "$SDK_ROOT/platforms/android-35" "$STAGE/android-sdk/platforms/"
-          cp -a "$SDK_ROOT/build-tools/35.0.0" "$STAGE/android-sdk/build-tools/"
-          cp -a "$SDK_ROOT/platform-tools" "$STAGE/android-sdk/"
-          cp -a "$HOME/.gradle/caches" "$STAGE/gradle-user-home/"
-
-          tar -I 'zstd -3 -T0' -cf "$RUNNER_TEMP/nubo-v23-buildkit.tar.zst" -C "$STAGE" .
-          ls -lh "$RUNNER_TEMP/nubo-v23-buildkit.tar.zst"
+          tar -I 'zstd -3 -T0' -cf "$OUT/project.tar.zst" android-nubo
+          tar -I 'zstd -3 -T0' -cf "$OUT/gradle.tar.zst" -C "$GRADLE_HOME" .
+          tar -I 'zstd -3 -T0' -cf "$OUT/java17.tar.zst" -C "$JAVA_HOME" .
+          tar -I 'zstd -3 -T0' -cf "$OUT/android-sdk.tar.zst" -C "$SDK_ROOT" platforms/android-35 build-tools/35.0.0 platform-tools
+          tar -I 'zstd -3 -T0' -cf "$OUT/gradle-cache.tar.zst" -C "$HOME/.gradle" caches
+          ls -lh "$OUT"/*.tar.zst
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nubo-v23-offline-buildkit
-          path: ${{ runner.temp }}/nubo-v23-buildkit.tar.zst
+          name: v23-project
+          path: ${{ runner.temp }}/v23-parts/project.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-gradle
+          path: ${{ runner.temp }}/v23-parts/gradle.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-java17
+          path: ${{ runner.temp }}/v23-parts/java17.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-android-sdk
+          path: ${{ runner.temp }}/v23-parts/android-sdk.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-gradle-cache
+          path: ${{ runner.temp }}/v23-parts/gradle-cache.tar.zst
           compression-level: 0
           retention-days: 2
