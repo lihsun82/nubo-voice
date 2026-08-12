@@ -1,0 +1,136 @@
+name: One-shot export Android V23 build kit
+
+on:
+  push:
+    branches:
+      - feat/home-sdk-1-10-0-native-restore
+    paths:
+      - '.github/workflows/one-shot-export-android-buildkit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export-buildkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Ensure Android SDK 35 toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Seed placeholder Home SDK only to resolve its public dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          HOME_REPO="$HOME/.m2/repository/com/google/android/gms"
+          mkdir -p "$HOME_REPO/play-services-home/17.1.0" "$HOME_REPO/play-services-home-types/17.1.0"
+
+          cat > "$HOME_REPO/play-services-home/17.1.0/play-services-home-17.1.0.pom" <<'EOF'
+          <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.google.android.gms</groupId><artifactId>play-services-home</artifactId><version>17.1.0</version><packaging>aar</packaging><dependencies>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-auth</artifactId><version>21.6.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-auth-base</artifactId><version>18.0.10</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-base</artifactId><version>18.5.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-basement</artifactId><version>18.9.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-tasks</artifactId><version>18.2.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>2.2.0</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib-jdk8</artifactId><version>2.2.0</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-coroutines-android</artifactId><version>1.7.3</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-coroutines-core</artifactId><version>1.7.3</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-coroutines-play-services</artifactId><version>1.6.0</version><scope>compile</scope><type>jar</type></dependency>
+          </dependencies></project>
+          EOF
+
+          cat > "$HOME_REPO/play-services-home-types/17.1.0/play-services-home-types-17.1.0.pom" <<'EOF'
+          <project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.google.android.gms</groupId><artifactId>play-services-home-types</artifactId><version>17.1.0</version><packaging>aar</packaging><dependencies>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-basement</artifactId><version>18.9.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>com.google.android.gms</groupId><artifactId>play-services-home</artifactId><version>17.1.0</version><scope>compile</scope><type>aar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>1.8.21</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib-jdk8</artifactId><version>1.8.21</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-coroutines-core</artifactId><version>1.4.3</version><scope>compile</scope><type>jar</type></dependency>
+          <dependency><groupId>org.jetbrains.kotlinx</groupId><artifactId>kotlinx-coroutines-play-services</artifactId><version>1.6.0</version><scope>compile</scope><type>jar</type></dependency>
+          </dependencies></project>
+          EOF
+
+          TMP_AAR="$(mktemp -d)"
+          mkdir -p "$TMP_AAR/empty"
+          echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms.home.placeholder" />' > "$TMP_AAR/AndroidManifest.xml"
+          (cd "$TMP_AAR" && jar --create --file classes.jar -C empty .)
+          (cd "$TMP_AAR" && zip -q placeholder.aar AndroidManifest.xml classes.jar)
+          cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home-types/17.1.0/play-services-home-types-17.1.0.aar"
+
+      - name: Warm every public dependency required by Home-enabled V23
+        shell: bash
+        run: |
+          set -euxo pipefail
+          gradle -p android-nubo :app:dependencies --configuration releaseCompileClasspath -PnuboGoogleHome=true --refresh-dependencies
+          gradle -p android-nubo :app:dependencies --configuration releaseRuntimeClasspath -PnuboGoogleHome=true
+
+      - name: Package split offline build kit
+        shell: bash
+        run: |
+          set -euxo pipefail
+          GRADLE_BIN="$(readlink -f "$(command -v gradle)")"
+          GRADLE_HOME="$(dirname "$(dirname "$GRADLE_BIN")")"
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          OUT="$RUNNER_TEMP/v23-parts"
+          mkdir -p "$OUT"
+
+          tar -I 'zstd -3 -T0' -cf "$OUT/project.tar.zst" android-nubo
+          tar -I 'zstd -3 -T0' -cf "$OUT/gradle.tar.zst" -C "$GRADLE_HOME" .
+          tar -I 'zstd -3 -T0' -cf "$OUT/java17.tar.zst" -C "$JAVA_HOME" .
+          tar -I 'zstd -3 -T0' -cf "$OUT/android-sdk.tar.zst" -C "$SDK_ROOT" platforms/android-35 build-tools/35.0.0 platform-tools
+          tar -I 'zstd -3 -T0' -cf "$OUT/gradle-cache.tar.zst" -C "$HOME/.gradle" caches
+          ls -lh "$OUT"/*.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-project
+          path: ${{ runner.temp }}/v23-parts/project.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-gradle
+          path: ${{ runner.temp }}/v23-parts/gradle.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-java17
+          path: ${{ runner.temp }}/v23-parts/java17.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-android-sdk
+          path: ${{ runner.temp }}/v23-parts/android-sdk.tar.zst
+          compression-level: 0
+          retention-days: 2
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v23-gradle-cache
+          path: ${{ runner.temp }}/v23-parts/gradle-cache.tar.zst
+          compression-level: 0
+          retention-days: 2
