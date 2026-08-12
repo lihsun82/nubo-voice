@@ -18,12 +18,14 @@ export type GoogleHomeDevice = GoogleHomeRoom & {
   state?: boolean | null;
 };
 
-type GoogleHomePayload = {
+export type GoogleHomePayload = {
   requestId?: string;
   ok?: boolean;
   available?: boolean;
   enabled?: boolean;
   status?: string;
+  mode?: "native" | "webhook" | string;
+  provider?: string;
   message?: string;
   error?: string;
   rooms?: GoogleHomeRoom[];
@@ -76,10 +78,42 @@ export function getGoogleHomeStatus(): GoogleHomePayload {
       ok: true,
       available: false,
       enabled: false,
-      message: "請使用支援 Google Home 的 AinuboX1 Android APK。",
+      mode: "webhook",
+      message: "正在檢查 Google Home 智慧燈橋接…",
     };
   }
-  return parseStatus(native.googleHomeStatus());
+  return { mode: "native", ...parseStatus(native.googleHomeStatus()) };
+}
+
+export async function getGoogleHomeBridgeStatus(): Promise<GoogleHomePayload> {
+  const nativeStatus = getGoogleHomeStatus();
+  if (nativeStatus.available && nativeStatus.enabled) return nativeStatus;
+
+  try {
+    const response = await fetch("/api/smart-home/light", {
+      method: "GET",
+      cache: "no-store",
+    });
+    const payload = (await response.json().catch(() => ({}))) as GoogleHomePayload;
+    if (!response.ok) {
+      return {
+        ok: false,
+        available: false,
+        enabled: false,
+        mode: "webhook",
+        error: payload.error || "Google Home 智慧燈橋接狀態讀取失敗",
+      };
+    }
+    return { mode: "webhook", ...payload };
+  } catch (error) {
+    return {
+      ok: false,
+      available: false,
+      enabled: false,
+      mode: "webhook",
+      error: error instanceof Error ? error.message : "Google Home 智慧燈橋接無法連線",
+    };
+  }
 }
 
 function formatFailure(detail: GoogleHomePayload) {
@@ -136,17 +170,62 @@ function runNativeRequest(
   });
 }
 
+async function runServerControl(options: {
+  action: "on" | "off";
+  room?: string;
+  device?: string;
+}) {
+  const response = await fetch("/api/smart-home/light", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(options),
+    cache: "no-store",
+  });
+  const payload = (await response.json().catch(() => ({}))) as GoogleHomePayload;
+  if (!response.ok || payload.ok === false) {
+    throw new Error(formatFailure(payload));
+  }
+  return payload;
+}
+
 export async function connectGoogleHome() {
-  return runNativeRequest((native, id) => {
-    if (!native.googleHomeRequestPermissions) return false;
-    return native.googleHomeRequestPermissions(id);
+  const native = bridge();
+  if (!native?.googleHomeRequestPermissions) {
+    const status = await getGoogleHomeBridgeStatus();
+    if (status.available && status.enabled) {
+      return {
+        ...status,
+        ok: true,
+        message: "Google Home 智慧燈橋接已就緒，不需要另外授權。",
+      };
+    }
+    throw new Error(status.error || status.message || "Google Home 尚未完成串接");
+  }
+
+  return runNativeRequest((activeNative, id) => {
+    if (!activeNative.googleHomeRequestPermissions) return false;
+    return activeNative.googleHomeRequestPermissions(id);
   });
 }
 
 export async function listGoogleHomeDevices() {
-  return runNativeRequest((native, id) => {
-    if (!native.googleHomeListDevices) return false;
-    return native.googleHomeListDevices(id);
+  const native = bridge();
+  if (!native?.googleHomeListDevices) {
+    const status = await getGoogleHomeBridgeStatus();
+    if (status.available && status.enabled) {
+      return {
+        ...status,
+        rooms: [],
+        devices: [],
+        message: "目前使用智慧燈橋接模式，可直接用語音開燈／關燈。",
+      };
+    }
+    throw new Error(status.error || status.message || "Google Home 尚未完成串接");
+  }
+
+  return runNativeRequest((activeNative, id) => {
+    if (!activeNative.googleHomeListDevices) return false;
+    return activeNative.googleHomeListDevices(id);
   });
 }
 
@@ -169,13 +248,25 @@ export async function controlGoogleHome(options: {
 }) {
   const room = (options.room ?? getDefaultGoogleHomeRoom()).trim();
   const device = (options.device ?? "").trim();
+  const native = bridge();
 
-  if (!room && !device) {
-    throw new Error("請先到智慧家庭設定選擇這台 NUBO 所在的房間，避免誤控其他房間。");
+  if (native?.googleHomeControl) {
+    if (!room && !device) {
+      throw new Error("請先到智慧家庭設定選擇這台 NUBO 所在的房間，避免誤控其他房間。");
+    }
+
+    return runNativeRequest((activeNative, id) => {
+      if (!activeNative.googleHomeControl) return false;
+      return activeNative.googleHomeControl(id, options.action, room, device);
+    });
   }
 
-  return runNativeRequest((native, id) => {
-    if (!native.googleHomeControl) return false;
-    return native.googleHomeControl(id, options.action, room, device);
+  // Current AinuboX1 APK does not expose the Google Home native methods yet.
+  // Keep voice light control functional through the previously configured
+  // smart-home webhook bridge rather than failing the whole NUBO command.
+  return runServerControl({
+    action: options.action,
+    room: room || undefined,
+    device: device || undefined,
   });
 }
