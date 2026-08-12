@@ -132,5 +132,6 @@ jobs:
           git rm .github/workflows/one-shot-hologram-60-orange-50.yml
           git add components/NuboEnergyOrb.tsx
           git commit -m "feat(hologram): animate 60% particles and boost face orange dots"
+          git reset --hard HEAD
           git pull --rebase origin main
           git push origin HEAD:main
