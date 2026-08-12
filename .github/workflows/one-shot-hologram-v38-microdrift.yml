@@ -1,0 +1,67 @@
+name: One-shot Hologram V3.8 micro drift
+
+on:
+  push:
+    paths:
+      - '.github/workflows/one-shot-hologram-v38-microdrift.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Refine particle drift and size
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('components/NuboEnergyOrb.tsx')
+          s = p.read_text()
+
+          old_motion = '''    const motionScale =\n      region === "ambient"\n        ? 0.75\n        : region === "head"\n          ? 0.28\n          : 0.24;'''
+          new_motion = '''    const motionScale =\n      region === "ambient"\n        ? 0.84\n        : region === "head"\n          ? 0.31\n          : 0.27;'''
+          if old_motion not in s:
+              raise SystemExit('motionScale pattern not found')
+          s = s.replace(old_motion, new_motion, 1)
+
+          old_size = '''      particle.size * (0.76 + power * 0.19 + speechLift * 0.06),'''
+          new_size = '''      particle.size * 0.84 * (0.76 + power * 0.19 + speechLift * 0.06),'''
+          if old_size not in s:
+              raise SystemExit('cyan particle size pattern not found')
+          s = s.replace(old_size, new_size, 1)
+
+          replacements = {
+            'size = 0.24 + seededRandom(seed + 151) * 0.62;': 'size = 0.2 + seededRandom(seed + 151) * 0.52;',
+            'size = 0.88 + seededRandom(seed + 151) * 0.72;': 'size = 0.74 + seededRandom(seed + 151) * 0.61;',
+            'size = 1.65 + seededRandom(seed + 151) * 1.15;': 'size = 1.4 + seededRandom(seed + 151) * 0.98;',
+            'let size = 0.26 + seededRandom(i + 5217) * 0.64;': 'let size = 0.22 + seededRandom(i + 5217) * 0.54;',
+            'size = 1.15 + seededRandom(i + 5237) * 1.15;': 'size = 0.98 + seededRandom(i + 5237) * 0.98;',
+            'size = 0.72 + seededRandom(i + 5237) * 0.72;': 'size = 0.61 + seededRandom(i + 5237) * 0.61;',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'particle size pattern not found: {old}')
+              s = s.replace(old, new, 1)
+
+          old_neck = '''    const x =\n      cx + side * spread * (0.34 + seededRandom(i + 5151) * 0.9);\n    const y = 288 + p * 180 + (seededRandom(i + 5171) - 0.5) * 11;'''
+          new_neck = '''    const neckDriftX =\n      Math.sin(time * 0.0018 + i * 0.63) *\n      (0.42 + seededRandom(i + 5251) * 0.72);\n    const neckDriftY =\n      Math.cos(time * 0.00145 + i * 0.47) *\n      (0.3 + seededRandom(i + 5279) * 0.56);\n    const x =\n      cx +\n      side * spread * (0.34 + seededRandom(i + 5151) * 0.9) +\n      neckDriftX;\n    const y =\n      288 +\n      p * 180 +\n      (seededRandom(i + 5171) - 0.5) * 11 +\n      neckDriftY;'''
+          if old_neck not in s:
+              raise SystemExit('neck drift pattern not found')
+          s = s.replace(old_neck, new_neck, 1)
+
+          p.write_text(s)
+          PY
+      - name: Commit V3.8
+        shell: bash
+        run: |
+          git config user.name 'NUBO Build Bot'
+          git config user.email '84670777+lihsun82@users.noreply.github.com'
+          git rm .github/workflows/one-shot-hologram-v38-microdrift.yml
+          git add components/NuboEnergyOrb.tsx
+          git commit -m 'tune(web): Hologram V3.8 smaller particles with subtle micro drift'
+          git push origin HEAD:main
