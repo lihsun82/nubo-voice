@@ -11,17 +11,50 @@ import {
   readNuboVoiceProfile,
   type NuboVoiceProfile,
 } from "@/lib/nubo-voice-profile";
+import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
 const EXTERNAL_RETURN_KEY = "nubo_external_app_return_v1";
 const VOICE_RELOAD_KEY = "nubo_voice_profile_reload_v15_6_1";
 
+function dispatchVoiceLevel(level: number) {
+  window.dispatchEvent(
+    new CustomEvent("nubo:voice-level", { detail: { level } }),
+  );
+}
+
+function getNuboVoiceAudioOutputs() {
+  return Array.from(
+    document.querySelectorAll<HTMLAudioElement>(
+      'audio[data-nubo-voice-output="true"]',
+    ),
+  );
+}
+
+function dedupeNuboVoiceAudioOutputs() {
+  const outputs = getNuboVoiceAudioOutputs();
+  if (outputs.length <= 1) return;
+
+  // Keep only the newest Realtime voice output. Any older audio element belongs
+  // to a stale peer connection and can cause the same reply to overlap twice.
+  const keep = outputs[outputs.length - 1];
+  for (const audio of outputs) {
+    if (audio === keep) continue;
+    audio.pause();
+    audio.srcObject = null;
+    audio.remove();
+  }
+}
+
 function stopBrowserVoiceOutput() {
   window.speechSynthesis?.cancel();
+  dispatchVoiceLevel(0);
 
   document.querySelectorAll<HTMLAudioElement>("audio").forEach((audio) => {
     audio.pause();
-    audio.srcObject = null;
-    if (audio.dataset.nuboVoiceOutput === "true") audio.remove();
+    if (audio.dataset.nuboVoiceOutput === "true") {
+      audio.srcObject = null;
+      audio.remove();
+    }
   });
 }
 
@@ -67,6 +100,7 @@ export function NuboVoiceConsole() {
     const keepHealthySession = () => {
       if (document.visibilityState === "visible") {
         window.localStorage.removeItem(EXTERNAL_RETURN_KEY);
+        dedupeNuboVoiceAudioOutputs();
       }
     };
 
@@ -74,20 +108,41 @@ export function NuboVoiceConsole() {
       stopBrowserVoiceOutput();
     };
 
+    const handleVoicePhase = (event: Event) => {
+      const phase = (event as CustomEvent<{ phase?: NuboVoicePhase }>).detail
+        ?.phase;
+      if (phase === "speaking") {
+        // Browser TTS is never allowed to speak over the active cloud voice.
+        window.speechSynthesis?.cancel();
+        dedupeNuboVoiceAudioOutputs();
+      }
+    };
+
+    const audioObserver = new MutationObserver(() => {
+      dedupeNuboVoiceAudioOutputs();
+    });
+    audioObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
     document.addEventListener("visibilitychange", keepHealthySession, true);
     window.addEventListener("focus", keepHealthySession, true);
     window.addEventListener("pageshow", keepHealthySession, true);
     window.addEventListener("pagehide", stopOnPageExit, true);
     window.addEventListener("beforeunload", stopOnPageExit, true);
+    window.addEventListener("nubo-voice-phase", handleVoicePhase);
 
     keepHealthySession();
 
     return () => {
+      audioObserver.disconnect();
       document.removeEventListener("visibilitychange", keepHealthySession, true);
       window.removeEventListener("focus", keepHealthySession, true);
       window.removeEventListener("pageshow", keepHealthySession, true);
       window.removeEventListener("pagehide", stopOnPageExit, true);
       window.removeEventListener("beforeunload", stopOnPageExit, true);
+      window.removeEventListener("nubo-voice-phase", handleVoicePhase);
     };
   }, []);
 
