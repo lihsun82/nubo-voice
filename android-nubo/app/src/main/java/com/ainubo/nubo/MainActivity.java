@@ -1,7 +1,6 @@
 package com.ainubo.nubo;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -29,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-public final class MainActivity extends Activity {
+public final class MainActivity extends GoogleHomeActivity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
     private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v12";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
@@ -183,7 +182,38 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getNativeVersion() {
-            return "android-v12";
+            return "android-v12-home-1.10.0";
+        }
+
+        @JavascriptInterface
+        public String googleHomeStatus() {
+            return activity.googleHomeStatus();
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeRequestPermissions(String requestId) {
+            return activity.googleHomeRequestPermissions(requestId, activity.webView);
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeListDevices(String requestId) {
+            return activity.googleHomeListDevices(requestId, activity.webView);
+        }
+
+        @JavascriptInterface
+        public boolean googleHomeControl(
+            String requestId,
+            String action,
+            String roomName,
+            String deviceName
+        ) {
+            return activity.googleHomeControl(
+                requestId,
+                action,
+                roomName,
+                deviceName,
+                activity.webView
+            );
         }
 
         @JavascriptInterface

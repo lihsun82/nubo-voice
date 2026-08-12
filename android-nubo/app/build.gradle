@@ -1,6 +1,9 @@
 plugins {
     id "com.android.application"
+    id "org.jetbrains.kotlin.android"
 }
+
+def googleHomeEnabled = providers.gradleProperty("nuboGoogleHome").orNull == "true"
 
 android {
     namespace "com.ainubo.nubo"
@@ -8,10 +11,11 @@ android {
 
     defaultConfig {
         applicationId "com.ainubo.nubo"
-        minSdk 26
+        minSdk googleHomeEnabled ? 29 : 26
         targetSdk 35
-        versionCode 22
-        versionName "0.22.0"
+        versionCode 23
+        versionName "0.23.0-googlehome"
+        buildConfigField "boolean", "GOOGLE_HOME_ENABLED", googleHomeEnabled.toString()
     }
 
     signingConfigs {
@@ -40,14 +44,36 @@ android {
         }
     }
 
+    sourceSets {
+        main {
+            if (googleHomeEnabled) {
+                java.srcDir "src/googleHome/java"
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 
     packaging {
         resources {
             excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
         }
+    }
+}
+
+dependencies {
+    implementation "androidx.activity:activity:1.10.1"
+
+    if (googleHomeEnabled) {
+        implementation "com.google.android.gms:play-services-home:17.1.0"
+        implementation "com.google.android.gms:play-services-home-types:17.1.0"
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
     }
 }
