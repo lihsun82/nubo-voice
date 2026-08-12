@@ -585,11 +585,11 @@ export function NuboHologram3D() {
       window.removeEventListener("nubo:voice-level", onAudio);
       window.removeEventListener("nubo:assistant-text", onText);
       renderer.domElement.removeEventListener("webglcontextlost", contextLost);
-      scene.traverse((object) => {
+      scene.traverse((object: THREE.Object3D) => {
         const maybeGeometry = object as THREE.Object3D & { geometry?: THREE.BufferGeometry };
         maybeGeometry.geometry?.dispose();
         const maybeMaterial = object as THREE.Object3D & { material?: THREE.Material | THREE.Material[] };
-        if (Array.isArray(maybeMaterial.material)) maybeMaterial.material.forEach((material) => material.dispose());
+        if (Array.isArray(maybeMaterial.material)) maybeMaterial.material.forEach((material: THREE.Material) => material.dispose());
         else maybeMaterial.material?.dispose();
       });
       renderer.dispose();
