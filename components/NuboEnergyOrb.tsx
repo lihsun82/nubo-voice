@@ -532,7 +532,7 @@ function drawFaceCore(
   ctx.shadowBlur = 0;
 
   // Dense center + loose halo. Particles extend outside the former face ellipse and fade naturally.
-  for (let i = 0; i < 188; i += 1) {
+  for (let i = 0; i < 244; i += 1) {
     const seed = i + 1901;
     const angle = seededRandom(seed) * Math.PI * 2;
     const radialSeed = seededRandom(seed + 43);
@@ -622,7 +622,7 @@ function drawOrangeNeckEnergy(
 
   ctx.save();
 
-  const neckGlow = ctx.createRadialGradient(cx, 365, 8, cx, 365, 92);
+  const neckGlow = ctx.createRadialGradient(cx, 365, 8, cx, 365, 116);
   neckGlow.addColorStop(
     0,
     `rgba(255, 174, 51, ${0.14 + power * 0.08 + drive * 0.34})`,
@@ -633,7 +633,7 @@ function drawOrangeNeckEnergy(
   );
   neckGlow.addColorStop(1, "rgba(255, 106, 14, 0)");
   ctx.fillStyle = neckGlow;
-  ctx.fillRect(cx - 110, 270, 220, 205);
+  ctx.fillRect(cx - 135, 265, 270, 215);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -643,23 +643,23 @@ function drawOrangeNeckEnergy(
   for (let sideIndex = 0; sideIndex < 2; sideIndex += 1) {
     const side = sideIndex === 0 ? -1 : 1;
     for (let branch = 0; branch < 7; branch += 1) {
-      const spread = 8 + branch * 5.1;
+      const spread = 11 + branch * 6.4;
       ctx.beginPath();
-      ctx.moveTo(cx + side * (15 + branch * 2), 281 + branch * 1.3);
+      ctx.moveTo(cx + side * (18 + branch * 2.5), 281 + branch * 1.3);
       ctx.bezierCurveTo(
-        cx + side * (23 + spread * 0.72),
+        cx + side * (23 + spread * 0.9),
         312,
-        cx + side * (18 + spread * 0.55),
+        cx + side * (18 + spread * 0.7),
         340,
-        cx + side * (16 + spread * 0.46),
+        cx + side * (16 + spread * 0.6),
         367,
       );
       ctx.bezierCurveTo(
-        cx + side * (12 + spread * 0.3),
+        cx + side * (12 + spread * 0.42),
         396,
-        cx + side * (8 + spread * 0.16),
+        cx + side * (8 + spread * 0.25),
         421,
-        cx + side * (6 + branch * 1.2),
+        cx + side * (9 + branch * 1.65),
         450,
       );
       ctx.strokeStyle = gold(
@@ -672,13 +672,13 @@ function drawOrangeNeckEnergy(
 
   for (let stem = -2; stem <= 2; stem += 1) {
     ctx.beginPath();
-    ctx.moveTo(cx + stem * 4.4, 331);
+    ctx.moveTo(cx + stem * 6.2, 331);
     ctx.bezierCurveTo(
-      cx + stem * 3.5,
+      cx + stem * 5.0,
       365,
-      cx + stem * 2.4,
+      cx + stem * 3.6,
       408,
-      cx + stem * 1.8,
+      cx + stem * 2.8,
       461,
     );
     ctx.strokeStyle = gold(0.24 + power * 0.18 + drive * 0.4);
@@ -689,8 +689,8 @@ function drawOrangeNeckEnergy(
   for (let i = 0; i < 118; i += 1) {
     const p = seededRandom(i + 1103);
     const side = seededRandom(i + 1129) < 0.5 ? -1 : 1;
-    const spread = (1 - p) * 27 + 5;
-    const x = cx + side * spread * (0.35 + seededRandom(i + 1151) * 0.72);
+    const spread = (1 - p) * 40 + 7;
+    const x = cx + side * spread * (0.45 + seededRandom(i + 1151) * 0.9);
     const y = 292 + p * 171 + (seededRandom(i + 1171) - 0.5) * 8;
     const shimmer = 0.52 + 0.48 * Math.sin(time * 0.016 + i * 0.81);
     const bright = seededRandom(i + 1237) > 0.9;
