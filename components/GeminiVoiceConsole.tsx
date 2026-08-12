@@ -12,7 +12,7 @@ import {
 } from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
-import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { NuboHologram3D } from "@/components/NuboHologram3D";
 import { NuboQuestionHistory, recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -787,7 +787,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   return (
     <section className="console" aria-live="polite">
       <div className="orb-wrap">
-        <NuboEnergyOrb />
+        <NuboHologram3D />
       </div>
       <div className="status">
         <strong>{stateLabel[0]}</strong>

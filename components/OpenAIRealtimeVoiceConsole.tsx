@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { NuboHologram3D } from "@/components/NuboHologram3D";
 import {
   NuboQuestionHistory,
   recordNuboQuestion,
@@ -494,7 +494,7 @@ export function OpenAIRealtimeVoiceConsole({
   return (
     <section className="console" aria-live="polite">
       <div className="orb-wrap">
-        <NuboEnergyOrb />
+        <NuboHologram3D />
       </div>
       <div className="status">
         <strong>{stateLabel[0]}</strong>
