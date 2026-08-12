@@ -587,15 +587,15 @@ function drawFaceCore(
     let glow = 0;
 
     if (sizeClass < 0.7) {
-      size = 0.24 + seededRandom(seed + 151) * 0.62;
+      size = 0.2 + seededRandom(seed + 151) * 0.52;
       baseAlpha = 0.14 + seededRandom(seed + 173) * 0.34;
       glow = 0;
     } else if (sizeClass < 0.93) {
-      size = 0.88 + seededRandom(seed + 151) * 0.72;
+      size = 0.74 + seededRandom(seed + 151) * 0.61;
       baseAlpha = 0.24 + seededRandom(seed + 173) * 0.46;
       glow = 3.5;
     } else {
-      size = 1.65 + seededRandom(seed + 151) * 1.15;
+      size = 1.4 + seededRandom(seed + 151) * 0.98;
       baseAlpha = 0.46 + seededRandom(seed + 173) * 0.42;
       glow = 7.5;
     }
@@ -758,20 +758,32 @@ function drawOrangeNeckEnergy(
     const p = seededRandom(i + 5103);
     const side = seededRandom(i + 5129) < 0.5 ? -1 : 1;
     const spread = (1 - p) * 60 + 9;
+    const neckDriftX =
+      Math.sin(time * 0.0018 + i * 0.63) *
+      (0.42 + seededRandom(i + 5251) * 0.72);
+    const neckDriftY =
+      Math.cos(time * 0.00145 + i * 0.47) *
+      (0.3 + seededRandom(i + 5279) * 0.56);
     const x =
-      cx + side * spread * (0.34 + seededRandom(i + 5151) * 0.9);
-    const y = 288 + p * 180 + (seededRandom(i + 5171) - 0.5) * 11;
+      cx +
+      side * spread * (0.34 + seededRandom(i + 5151) * 0.9) +
+      neckDriftX;
+    const y =
+      288 +
+      p * 180 +
+      (seededRandom(i + 5171) - 0.5) * 11 +
+      neckDriftY;
     const sizeClass = seededRandom(i + 5181);
     const shimmer = 0.46 + 0.54 * Math.sin(time * 0.016 + i * 0.79);
 
-    let size = 0.26 + seededRandom(i + 5217) * 0.64;
+    let size = 0.22 + seededRandom(i + 5217) * 0.54;
     let alpha = 0.16 + seededRandom(i + 5193) * 0.36;
 
     if (sizeClass > 0.91) {
-      size = 1.15 + seededRandom(i + 5237) * 1.15;
+      size = 0.98 + seededRandom(i + 5237) * 0.98;
       alpha += 0.2;
     } else if (sizeClass > 0.68) {
-      size = 0.72 + seededRandom(i + 5237) * 0.72;
+      size = 0.61 + seededRandom(i + 5237) * 0.61;
       alpha += 0.1;
     }
 
@@ -808,10 +820,10 @@ function drawParticles(
 
     const motionScale =
       region === "ambient"
-        ? 0.75
+        ? 0.84
         : region === "head"
-          ? 0.28
-          : 0.24;
+          ? 0.31
+          : 0.27;
     const driftX =
       Math.sin(t * particle.speed + particle.phase) *
       motionScale *
@@ -850,7 +862,7 @@ function drawParticles(
     ctx.arc(
       particle.x + driftX,
       particle.y + driftY,
-      particle.size * (0.76 + power * 0.19 + speechLift * 0.06),
+      particle.size * 0.84 * (0.76 + power * 0.19 + speechLift * 0.06),
       0,
       Math.PI * 2,
     );
