@@ -69,8 +69,9 @@ jobs:
           EOF
 
           TMP_AAR="$(mktemp -d)"
+          mkdir -p "$TMP_AAR/empty"
           echo '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.google.android.gms.home.placeholder" />' > "$TMP_AAR/AndroidManifest.xml"
-          (cd "$TMP_AAR" && jar --create --file classes.jar)
+          (cd "$TMP_AAR" && jar --create --file classes.jar -C empty .)
           (cd "$TMP_AAR" && zip -q placeholder.aar AndroidManifest.xml classes.jar)
           cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           cp "$TMP_AAR/placeholder.aar" "$HOME_REPO/play-services-home-types/17.1.0/play-services-home-types-17.1.0.aar"
@@ -91,11 +92,13 @@ jobs:
           SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           echo "Gradle home: $GRADLE_HOME"
           echo "Android SDK: $SDK_ROOT"
+          echo "Java home: $JAVA_HOME"
 
           STAGE="$RUNNER_TEMP/nubo-v23-buildkit"
-          mkdir -p "$STAGE/project" "$STAGE/gradle" "$STAGE/android-sdk/platforms" "$STAGE/android-sdk/build-tools" "$STAGE/gradle-user-home"
+          mkdir -p "$STAGE/project" "$STAGE/gradle" "$STAGE/android-sdk/platforms" "$STAGE/android-sdk/build-tools" "$STAGE/gradle-user-home" "$STAGE/java17"
           cp -a android-nubo "$STAGE/project/"
           cp -a "$GRADLE_HOME/." "$STAGE/gradle/"
+          cp -a "$JAVA_HOME/." "$STAGE/java17/"
           cp -a "$SDK_ROOT/platforms/android-35" "$STAGE/android-sdk/platforms/"
           cp -a "$SDK_ROOT/build-tools/35.0.0" "$STAGE/android-sdk/build-tools/"
           cp -a "$SDK_ROOT/platform-tools" "$STAGE/android-sdk/"
