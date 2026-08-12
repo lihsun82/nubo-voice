@@ -7,7 +7,14 @@ const AVATAR_WIDTH = 560;
 const AVATAR_HEIGHT = 620;
 
 type ParticleRegion = "head" | "body" | "ambient";
-type AvatarGesture = "neutral" | "nod" | "question" | "shake" | "emphasis";
+type AvatarGesture =
+  | "neutral"
+  | "nod"
+  | "question"
+  | "shake"
+  | "think"
+  | "shrug"
+  | "emphasis";
 
 type HologramParticle = {
   x: number;
@@ -39,6 +46,7 @@ type GesturePose = {
   headY: number;
   headRoll: number;
   headScaleY: number;
+  shoulderLift: number;
 };
 
 function clamp01(value: number) {
@@ -50,7 +58,7 @@ function cyan(alpha: number) {
 }
 
 function cyanWhite(alpha: number) {
-  return `rgba(190, 255, 255, ${clamp01(alpha)})`;
+  return `rgba(206, 255, 255, ${clamp01(alpha)})`;
 }
 
 function gold(alpha: number) {
@@ -62,15 +70,15 @@ function phasePower(phase: NuboVoicePhase) {
     case "connecting":
       return 0.62;
     case "listening":
-      return 0.78;
+      return 0.8;
     case "thinking":
-      return 0.9;
+      return 0.92;
     case "speaking":
       return 1;
     case "error":
       return 0.38;
     default:
-      return 0.48;
+      return 0.5;
   }
 }
 
@@ -112,24 +120,24 @@ function seededRandom(seed: number) {
 function particleVisual(r1: number, r2: number, r3: number) {
   if (r1 > 0.972) {
     return {
-      size: 1.75 + r2 * 1.75,
-      alpha: 0.54 + r3 * 0.38,
-      flash: 1.15 + r2 * 0.55,
+      size: 1.8 + r2 * 1.85,
+      alpha: 0.68 + r3 * 0.3,
+      flash: 1.25 + r2 * 0.65,
     };
   }
 
   if (r1 > 0.84) {
     return {
-      size: 0.8 + r2 * 1.15,
-      alpha: 0.25 + r3 * 0.42,
-      flash: 0.72 + r2 * 0.5,
+      size: 0.82 + r2 * 1.18,
+      alpha: 0.34 + r3 * 0.46,
+      flash: 0.8 + r2 * 0.55,
     };
   }
 
   return {
-    size: 0.2 + r2 * 0.72,
-    alpha: 0.045 + r3 * 0.28,
-    flash: 0.34 + r2 * 0.45,
+    size: 0.2 + r2 * 0.74,
+    alpha: 0.07 + r3 * 0.32,
+    flash: 0.4 + r2 * 0.5,
   };
 }
 
@@ -184,7 +192,7 @@ function createParticles(count: number): HologramParticle[] {
           (r6 - 0.5) * 24,
         y: y + (r4 - 0.5) * (17 + vertical * 13),
         size: visual.size,
-        alpha: visual.alpha * (0.82 + vertical * 0.2),
+        alpha: visual.alpha * (0.84 + vertical * 0.2),
         speed: 0.18 + r1 * 1.02,
         phase: r2 * Math.PI * 2,
         depth: 0.34 + r5 * 0.66,
@@ -201,7 +209,7 @@ function createParticles(count: number): HologramParticle[] {
       x: AVATAR_WIDTH / 2 + Math.cos(angle) * radiusX,
       y: 320 + Math.sin(angle) * radiusY,
       size: visual.size * 0.9,
-      alpha: visual.alpha * 0.55,
+      alpha: visual.alpha * 0.58,
       speed: 0.13 + r2 * 0.62,
       phase: r4 * Math.PI * 2,
       depth: 0.25 + r5 * 0.52,
@@ -222,6 +230,14 @@ function classifyGesture(text: string): AvatarGesture {
     )
   ) {
     return "neutral";
+  }
+
+  if (/(不知道|不確定|說不準|很難說|看情況)/.test(normalized)) {
+    return "shrug";
+  }
+
+  if (/(讓我想|我想一下|思考|分析一下|我來想|先想想|考慮一下)/.test(normalized)) {
+    return "think";
   }
 
   if (
@@ -254,13 +270,17 @@ function classifyGesture(text: string): AvatarGesture {
 function gestureDuration(kind: AvatarGesture) {
   switch (kind) {
     case "nod":
-      return 1450;
-    case "question":
-      return 1800;
-    case "shake":
-      return 1550;
-    case "emphasis":
       return 1250;
+    case "question":
+      return 1500;
+    case "shake":
+      return 1350;
+    case "think":
+      return 1800;
+    case "shrug":
+      return 1350;
+    case "emphasis":
+      return 1050;
     default:
       return 0;
   }
@@ -269,52 +289,54 @@ function gestureDuration(kind: AvatarGesture) {
 function getGesturePose(
   gesture: GestureState,
   time: number,
-  phase: NuboVoicePhase,
 ): GesturePose {
-  const t = time / 1000;
   const elapsed = time - gesture.startedAt;
   const active =
     gesture.duration > 0 && elapsed >= 0 && elapsed < gesture.duration;
   const progress = active ? elapsed / gesture.duration : 1;
   const envelope = active ? Math.sin(clamp01(progress) * Math.PI) : 0;
-  const speaking = phase === "speaking";
 
-  let headX = Math.sin(t * 0.58) * 1.05;
-  let headY = Math.sin(t * 1.17 + 0.8) * 0.82;
-  let headRoll = Math.sin(t * 0.39) * 0.005;
+  let headX = 0;
+  let headY = 0;
+  let headRoll = 0;
   let headScaleY = 1;
+  let shoulderLift = 0;
 
-  if (speaking && !active) {
-    headY += Math.sin(t * 2.9) * 1.45 + Math.sin(t * 1.34) * 0.7;
-    headX += Math.sin(t * 0.96 + 0.4) * 1.05;
-    headRoll += Math.sin(t * 0.82 + 1.1) * 0.0065;
+  if (!active) {
+    return { headX, headY, headRoll, headScaleY, shoulderLift };
   }
-
-  if (!active) return { headX, headY, headRoll, headScaleY };
 
   if (gesture.kind === "nod") {
-    const wave = Math.sin(progress * Math.PI * 4.2) * envelope;
-    headY += wave * 7.2;
-    headScaleY -= Math.max(0, wave) * 0.018;
+    const wave = Math.sin(progress * Math.PI * 3.8) * envelope;
+    headY += wave * 6.3;
+    headScaleY -= Math.max(0, wave) * 0.014;
   } else if (gesture.kind === "question") {
-    headY -= envelope * 6.2;
-    headX += Math.sin(progress * Math.PI * 1.4) * envelope * 2.8;
-    headRoll += envelope * 0.039;
+    headY -= envelope * 4.8;
+    headX += envelope * 2.1;
+    headRoll += envelope * 0.032;
   } else if (gesture.kind === "shake") {
-    const wave = Math.sin(progress * Math.PI * 5.2) * envelope;
-    headX += wave * 7.5;
-    headRoll += wave * 0.017;
+    const wave = Math.sin(progress * Math.PI * 4.8) * envelope;
+    headX += wave * 6.4;
+    headRoll += wave * 0.014;
+  } else if (gesture.kind === "think") {
+    headY -= envelope * 7.2;
+    headX += envelope * 1.5;
+    headRoll -= envelope * 0.018;
+    headScaleY += envelope * 0.012;
+  } else if (gesture.kind === "shrug") {
+    shoulderLift = envelope * 4.6;
+    headY -= envelope * 1.4;
+    headRoll += Math.sin(progress * Math.PI * 2) * envelope * 0.012;
   } else if (gesture.kind === "emphasis") {
-    headY -= Math.sin(progress * Math.PI * 2.3) * envelope * 4;
-    headRoll += Math.sin(progress * Math.PI * 1.7) * envelope * 0.012;
+    const wave = Math.sin(progress * Math.PI * 2.2) * envelope;
+    headY += wave * 3.2;
   }
 
-  return { headX, headY, headRoll, headScaleY };
+  return { headX, headY, headRoll, headScaleY, shoulderLift };
 }
 
 function drawHeadWireframe(
   ctx: CanvasRenderingContext2D,
-  time: number,
   power: number,
   speechLift: number,
 ) {
@@ -322,8 +344,8 @@ function drawHeadWireframe(
   const cy = 205;
 
   ctx.save();
-  ctx.shadowColor = "rgba(35, 230, 245, 0.72)";
-  ctx.shadowBlur = 6 + power * 7 + speechLift * 4;
+  ctx.shadowColor = "rgba(35, 235, 250, 0.9)";
+  ctx.shadowBlur = 8 + power * 8 + speechLift * 7;
 
   for (let layer = 0; layer < 8; layer += 1) {
     ctx.beginPath();
@@ -337,10 +359,10 @@ function drawHeadWireframe(
       Math.PI * 2,
     );
     ctx.strokeStyle = cyan(
-      Math.max(0.035, 0.27 - layer * 0.026) *
-        (0.76 + power * 0.45 + speechLift * 0.18),
+      Math.max(0.05, 0.32 - layer * 0.026) *
+        (0.82 + power * 0.46 + speechLift * 0.24),
     );
-    ctx.lineWidth = layer === 0 ? 1.35 : 0.55;
+    ctx.lineWidth = layer === 0 ? 1.45 : 0.58;
     ctx.stroke();
   }
 
@@ -350,27 +372,27 @@ function drawHeadWireframe(
     const y = cy - 111 + band * 5.75;
     const ny = (y - cy) / 119;
     const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 86;
-    const breathing = Math.sin(time * 0.0038 + band * 0.41) * 0.9;
     ctx.beginPath();
     ctx.moveTo(cx - half, y);
-    ctx.quadraticCurveTo(cx + breathing, y + 1.4, cx + half, y);
-    ctx.strokeStyle = cyan(0.08 + power * 0.09 + speechLift * 0.06);
-    ctx.lineWidth = band % 6 === 0 ? 0.82 : 0.46;
+    ctx.quadraticCurveTo(cx, y + 1.2, cx + half, y);
+    ctx.strokeStyle = cyan(0.1 + power * 0.1 + speechLift * 0.09);
+    ctx.lineWidth = band % 6 === 0 ? 0.9 : 0.48;
     ctx.stroke();
   }
+
+  ctx.restore();
 }
 
 function drawTorsoWireframe(
   ctx: CanvasRenderingContext2D,
-  time: number,
   power: number,
   speechLift: number,
 ) {
   const cx = AVATAR_WIDTH / 2;
 
   ctx.save();
-  ctx.shadowColor = "rgba(35, 230, 245, 0.68)";
-  ctx.shadowBlur = 7 + power * 7 + speechLift * 5;
+  ctx.shadowColor = "rgba(35, 235, 250, 0.86)";
+  ctx.shadowBlur = 8 + power * 8 + speechLift * 7;
 
   for (let layer = 0; layer < 10; layer += 1) {
     const d = layer * 5.2;
@@ -410,10 +432,10 @@ function drawTorsoWireframe(
       590,
     );
     ctx.strokeStyle = cyan(
-      Math.max(0.034, 0.24 - layer * 0.022) *
-        (0.76 + power * 0.46 + speechLift * 0.18),
+      Math.max(0.048, 0.29 - layer * 0.022) *
+        (0.82 + power * 0.46 + speechLift * 0.24),
     );
-    ctx.lineWidth = layer === 0 ? 1.28 : 0.52;
+    ctx.lineWidth = layer === 0 ? 1.35 : 0.55;
     ctx.stroke();
   }
 
@@ -423,14 +445,15 @@ function drawTorsoWireframe(
     const y = 383 + band * 16.3;
     const progress = band / 12;
     const half = 100 + Math.pow(progress, 0.68) * 175;
-    const lift = Math.sin(time * 0.003 + band * 0.7) * 1.3;
     ctx.beginPath();
     ctx.moveTo(cx - half, y);
-    ctx.quadraticCurveTo(cx, y - 17 - progress * 7 + lift, cx + half, y);
-    ctx.strokeStyle = cyan(0.055 + power * 0.055 + speechLift * 0.04);
-    ctx.lineWidth = band % 3 === 0 ? 0.7 : 0.4;
+    ctx.quadraticCurveTo(cx, y - 17 - progress * 7, cx + half, y);
+    ctx.strokeStyle = cyan(0.07 + power * 0.065 + speechLift * 0.065);
+    ctx.lineWidth = band % 3 === 0 ? 0.74 : 0.42;
     ctx.stroke();
   }
+
+  ctx.restore();
 }
 
 function drawFaceCore(
@@ -443,12 +466,12 @@ function drawFaceCore(
   const cx = AVATAR_WIDTH / 2;
   const cy = 220;
   const speechRhythm = speaking
-    ? 0.5 +
-      Math.sin(time * 0.017) * 0.19 +
+    ? 0.58 +
+      Math.sin(time * 0.017) * 0.18 +
       Math.sin(time * 0.031 + 1.1) * 0.12
     : 0;
-  const drive = Math.max(0, Math.min(1.4, audioLevel * 2.6 + speechRhythm));
-  const pulse = 1 + Math.sin(time * 0.0052) * 0.015 + drive * 0.028;
+  const drive = Math.max(0, Math.min(1.4, audioLevel * 2.7 + speechRhythm));
+  const pulse = 1 + Math.sin(time * 0.0052) * 0.012 + drive * 0.026;
   const rx = 48 * pulse;
   const ry = 61 * pulse;
 
@@ -456,51 +479,52 @@ function drawFaceCore(
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
   ctx.clip();
-  ctx.shadowColor = `rgba(255, 145, 28, ${speaking ? 0.98 : 0.58})`;
-  ctx.shadowBlur = speaking ? 24 + drive * 25 : 9 + power * 5;
 
-  const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 66);
+  ctx.shadowColor = `rgba(255, 151, 30, ${speaking ? 1 : 0.68})`;
+  ctx.shadowBlur = speaking ? 30 + drive * 30 : 12 + power * 6;
+
+  const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 67);
   glow.addColorStop(
     0,
-    `rgba(255, 224, 118, ${Math.min(1, 0.42 + power * 0.16 + drive * 0.34)})`,
+    `rgba(255, 231, 135, ${Math.min(1, 0.52 + power * 0.17 + drive * 0.34)})`,
   );
   glow.addColorStop(
-    0.48,
-    `rgba(255, 143, 32, ${Math.min(0.94, 0.19 + power * 0.15 + drive * 0.34)})`,
+    0.46,
+    `rgba(255, 147, 32, ${Math.min(0.98, 0.25 + power * 0.16 + drive * 0.36)})`,
   );
   glow.addColorStop(1, "rgba(255, 105, 15, 0)");
   ctx.fillStyle = glow;
-  ctx.fillRect(cx - 70, cy - 76, 140, 152);
+  ctx.fillRect(cx - 72, cy - 78, 144, 156);
 
   for (let band = 0; band < 36; band += 1) {
     const y = cy - 54 + band * 3.1;
     const ny = (y - cy) / 56;
     const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 43;
-    const wave = Math.sin(time * 0.006 + band * 0.47) * (0.8 + power * 1.6);
-    const voice = Math.sin(time * 0.015 + band * 0.78) * drive * 5.2;
+    const wave = Math.sin(time * 0.006 + band * 0.47) * (0.7 + power * 1.4);
+    const voice = Math.sin(time * 0.015 + band * 0.78) * drive * 5.1;
     ctx.beginPath();
     ctx.moveTo(cx - half, y);
     ctx.quadraticCurveTo(cx + wave + voice, y + 1.4, cx + half, y);
-    ctx.strokeStyle = gold(0.2 + power * 0.24 + drive * 0.3);
-    ctx.lineWidth = band % 6 === 0 ? 1.05 : 0.58;
+    ctx.strokeStyle = gold(0.26 + power * 0.25 + drive * 0.32);
+    ctx.lineWidth = band % 6 === 0 ? 1.15 : 0.62;
     ctx.stroke();
   }
 
-  for (let i = 0; i < 74; i += 1) {
+  for (let i = 0; i < 82; i += 1) {
     const a = seededRandom(i + 701) * Math.PI * 2;
     const radial = Math.sqrt(seededRandom(i + 743));
     const sparkle =
-      0.45 + 0.55 * Math.sin(time * 0.017 + i * 1.31 + seededRandom(i + 797));
+      0.48 + 0.52 * Math.sin(time * 0.018 + i * 1.31 + seededRandom(i + 797));
     ctx.fillStyle = gold(
-      (0.16 + seededRandom(i + 821) * 0.4) *
-        (0.68 + sparkle * 0.48) *
-        (speaking ? 1.25 + drive * 0.45 : 0.82),
+      (0.2 + seededRandom(i + 821) * 0.46) *
+        (0.72 + sparkle * 0.5) *
+        (speaking ? 1.35 + drive * 0.5 : 0.92),
     );
     ctx.beginPath();
     ctx.arc(
       cx + Math.cos(a) * 42 * radial,
       cy + Math.sin(a) * 54 * radial,
-      0.35 + seededRandom(i + 853) * 0.95,
+      0.38 + seededRandom(i + 853) * 1.02,
       0,
       Math.PI * 2,
     );
@@ -519,43 +543,59 @@ function drawOrangeNeckEnergy(
 ) {
   const cx = AVATAR_WIDTH / 2;
   const rhythm = speaking
-    ? 0.42 + Math.sin(time * 0.013) * 0.16 + audioLevel * 0.8
-    : 0.08 + Math.sin(time * 0.004) * 0.03;
+    ? 0.72 +
+      Math.sin(time * 0.015) * 0.15 +
+      Math.sin(time * 0.027 + 0.9) * 0.1 +
+      audioLevel * 0.95
+    : 0.14 + Math.sin(time * 0.004) * 0.025;
   const drive = clamp01(rhythm);
 
   ctx.save();
+
+  const neckGlow = ctx.createRadialGradient(cx, 365, 8, cx, 365, 92);
+  neckGlow.addColorStop(
+    0,
+    `rgba(255, 174, 51, ${0.14 + power * 0.08 + drive * 0.34})`,
+  );
+  neckGlow.addColorStop(
+    0.46,
+    `rgba(255, 123, 24, ${0.08 + drive * 0.22})`,
+  );
+  neckGlow.addColorStop(1, "rgba(255, 106, 14, 0)");
+  ctx.fillStyle = neckGlow;
+  ctx.fillRect(cx - 110, 270, 220, 205);
+
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  ctx.shadowColor = "rgba(255, 145, 30, 0.88)";
-  ctx.shadowBlur = 7 + power * 7 + drive * 14;
+  ctx.shadowColor = "rgba(255, 157, 34, 0.98)";
+  ctx.shadowBlur = speaking ? 18 + drive * 24 : 9 + power * 7;
 
   for (let sideIndex = 0; sideIndex < 2; sideIndex += 1) {
     const side = sideIndex === 0 ? -1 : 1;
-    for (let branch = 0; branch < 6; branch += 1) {
-      const spread = 8 + branch * 5.3;
-      const jitter = Math.sin(time * 0.004 + branch * 1.2) * 1.2;
+    for (let branch = 0; branch < 7; branch += 1) {
+      const spread = 8 + branch * 5.1;
       ctx.beginPath();
-      ctx.moveTo(cx + side * (16 + branch * 2.1), 282 + branch * 1.4);
+      ctx.moveTo(cx + side * (15 + branch * 2), 281 + branch * 1.3);
       ctx.bezierCurveTo(
         cx + side * (23 + spread * 0.72),
         312,
-        cx + side * (18 + spread * 0.55 + jitter),
-        339,
+        cx + side * (18 + spread * 0.55),
+        340,
         cx + side * (16 + spread * 0.46),
-        365,
+        367,
       );
       ctx.bezierCurveTo(
         cx + side * (12 + spread * 0.3),
-        394,
+        396,
         cx + side * (8 + spread * 0.16),
-        420,
-        cx + side * (6 + branch * 1.3),
-        449,
+        421,
+        cx + side * (6 + branch * 1.2),
+        450,
       );
       ctx.strokeStyle = gold(
-        0.22 + power * 0.22 + drive * 0.32 - branch * 0.018,
+        0.3 + power * 0.2 + drive * 0.44 - branch * 0.017,
       );
-      ctx.lineWidth = branch === 0 ? 1.8 : 0.72 + (5 - branch) * 0.08;
+      ctx.lineWidth = branch === 0 ? 2.15 : 0.86 + (6 - branch) * 0.07;
       ctx.stroke();
     }
   }
@@ -571,25 +611,37 @@ function drawOrangeNeckEnergy(
       cx + stem * 1.8,
       461,
     );
-    ctx.strokeStyle = gold(0.17 + power * 0.2 + drive * 0.28);
-    ctx.lineWidth = stem === 0 ? 1.7 : 0.72;
+    ctx.strokeStyle = gold(0.24 + power * 0.18 + drive * 0.4);
+    ctx.lineWidth = stem === 0 ? 2 : 0.82;
     ctx.stroke();
   }
 
-  for (let i = 0; i < 94; i += 1) {
+  for (let i = 0; i < 118; i += 1) {
     const p = seededRandom(i + 1103);
     const side = seededRandom(i + 1129) < 0.5 ? -1 : 1;
     const spread = (1 - p) * 27 + 5;
     const x = cx + side * spread * (0.35 + seededRandom(i + 1151) * 0.72);
     const y = 292 + p * 171 + (seededRandom(i + 1171) - 0.5) * 8;
-    const shimmer = 0.5 + 0.5 * Math.sin(time * 0.014 + i * 0.81);
+    const shimmer = 0.52 + 0.48 * Math.sin(time * 0.016 + i * 0.81);
+    const bright = seededRandom(i + 1237) > 0.9;
     ctx.fillStyle = gold(
-      (0.13 + seededRandom(i + 1193) * 0.35) *
-        (0.6 + shimmer * 0.55) *
-        (1 + drive * 0.65),
+      (0.18 + seededRandom(i + 1193) * 0.4) *
+        (0.68 + shimmer * 0.58) *
+        (1 + drive * 0.95),
     );
+    if (bright && speaking) {
+      ctx.shadowBlur = 8 + drive * 8;
+    } else {
+      ctx.shadowBlur = 0;
+    }
     ctx.beginPath();
-    ctx.arc(x, y, 0.3 + seededRandom(i + 1217) * 0.82, 0, Math.PI * 2);
+    ctx.arc(
+      x,
+      y,
+      0.36 + seededRandom(i + 1217) * (bright ? 1.2 : 0.88),
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 
@@ -607,32 +659,40 @@ function drawParticles(
   for (const particle of particles) {
     if (particle.region !== region) continue;
 
-    const ambientBoost = region === "ambient" ? 1.7 : 1;
+    const motionScale =
+      region === "ambient"
+        ? 0.75
+        : region === "head"
+          ? 0.28
+          : 0.24;
     const driftX =
       Math.sin(t * particle.speed + particle.phase) *
-      (1.4 + power * 2.1) *
+      motionScale *
       particle.depth *
-      particle.drift *
-      ambientBoost;
+      particle.drift;
     const driftY =
       Math.cos(t * particle.speed * 0.73 + particle.phase) *
-      (1.15 + power * 1.8) *
+      motionScale *
+      0.8 *
       particle.depth *
-      particle.drift *
-      ambientBoost;
-    const sparkle = 0.42 + 0.58 * Math.sin(t * 2.15 + particle.phase);
-    const flash = Math.max(0, Math.sin(t * (3.1 + particle.flash) + particle.phase));
+      particle.drift;
+
+    const sparkle = 0.46 + 0.54 * Math.sin(t * 2.35 + particle.phase);
+    const flash = Math.max(
+      0,
+      Math.sin(t * (3.3 + particle.flash) + particle.phase),
+    );
     const alpha =
       particle.alpha *
-      (0.54 + sparkle * 0.58 + flash * particle.flash * 0.16) *
-      (0.72 + power * 0.5) *
-      (0.72 + particle.depth * 0.4) *
-      (1 + speechLift * 0.64);
+      (0.64 + sparkle * 0.62 + flash * particle.flash * 0.22) *
+      (0.78 + power * 0.5) *
+      (0.75 + particle.depth * 0.38) *
+      (1 + speechLift * 0.82);
 
-    const brightSpark = particle.size > 1.65 && flash > 0.55;
+    const brightSpark = particle.size > 1.55 && flash > 0.42;
     if (brightSpark) {
-      ctx.shadowColor = "rgba(190, 255, 255, 0.72)";
-      ctx.shadowBlur = 5 + particle.size * 2.4;
+      ctx.shadowColor = "rgba(206, 255, 255, 0.9)";
+      ctx.shadowBlur = 7 + particle.size * 2.8;
       ctx.fillStyle = cyanWhite(alpha);
     } else {
       ctx.shadowBlur = 0;
@@ -643,12 +703,13 @@ function drawParticles(
     ctx.arc(
       particle.x + driftX,
       particle.y + driftY,
-      particle.size * (0.72 + power * 0.18 + speechLift * 0.04),
+      particle.size * (0.76 + power * 0.19 + speechLift * 0.06),
       0,
       Math.PI * 2,
     );
     ctx.fill();
   }
+
   ctx.shadowBlur = 0;
 }
 
@@ -662,20 +723,20 @@ function drawNLogo(
   const cx = AVATAR_WIDTH / 2;
   const cy = 475;
   const rhythm = speaking
-    ? 0.56 +
+    ? 0.58 +
       Math.sin(time * 0.014) * 0.18 +
       Math.sin(time * 0.026 + 0.8) * 0.12
-    : 0.1 + Math.sin(time * 0.004) * 0.035;
+    : 0.12 + Math.sin(time * 0.004) * 0.035;
   const drive = clamp01(rhythm + audioLevel * 1.45);
 
   const halo = ctx.createRadialGradient(cx, cy, 2, cx, cy, 46 + drive * 10);
   halo.addColorStop(
     0,
-    `rgba(116, 248, 255, ${0.09 + power * 0.07 + drive * 0.22})`,
+    `rgba(116, 248, 255, ${0.11 + power * 0.08 + drive * 0.24})`,
   );
   halo.addColorStop(
     0.52,
-    `rgba(18, 184, 255, ${0.05 + power * 0.05 + drive * 0.12})`,
+    `rgba(18, 184, 255, ${0.06 + power * 0.05 + drive * 0.14})`,
   );
   halo.addColorStop(1, "rgba(20, 170, 255, 0)");
   ctx.fillStyle = halo;
@@ -684,8 +745,8 @@ function drawNLogo(
   ctx.fill();
 
   ctx.save();
-  ctx.shadowColor = "rgba(54, 235, 255, 0.95)";
-  ctx.shadowBlur = speaking ? 14 + drive * 16 : 7;
+  ctx.shadowColor = "rgba(54, 235, 255, 0.98)";
+  ctx.shadowBlur = speaking ? 15 + drive * 17 : 8;
 
   const dotCount = 36;
   for (let stroke = 0; stroke < 3; stroke += 1) {
@@ -698,7 +759,6 @@ function drawNLogo(
         x = cx - 23;
         y = cy - 30 + p * 60;
       } else if (stroke === 1) {
-        // Standard capital N: diagonal goes from top-left to bottom-right.
         x = cx - 23 + p * 46;
         y = cy - 30 + p * 60;
       } else {
@@ -711,9 +771,11 @@ function drawNLogo(
       const jitterY = (seededRandom(seed + 937) - 0.5) * 3;
       const shimmer =
         0.55 + 0.45 * Math.sin(time * 0.015 + index * 0.66 + stroke);
-      const alpha = 0.35 + power * 0.18 + drive * 0.36 + shimmer * 0.12;
+      const alpha = 0.4 + power * 0.18 + drive * 0.38 + shimmer * 0.14;
       const size =
-        0.58 + seededRandom(seed + 991) * 1.05 + (speaking ? drive * 0.18 : 0);
+        0.62 +
+        seededRandom(seed + 991) * 1.08 +
+        (speaking ? drive * 0.2 : 0);
 
       ctx.fillStyle = cyan(alpha);
       ctx.beginPath();
@@ -725,7 +787,10 @@ function drawNLogo(
   ctx.restore();
 }
 
-function applyHeadPose(ctx: CanvasRenderingContext2D, pose: GesturePose) {
+function applyHeadPose(
+  ctx: CanvasRenderingContext2D,
+  pose: GesturePose,
+) {
   const cx = AVATAR_WIDTH / 2;
   const pivotY = 318;
   ctx.translate(cx, pivotY);
@@ -748,22 +813,15 @@ function renderHologram(
   const cx = AVATAR_WIDTH / 2;
   const speaking = phase === "speaking";
   const speechLift = speaking
-    ? 0.46 +
-      Math.sin(time * 0.012) * 0.1 +
-      Math.sin(time * 0.021 + 0.7) * 0.08 +
-      audioLevel * 0.72
+    ? 0.62 +
+      Math.sin(time * 0.014) * 0.08 +
+      Math.sin(time * 0.024 + 0.7) * 0.06 +
+      audioLevel * 0.75
     : 0;
-  const bodySway = Math.sin(t * 0.43) * (1.45 + power * 1.72);
-  const breathe = Math.sin(t * 1.34) * (1.45 + power * 1.02);
-  const bodyRoll = Math.sin(t * 0.29 + 0.5) * 0.0045;
-  const pose = getGesturePose(gesture, time, phase);
+  const pose = getGesturePose(gesture, time);
 
   ctx.clearRect(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
   ctx.save();
-  ctx.translate(cx, 390);
-  ctx.rotate(bodyRoll);
-  ctx.translate(-cx, -390);
-  ctx.translate(bodySway, breathe * 0.2);
   ctx.globalCompositeOperation = "lighter";
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -771,25 +829,31 @@ function renderHologram(
   const aura = ctx.createRadialGradient(cx, 270, 40, cx, 310, 314);
   aura.addColorStop(
     0,
-    `rgba(14, 163, 190, ${0.046 + power * 0.032 + speechLift * 0.052})`,
+    `rgba(14, 163, 190, ${0.052 + power * 0.035 + speechLift * 0.06})`,
   );
   aura.addColorStop(
     0.58,
-    `rgba(0, 88, 116, ${0.027 + power * 0.022 + speechLift * 0.025})`,
+    `rgba(0, 88, 116, ${0.03 + power * 0.024 + speechLift * 0.03})`,
   );
   aura.addColorStop(1, "rgba(0, 35, 55, 0)");
   ctx.fillStyle = aura;
   ctx.fillRect(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
 
-  drawParticles(ctx, particles, "ambient", t, power, speechLift * 0.7);
-  drawTorsoWireframe(ctx, time, power, speechLift);
+  drawParticles(ctx, particles, "ambient", t, power, speechLift * 0.75);
+
+  ctx.save();
+  if (pose.shoulderLift > 0) {
+    ctx.translate(0, -pose.shoulderLift);
+  }
+  drawTorsoWireframe(ctx, power, speechLift);
   drawParticles(ctx, particles, "body", t, power, speechLift);
   drawOrangeNeckEnergy(ctx, time, power, audioLevel, speaking);
   drawNLogo(ctx, time, power, audioLevel, speaking);
+  ctx.restore();
 
   ctx.save();
   applyHeadPose(ctx, pose);
-  drawHeadWireframe(ctx, time, power, speechLift);
+  drawHeadWireframe(ctx, power, speechLift);
   drawParticles(ctx, particles, "head", t, power, speechLift);
   drawFaceCore(ctx, time, power, audioLevel, speaking);
   ctx.restore();
@@ -800,11 +864,11 @@ function renderHologram(
   scanGradient.addColorStop(0, "rgba(45, 227, 255, 0)");
   scanGradient.addColorStop(
     0.5,
-    cyan(0.22 + power * 0.18 + speechLift * 0.14),
+    cyan(0.26 + power * 0.2 + speechLift * 0.17),
   );
   scanGradient.addColorStop(1, "rgba(45, 227, 255, 0)");
   ctx.strokeStyle = scanGradient;
-  ctx.lineWidth = 0.75;
+  ctx.lineWidth = 0.82;
   ctx.beginPath();
   ctx.moveTo(72, scanY);
   ctx.lineTo(488, scanY);
@@ -858,11 +922,7 @@ export function NuboEnergyOrb() {
     canvas.style.display = "block";
     ctx.setTransform(profile.dpr, 0, 0, profile.dpr, 0, 0);
 
-    const setGestureFromText = (text: string) => {
-      const normalized = text.trim();
-      if (!normalized || normalized === lastTranscript) return;
-      lastTranscript = normalized;
-      const kind = classifyGesture(normalized);
+    const startGesture = (kind: AvatarGesture) => {
       gesture = {
         kind,
         startedAt: performance.now(),
@@ -870,10 +930,28 @@ export function NuboEnergyOrb() {
       };
     };
 
+    const setGestureFromText = (text: string) => {
+      const normalized = text.trim();
+      if (!normalized || normalized === lastTranscript) return;
+      lastTranscript = normalized;
+      startGesture(classifyGesture(normalized));
+    };
+
     const onPhase = (event: Event) => {
       const next = (event as CustomEvent<{ phase?: NuboVoicePhase }>).detail
         ?.phase;
-      if (next) phase = next;
+      if (!next) return;
+
+      phase = next;
+
+      if (next === "thinking") {
+        const now = performance.now();
+        const active =
+          gesture.duration > 0 &&
+          now - gesture.startedAt >= 0 &&
+          now - gesture.startedAt < gesture.duration;
+        if (!active) startGesture("think");
+      }
     };
 
     const onAudioLevel = (event: Event) => {
@@ -892,6 +970,7 @@ export function NuboEnergyOrb() {
       const transcript = document.querySelector<HTMLElement>(".voice-transcript");
       if (transcript?.textContent) setGestureFromText(transcript.textContent);
     });
+
     transcriptObserver.observe(document.body, {
       subtree: true,
       childList: true,
@@ -902,7 +981,7 @@ export function NuboEnergyOrb() {
       animationFrame = 0;
       if (!visible) return;
 
-      audioLevel += (targetAudioLevel - audioLevel) * 0.2;
+      audioLevel += (targetAudioLevel - audioLevel) * 0.22;
       targetAudioLevel *= 0.9;
 
       if (time - lastFrameAt >= profile.frameInterval) {
