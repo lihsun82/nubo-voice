@@ -5,6 +5,7 @@ import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
 const AVATAR_WIDTH = 560;
 const AVATAR_HEIGHT = 620;
+const ACTION_AMPLITUDE = 1.4;
 
 type ParticleRegion = "head" | "body" | "ambient";
 type AvatarGesture =
@@ -308,28 +309,32 @@ function getGesturePose(
 
   if (gesture.kind === "nod") {
     const wave = Math.sin(progress * Math.PI * 3.8) * envelope;
-    headY += wave * 6.3;
-    headScaleY -= Math.max(0, wave) * 0.014;
+    headY += wave * 6.3 * ACTION_AMPLITUDE;
+    headScaleY -= Math.max(0, wave) * 0.014 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "question") {
-    headY -= envelope * 4.8;
-    headX += envelope * 2.1;
-    headRoll += envelope * 0.032;
+    headY -= envelope * 4.8 * ACTION_AMPLITUDE;
+    headX += envelope * 2.1 * ACTION_AMPLITUDE;
+    headRoll += envelope * 0.032 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "shake") {
     const wave = Math.sin(progress * Math.PI * 4.8) * envelope;
-    headX += wave * 6.4;
-    headRoll += wave * 0.014;
+    headX += wave * 6.4 * ACTION_AMPLITUDE;
+    headRoll += wave * 0.014 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "think") {
-    headY -= envelope * 7.2;
-    headX += envelope * 1.5;
-    headRoll -= envelope * 0.018;
-    headScaleY += envelope * 0.012;
+    headY -= envelope * 7.2 * ACTION_AMPLITUDE;
+    headX += envelope * 1.5 * ACTION_AMPLITUDE;
+    headRoll -= envelope * 0.018 * ACTION_AMPLITUDE;
+    headScaleY += envelope * 0.012 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "shrug") {
-    shoulderLift = envelope * 4.6;
-    headY -= envelope * 1.4;
-    headRoll += Math.sin(progress * Math.PI * 2) * envelope * 0.012;
+    shoulderLift = envelope * 4.6 * ACTION_AMPLITUDE;
+    headY -= envelope * 1.4 * ACTION_AMPLITUDE;
+    headRoll +=
+      Math.sin(progress * Math.PI * 2) *
+      envelope *
+      0.012 *
+      ACTION_AMPLITUDE;
   } else if (gesture.kind === "emphasis") {
     const wave = Math.sin(progress * Math.PI * 2.2) * envelope;
-    headY += wave * 3.2;
+    headY += wave * 3.2 * ACTION_AMPLITUDE;
   }
 
   return { headX, headY, headRoll, headScaleY, shoulderLift };
