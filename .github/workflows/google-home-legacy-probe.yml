@@ -20,10 +20,28 @@ jobs:
           curl -sS -i --max-time 20 https://nubo.ainubo.com/api/smart-home/light || true
           echo
 
-      - name: Probe legacy Render bridge
+      - name: Probe legacy Render route
         shell: bash
         run: |
           set +e
-          echo '=== legacy render ==='
+          echo '=== legacy render GET ==='
           curl -sS -i --max-time 30 https://nubo-cloud.onrender.com/api/smart-home/light || true
+          echo
+
+      - name: Test legacy bridge ON then OFF
+        shell: bash
+        run: |
+          set +e
+          echo '=== legacy ON ==='
+          curl -sS -i --max-time 30 \
+            -X POST https://nubo-cloud.onrender.com/api/smart-home/light \
+            -H 'Content-Type: application/json' \
+            --data '{"action":"on","room":"NUBO_DIAG","device":"tapo_p100"}' || true
+          echo
+          sleep 2
+          echo '=== legacy OFF ==='
+          curl -sS -i --max-time 30 \
+            -X POST https://nubo-cloud.onrender.com/api/smart-home/light \
+            -H 'Content-Type: application/json' \
+            --data '{"action":"off","room":"NUBO_DIAG","device":"tapo_p100"}' || true
           echo
