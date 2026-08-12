@@ -1,0 +1,29 @@
+name: One-shot NUBO particle speaking sync
+
+on:
+  push:
+    paths:
+      - '.github/workflows/one-shot-particle-speaking-sync.yml'
+      - '.github/scripts/apply_particle_speaking_sync.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply particle speaking sync
+        run: python .github/scripts/apply_particle_speaking_sync.py
+      - name: Commit production changes
+        run: |
+          git config user.name "NUBO Build Bot"
+          git config user.email "84670777+lihsun82@users.noreply.github.com"
+          git add components/NuboEnergyOrb.tsx lib/browser-audio.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(web): sync hologram particles to full NUBO speech playback"
+          git pull --rebase origin main
+          git push origin HEAD:main
