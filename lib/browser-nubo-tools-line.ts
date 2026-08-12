@@ -5,6 +5,7 @@ import {
   geminiFunctionDeclarations as baseDeclarations,
   type FunctionCall,
 } from "@/lib/browser-nubo-tools";
+import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import {
   forceDirectMobileOpen,
@@ -156,6 +157,19 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
+  if (call.name === "google_home_light") {
+    const args = call.args ?? {};
+    const action = args.action === "off" ? "off" : "on";
+    const room = String(args.room ?? "").trim();
+    const device = String(args.device ?? "").trim();
+
+    return controlGoogleHome({
+      action,
+      room: room || undefined,
+      device: device || undefined,
+    });
+  }
+
   if (call.name === "device_setting") {
     const args = call.args ?? {};
     const target = args.target === "brightness" ? "brightness" : "audio";
@@ -235,10 +249,11 @@ export const geminiSystemInstruction = `
 15. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
 16. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
 17. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
-18. 客人提出客訴、抱怨、設備異常、清潔、噪音、退款帳務、遺失物、服務需求、特殊協助或任何需要現場人員介入的需求時，立即進入客務建檔流程。必須先取得四項資料：客人姓氏、房號、聯絡方式、客訴或需求內容。客人已經說過的資料不要重問，只補問缺少的欄位。
-19. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
-20. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
-21. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
+18. 使用者說開燈、關燈、打開燈、關掉燈、開房間燈、關房間燈，或任何明確燈光開關要求時，一律立即呼叫google_home_light。沒有指定房間時不要追問，直接控制這台NUBO綁定的預設Google Home房間；有指定房間或房號時才傳room。不得只用口頭回答「已開燈／已關燈」而不呼叫工具。
+19. 客人提出客訴、抱怨、設備異常、清潔、噪音、退款帳務、遺失物、服務需求、特殊協助或任何需要現場人員介入的需求時，立即進入客務建檔流程。必須先取得四項資料：客人姓氏、房號、聯絡方式、客訴或需求內容。客人已經說過的資料不要重問，只補問缺少的欄位。
+20. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
+21. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
+22. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
@@ -311,6 +326,32 @@ export const geminiFunctionDeclarations = [
 
     return declaration;
   }),
+  {
+    name: "google_home_light",
+    description:
+      "控制Google Home燈光。使用者說開燈、關燈、打開燈、關掉燈或指定房間燈光時使用。若未指定房間，room留空，系統會控制這台NUBO已綁定的預設房間。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        action: {
+          type: "STRING",
+          enum: ["on", "off"],
+          description: "on代表開燈；off代表關燈。",
+        },
+        room: {
+          type: "STRING",
+          nullable: true,
+          description: "使用者明確指定的Google Home房間或房號；未指定時留空。",
+        },
+        device: {
+          type: "STRING",
+          nullable: true,
+          description: "使用者明確指定的燈具名稱；未指定時留空。",
+        },
+      },
+      required: ["action"],
+    },
+  },
   {
     name: "guest_service_alert",
     description:
