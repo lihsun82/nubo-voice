@@ -12,36 +12,33 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe current production bridge
+      - name: Probe production provider and test if ready
         shell: bash
         run: |
-          set +e
-          echo '=== current production ==='
-          curl -sS -i --max-time 20 https://nubo.ainubo.com/api/smart-home/light || true
-          echo
+          set -u
+          echo '=== production status ==='
+          STATUS="$(curl -sS --max-time 20 https://nubo.ainubo.com/api/smart-home/light)"
+          echo "$STATUS"
+          AVAILABLE="$(printf '%s' "$STATUS" | jq -r '.available // false')"
+          if [ "$AVAILABLE" != "true" ]; then
+            echo 'NO_CONFIGURED_PROVIDER'
+            exit 0
+          fi
 
-      - name: Probe legacy Render route
-        shell: bash
-        run: |
-          set +e
-          echo '=== legacy render GET ==='
-          curl -sS -i --max-time 30 https://nubo-cloud.onrender.com/api/smart-home/light || true
-          echo
-
-      - name: Test legacy bridge ON then OFF
-        shell: bash
-        run: |
-          set +e
-          echo '=== legacy ON ==='
-          curl -sS -i --max-time 30 \
-            -X POST https://nubo-cloud.onrender.com/api/smart-home/light \
+          echo '=== production ON ==='
+          ON="$(curl -sS --max-time 35 \
+            -X POST https://nubo.ainubo.com/api/smart-home/light \
             -H 'Content-Type: application/json' \
-            --data '{"action":"on","room":"NUBO_DIAG","device":"tapo_p100"}' || true
-          echo
+            --data '{"action":"on","room":"NUBO_DIAG","device":"投射燈"}')"
+          echo "$ON"
           sleep 2
-          echo '=== legacy OFF ==='
-          curl -sS -i --max-time 30 \
-            -X POST https://nubo-cloud.onrender.com/api/smart-home/light \
+
+          echo '=== production OFF ==='
+          OFF="$(curl -sS --max-time 35 \
+            -X POST https://nubo.ainubo.com/api/smart-home/light \
             -H 'Content-Type: application/json' \
-            --data '{"action":"off","room":"NUBO_DIAG","device":"tapo_p100"}' || true
-          echo
+            --data '{"action":"off","room":"NUBO_DIAG","device":"投射燈"}')"
+          echo "$OFF"
+
+          test "$(printf '%s' "$ON" | jq -r '.ok // false')" = "true"
+          test "$(printf '%s' "$OFF" | jq -r '.ok // false')" = "true"
