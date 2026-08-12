@@ -6,6 +6,8 @@ import {
 const NUBO_AUDIO_ECO_IDLE_MS = 60_000;
 const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
 
+let activePlaybackQueue: PcmPlaybackQueue | null = null;
+
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -54,6 +56,15 @@ function calculateRms(input: Float32Array) {
     sum += value * value;
   }
   return Math.sqrt(sum / Math.max(1, input.length));
+}
+
+function dispatchVoiceLevel(level: number) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("nubo:voice-level", {
+      detail: { level: Math.max(0, Math.min(1, level)) },
+    }),
+  );
 }
 
 function addForegroundListeners(listener: () => void) {
@@ -128,26 +139,15 @@ export class MicrophonePcmStream {
     });
 
     this.context = new AudioContext({ latencyHint: "interactive" });
-
-    /*
-     * The microphone graph is capture-only. On Android, connecting its silent
-     * tail to context.destination can keep Chrome in communication/call output
-     * mode and route unrelated music to the earpiece. Prefer a no-output sink
-     * when supported and always terminate the graph at a virtual MediaStream
-     * destination rather than the phone hardware output.
-     */
     await disableHardwareOutputForCaptureContext(this.context);
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
 
-    /*
-     * 2048在常見48kHz裝置約43ms，符合即時語音的小音訊區塊，
-     * 同時避免手機累積一秒後才傳送造成明顯延遲。
-     */
     this.processor = this.context.createScriptProcessor(2048, 1, 1);
     this.mute = this.context.createGain();
     this.captureDestination = this.context.createMediaStreamDestination();
     this.mute.gain.value = 0;
+
     this.processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
       const rms = calculateRms(input);
@@ -198,6 +198,7 @@ export class MicrophonePcmStream {
 
       onAudio(base64);
     };
+
     this.source.connect(this.processor);
     this.processor.connect(this.mute);
     this.mute.connect(this.captureDestination);
@@ -246,15 +247,40 @@ export class PcmPlaybackQueue {
   private sources = new Set<AudioBufferSourceNode>();
   private readonly scheduleLeadSeconds = 0.08;
   private foregroundListenersAttached = false;
+  private retired = false;
+
+  constructor() {
+    this.claimExclusiveOutput();
+  }
+
+  private claimExclusiveOutput() {
+    if (activePlaybackQueue && activePlaybackQueue !== this) {
+      activePlaybackQueue.retire();
+    }
+    activePlaybackQueue = this;
+    this.retired = false;
+  }
+
+  private retire() {
+    if (this.retired) return;
+    this.retired = true;
+    this.detachForegroundListeners();
+    this.interrupt();
+    const staleContext = this.context;
+    this.context = null;
+    if (staleContext) {
+      void staleContext.close().catch(() => undefined);
+    }
+  }
 
   private readonly handleForeground = () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "visible" && !this.retired) {
       void this.resume();
     }
   };
 
   private attachForegroundListeners() {
-    if (this.foregroundListenersAttached) return;
+    if (this.foregroundListenersAttached || this.retired) return;
     addForegroundListeners(this.handleForeground);
     this.foregroundListenersAttached = true;
   }
@@ -266,18 +292,26 @@ export class PcmPlaybackQueue {
   }
 
   private async ensureContext() {
+    if (this.retired) return null;
+
+    if (activePlaybackQueue !== this) {
+      this.claimExclusiveOutput();
+    }
+
     if (!this.context) {
       this.context = new AudioContext({ latencyHint: "playback" });
       this.attachForegroundListeners();
     }
 
     await preferMultimediaAudioContext(this.context);
-    if (this.context.state === "suspended") await this.context.resume();
+    if (this.context.state === "suspended") {
+      await this.context.resume().catch(() => undefined);
+    }
     return this.context;
   }
 
   async resume() {
-    if (!this.context) return false;
+    if (this.retired || !this.context) return false;
     await preferMultimediaAudioContext(this.context);
     if (this.context.state === "suspended") {
       await this.context.resume().catch(() => undefined);
@@ -287,18 +321,29 @@ export class PcmPlaybackQueue {
   }
 
   async enqueue(base64: string, sampleRate = 24000) {
+    if (this.retired) return;
     const context = await this.ensureContext();
+    if (!context || this.retired || activePlaybackQueue !== this) return;
+
     const bytes = fromBase64(base64);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const sampleCount = Math.floor(bytes.byteLength / 2);
+    if (sampleCount <= 0) return;
+
     const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
     const channel = audioBuffer.getChannelData(0);
     for (let i = 0; i < sampleCount; i += 1) {
       channel[i] = view.getInt16(i * 2, true) / 0x8000;
     }
+
+    // Publish the actual NUBO output level so the hologram can brighten and
+    // the N particle logo can pulse while speech audio is being scheduled.
+    dispatchVoiceLevel(Math.min(1, calculateRms(channel) * 4.6));
+
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(context.destination);
+
     const startAt = Math.max(
       context.currentTime + this.scheduleLeadSeconds,
       this.nextStart,
@@ -306,7 +351,12 @@ export class PcmPlaybackQueue {
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
     this.sources.add(source);
-    source.onended = () => this.sources.delete(source);
+    source.onended = () => {
+      this.sources.delete(source);
+      if (this.sources.size === 0 && this.nextStart <= context.currentTime + 0.02) {
+        dispatchVoiceLevel(0);
+      }
+    };
   }
 
   interrupt() {
@@ -319,12 +369,16 @@ export class PcmPlaybackQueue {
     }
     this.sources.clear();
     this.nextStart = this.context?.currentTime ?? 0;
+    dispatchVoiceLevel(0);
   }
 
   async close() {
     this.detachForegroundListeners();
     this.interrupt();
-    await this.context?.close().catch(() => undefined);
+    this.retired = true;
+    if (activePlaybackQueue === this) activePlaybackQueue = null;
+    const context = this.context;
     this.context = null;
+    await context?.close().catch(() => undefined);
   }
 }
