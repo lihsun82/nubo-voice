@@ -22,6 +22,19 @@ export default function SmartHomePage() {
   const [devices, setDevices] = useState<GoogleHomeDevice[]>([]);
   const [selectedRoom, setSelectedRoom] = useState("");
 
+  async function refreshStatus() {
+    const status = await getGoogleHomeBridgeStatus();
+    const ready = Boolean(status.available && status.enabled);
+    setAvailable(ready);
+    setBridgeMode(status.mode === "native" ? "native" : "webhook");
+    setMessage(
+      status.message ||
+        status.error ||
+        (ready ? "Google Home 已連線。" : "Google Home 尚未完成串接。"),
+    );
+    return status;
+  }
+
   useEffect(() => {
     let cancelled = false;
     setSelectedRoom(getDefaultGoogleHomeRoom());
@@ -65,32 +78,46 @@ export default function SmartHomePage() {
     const result = (await run(
       bridgeMode === "native"
         ? "請在 Google 畫面授權 NUBO 存取你的住宅與裝置…"
-        : "正在確認 Google Home 智慧燈橋接…",
+        : "正在檢查 Google Home 連線能力…",
       connectGoogleHome,
-    )) as { message?: string } | null;
+    )) as { message?: string; available?: boolean; enabled?: boolean; mode?: string } | null;
     if (!result) return;
+
+    if (result.mode === "native") setBridgeMode("native");
+    if (result.available !== undefined || result.enabled !== undefined) {
+      setAvailable(Boolean(result.available && result.enabled));
+    }
     setMessage(
       result.message ||
         (bridgeMode === "native"
           ? "Google Home 授權完成，請掃描房間與裝置。"
           : "Google Home 智慧燈橋接已就緒。"),
     );
+    void refreshStatus();
   }
 
   async function scan() {
     const result = (await run(
       bridgeMode === "native"
         ? "正在讀取 Google Home 房間與裝置…"
-        : "正在確認智慧燈橋接…",
-      listGoogleHomeDevices,
+        : "正在重新檢查 Google Home 狀態…",
+      bridgeMode === "native" ? listGoogleHomeDevices : refreshStatus,
     )) as
       | {
           rooms?: GoogleHomeRoom[];
           devices?: GoogleHomeDevice[];
           message?: string;
+          available?: boolean;
+          enabled?: boolean;
         }
       | null;
     if (!result) return;
+
+    if (bridgeMode !== "native") {
+      setAvailable(Boolean(result.available && result.enabled));
+      if (result.message) setMessage(result.message);
+      return;
+    }
 
     const nextRooms = result.rooms ?? [];
     const nextDevices = result.devices ?? [];
@@ -124,11 +151,7 @@ export default function SmartHomePage() {
     const target = selectedRoom || "預設智慧燈";
     const result = (await run(
       action === "on" ? `正在開啟 ${target}…` : `正在關閉 ${target}…`,
-      () =>
-        controlGoogleHome({
-          action,
-          room: selectedRoom || undefined,
-        }),
+      () => controlGoogleHome({ action, room: selectedRoom || undefined }),
     )) as
       | {
           controlled?: number;
@@ -191,18 +214,18 @@ export default function SmartHomePage() {
               <p>
                 {bridgeMode === "native"
                   ? "NUBO 直接透過 Android Home API 控制已授權的住宅裝置。"
-                  : "目前使用智慧燈橋接模式，可直接由 NUBO 語音控制既有 Google Home／Tapo 燈具。"}
+                  : "目前未偵測到 Android Native Home API；可按下方按鈕檢查目前 APK／智慧燈橋接狀態。"}
               </p>
             </div>
             <span>{available ? "Ready" : "Setup"}</span>
           </div>
 
           <div className="nubo-action-row">
-            <button disabled={!available || busy} onClick={connect}>
-              {bridgeMode === "native" ? "連接 Google Home" : "確認橋接"}
+            <button disabled={busy} onClick={connect}>
+              {bridgeMode === "native" ? "連接 Google Home" : "檢查／連線"}
             </button>
-            <button disabled={!available || busy} onClick={scan}>
-              {bridgeMode === "native" ? "掃描房間／裝置" : "檢查狀態"}
+            <button disabled={busy} onClick={scan}>
+              {bridgeMode === "native" ? "掃描房間／裝置" : "重新檢查狀態"}
             </button>
           </div>
 
@@ -233,7 +256,7 @@ export default function SmartHomePage() {
               </select>
             </label>
           ) : (
-            <p>橋接模式不需要在 APK 重新選房，會使用既有智慧燈事件設定。</p>
+            <p>若目前 APK 尚未包含 Native Home API，這裡會維持橋接診斷模式並顯示實際錯誤。</p>
           )}
 
           <div className="nubo-action-row" style={{ marginTop: 16 }}>
