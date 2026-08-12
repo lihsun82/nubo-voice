@@ -3,7 +3,7 @@ import {
   preferMultimediaAudioContext,
 } from "@/lib/browser-speaker-output";
 
-const NUBO_AUDIO_ECO_IDLE_MS = 60_000;
+const NUBO_AUDIO_ECO_IDLE_MS = 30_000;
 const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
 
 let activePlaybackQueue: PcmPlaybackQueue | null = null;

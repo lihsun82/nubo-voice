@@ -1,6 +1,6 @@
 "use client";
 
-const ECO_IDLE_MS = 60_000;
+const ECO_IDLE_MS = 30_000;
 const ECO_WAKE_PROBE_MS = 8_000;
 const ECO_POLL_MS = 250;
 
@@ -104,16 +104,22 @@ export class NuboRealtimeEcoGate {
   private async tick() {
     if (
       this.destroyed ||
-      !this.sleeping ||
       document.visibilityState !== "visible"
     ) {
       return;
     }
 
+    const now = Date.now();
+
+    if (!this.sleeping) {
+      if (now - this.lastActivityAt >= ECO_IDLE_MS) {
+        await this.suspend("idle");
+      }
+      return;
+    }
+
     const analyser = this.analyser;
     if (!analyser || this.context?.state !== "running") return;
-
-    const now = Date.now();
     analyser.getFloatTimeDomainData(this.samples);
     let sum = 0;
     for (let i = 0; i < this.samples.length; i += 1) {

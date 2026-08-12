@@ -50,6 +50,7 @@ const NUBO_EXTERNAL_RETURN_STORAGE_KEY =
 
 const NUBO_WAKE_WORDS = ["嗨nubo", "嗨 nubo", "ha nubo", "nubo", "兄弟", "有人嗎"];
 const NUBO_SILENCE_WORDS = ["閉嘴", "安靜", "退下", "不要講話", "先不要說話", "不要說話", "停止說話", "停", "stop"];
+const NUBO_ECO_IDLE_MS = 30_000;
 
 function normalizeVoiceCommandText(text: string) {
   return text.toLowerCase().replace(/\s+/g, "");
@@ -74,6 +75,11 @@ export function GeminiVoiceConsole() {
   const silentUntilWakeRef = useRef(false);
   const foregroundResumeTimerRef =
     useRef<number | null>(null);
+  const ecoSleepingRef = useRef(false);
+  const ecoTimerRef = useRef<number | null>(null);
+  const lastInteractionAtRef = useRef(Date.now());
+  const ecoRecognitionRef = useRef<any>(null);
+  const ecoRecognitionRestartRef = useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -132,6 +138,13 @@ export function GeminiVoiceConsole() {
       const text = customEvent.detail?.transcript?.trim();
 
       if (text) {
+        if (ecoSleepingRef.current) {
+          if (includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+            wakeFromEco();
+          }
+          return;
+        }
+
         if (includesVoiceCommand(text, NUBO_SILENCE_WORDS)) {
           enterSilentUntilWake();
           return;
@@ -160,6 +173,17 @@ export function GeminiVoiceConsole() {
   }, []);
 
   useEffect(() => {
+    const handleNativeWake = () => {
+      if (ecoSleepingRef.current) wakeFromEco();
+    };
+    window.addEventListener("nubo:native-wake", handleNativeWake);
+    return () => {
+      window.removeEventListener("nubo:native-wake", handleNativeWake);
+      stopEcoWakeListener();
+    };
+  }, []);
+
+  useEffect(() => {
     if (state === "idle") notifyNuboVoicePhase("idle");
     else if (state === "connecting") notifyNuboVoicePhase("connecting");
     else if (state === "connected") notifyNuboVoicePhase("listening");
@@ -170,6 +194,119 @@ export function GeminiVoiceConsole() {
     if (!reconnectTimerRef.current) return;
     window.clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = null;
+  };
+
+  const noteVoiceInteraction = () => {
+    lastInteractionAtRef.current = Date.now();
+  };
+
+  const stopEcoWakeListener = () => {
+    if (ecoRecognitionRestartRef.current) {
+      window.clearTimeout(ecoRecognitionRestartRef.current);
+      ecoRecognitionRestartRef.current = null;
+    }
+
+    const recognition = ecoRecognitionRef.current;
+    ecoRecognitionRef.current = null;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try { recognition.stop(); } catch {}
+      try { recognition.abort?.(); } catch {}
+    }
+
+    try {
+      const nativeBridge = (window as typeof window & {
+        NuboNative?: { stopWakeListener?: () => boolean };
+      }).NuboNative;
+      nativeBridge?.stopWakeListener?.();
+    } catch {}
+  };
+
+  const wakeFromEco = () => {
+    if (!ecoSleepingRef.current) return;
+    ecoSleepingRef.current = false;
+    stopEcoWakeListener();
+    sessionHandleRef.current = null;
+    reconnectAttemptsRef.current = 0;
+    noteVoiceInteraction();
+    setTranscript("NUBO已喚醒，正在恢復語音…");
+    void connect(false);
+  };
+
+  const startEcoWakeListener = () => {
+    stopEcoWakeListener();
+
+    try {
+      const nativeBridge = (window as typeof window & {
+        NuboNative?: { startWakeListener?: () => boolean };
+      }).NuboNative;
+      if (nativeBridge?.startWakeListener?.()) return;
+    } catch {}
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    ecoRecognitionRef.current = recognition;
+    recognition.lang = "zh-TW";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const text = event.results[i]?.[0]?.transcript?.trim();
+        if (text && includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+          wakeFromEco();
+          return;
+        }
+      }
+    };
+
+    recognition.onerror = () => {
+      // System recognition may temporarily fail; onend retries while eco sleeping.
+    };
+
+    recognition.onend = () => {
+      if (!ecoSleepingRef.current || ecoRecognitionRef.current !== recognition) return;
+      ecoRecognitionRestartRef.current = window.setTimeout(() => {
+        if (!ecoSleepingRef.current || ecoRecognitionRef.current !== recognition) return;
+        try { recognition.start(); } catch {}
+      }, 700);
+    };
+
+    try { recognition.start(); } catch {}
+  };
+
+  const enterEcoSleep = async () => {
+    if (ecoSleepingRef.current || closingRef.current) return;
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    ecoSleepingRef.current = true;
+    clearReconnectTimer();
+    reconnectAttemptsRef.current = 0;
+    sessionHandleRef.current = null;
+
+    // Detach first so old socket onclose cannot schedule a cloud reconnect.
+    socketRef.current = null;
+    try { socket.close(1000, "NUBO 30s eco sleep"); } catch {}
+
+    await microphoneRef.current?.stop();
+    await playbackRef.current?.close();
+    microphoneRef.current = null;
+    playbackRef.current = null;
+
+    setState("idle");
+    setError("");
+    setTranscript(
+      "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",
+    );
+    notifyNuboVoicePhase("idle");
+    startEcoWakeListener();
   };
 
   const markSpeaking = () => {
@@ -191,6 +328,7 @@ export function GeminiVoiceConsole() {
   const scheduleReconnect = (reason = "即時語音連線已中斷") => {
     if (
       closingRef.current ||
+      ecoSleepingRef.current ||
       reconnectTimerRef.current
     ) {
       return;
@@ -242,6 +380,8 @@ export function GeminiVoiceConsole() {
     );
 
     closingRef.current = true;
+    ecoSleepingRef.current = false;
+    stopEcoWakeListener();
     clearReconnectTimer();
     reconnectAttemptsRef.current = 0;
     socketRef.current?.close();
@@ -256,6 +396,9 @@ export function GeminiVoiceConsole() {
 
   const connect = async (isReconnect = false) => {
     clearReconnectTimer();
+    ecoSleepingRef.current = false;
+    stopEcoWakeListener();
+    noteVoiceInteraction();
     setError("");
 
     window.localStorage.setItem(
@@ -316,6 +459,7 @@ export function GeminiVoiceConsole() {
 
           if (message.setupComplete) {
             reconnectAttemptsRef.current = 0;
+            noteVoiceInteraction();
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
             await microphone.start((data) => {
@@ -340,6 +484,7 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
+                noteVoiceInteraction();
                 markSpeaking();
                 await playbackRef.current?.enqueue(part.inlineData.data, 24000);
               }
@@ -349,8 +494,10 @@ export function GeminiVoiceConsole() {
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
           if (typeof modelText === "string" && modelText.trim()) {
+            noteVoiceInteraction();
             setTranscript(modelText.trim());
           } else if (typeof userText === "string" && userText.trim()) {
+            noteVoiceInteraction();
             const trimmedUserText = userText.trim();
 
             recordNuboQuestion(
@@ -600,6 +747,24 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     }
   };
 
+  useEffect(() => {
+    ecoTimerRef.current = window.setInterval(() => {
+      if (ecoSleepingRef.current || closingRef.current) return;
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS) {
+        void enterEcoSleep();
+      }
+    }, 1000);
+
+    return () => {
+      if (ecoTimerRef.current) {
+        window.clearInterval(ecoTimerRef.current);
+        ecoTimerRef.current = null;
+      }
+    };
+  }, []);
+
   /*
    * 手機從LINE、YouTube、地圖或其他App
    * 回到NUBO時，自動重建語音連線。
@@ -626,6 +791,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
         if (
           silentUntilWakeRef.current ||
+          ecoSleepingRef.current ||
           resumeInProgress
         ) {
           return;

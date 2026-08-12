@@ -10,6 +10,11 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.os.Handler;
+import android.os.Looper;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -30,6 +35,9 @@ public final class MainActivity extends Activity {
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
 
     private WebView webView;
+    private SpeechRecognizer wakeRecognizer;
+    private boolean wakeListenerEnabled = false;
+    private final Handler wakeHandler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -179,6 +187,18 @@ public final class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean startWakeListener() {
+            activity.runOnUiThread(activity::startNativeWakeListener);
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean stopWakeListener() {
+            activity.runOnUiThread(activity::stopNativeWakeListener);
+            return true;
+        }
+
+        @JavascriptInterface
         public boolean openExternalApp(String targetUrl, String label) {
             if (targetUrl == null || label == null) {
                 return false;
@@ -198,6 +218,116 @@ public final class MainActivity extends Activity {
                 () -> activity.launchExternalTarget(safeTarget, safeLabel)
             );
             return true;
+        }
+    }
+
+    private boolean isNativeWakeWord(String text) {
+        if (text == null) return false;
+        String normalized = text
+            .toLowerCase(Locale.ROOT)
+            .replace(" ", "")
+            .replace("　", "");
+        return normalized.contains("nubo")
+            || normalized.contains("努波")
+            || normalized.contains("努寶")
+            || normalized.contains("奴波")
+            || normalized.contains("兄弟")
+            || normalized.contains("有人嗎")
+            || normalized.contains("有人吗");
+    }
+
+    private void dispatchNativeWake() {
+        wakeListenerEnabled = false;
+        if (wakeRecognizer != null) {
+            try { wakeRecognizer.cancel(); } catch (Exception ignored) {}
+        }
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('nubo:native-wake',{detail:{source:'android'}}));",
+            null
+        );
+    }
+
+    private void handleWakeRecognition(Bundle results) {
+        if (!wakeListenerEnabled || results == null) return;
+        ArrayList<String> matches = results.getStringArrayList(
+            SpeechRecognizer.RESULTS_RECOGNITION
+        );
+        if (matches == null) return;
+        for (String text : matches) {
+            if (isNativeWakeWord(text)) {
+                dispatchNativeWake();
+                return;
+            }
+        }
+    }
+
+    private void scheduleWakeRestart() {
+        if (!wakeListenerEnabled) return;
+        wakeHandler.removeCallbacksAndMessages(null);
+        wakeHandler.postDelayed(this::startWakeRecognition, 700);
+    }
+
+    private void startWakeRecognition() {
+        if (!wakeListenerEnabled || wakeRecognizer == null) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            wakeListenerEnabled = false;
+            return;
+        }
+
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+        );
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW");
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        try {
+            wakeRecognizer.startListening(intent);
+        } catch (Exception ignored) {
+            scheduleWakeRestart();
+        }
+    }
+
+    private void startNativeWakeListener() {
+        if (wakeListenerEnabled) return;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            requestMicrophonePermissionIfNeeded();
+            return;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+
+        wakeListenerEnabled = true;
+        if (wakeRecognizer == null) {
+            wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            wakeRecognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) {}
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) { scheduleWakeRestart(); }
+                @Override public void onResults(Bundle results) {
+                    handleWakeRecognition(results);
+                    scheduleWakeRestart();
+                }
+                @Override public void onPartialResults(Bundle partialResults) {
+                    handleWakeRecognition(partialResults);
+                }
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
+        }
+        startWakeRecognition();
+    }
+
+    private void stopNativeWakeListener() {
+        wakeListenerEnabled = false;
+        wakeHandler.removeCallbacksAndMessages(null);
+        if (wakeRecognizer != null) {
+            try { wakeRecognizer.cancel(); } catch (Exception ignored) {}
         }
     }
 
@@ -413,6 +543,11 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopNativeWakeListener();
+        if (wakeRecognizer != null) {
+            wakeRecognizer.destroy();
+            wakeRecognizer = null;
+        }
         webView.removeJavascriptInterface("NuboNative");
         webView.stopLoading();
         webView.destroy();
