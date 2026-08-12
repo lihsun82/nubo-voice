@@ -471,71 +471,136 @@ function drawFaceCore(
   const cx = AVATAR_WIDTH / 2;
   const cy = 220;
   const speechRhythm = speaking
-    ? 0.58 +
-      Math.sin(time * 0.017) * 0.18 +
-      Math.sin(time * 0.031 + 1.1) * 0.12
-    : 0;
-  const drive = Math.max(0, Math.min(1.4, audioLevel * 2.7 + speechRhythm));
-  const pulse = 1 + Math.sin(time * 0.0052) * 0.012 + drive * 0.026;
-  const rx = 48 * pulse;
-  const ry = 61 * pulse;
+    ? 0.56 +
+      Math.sin(time * 0.017) * 0.17 +
+      Math.sin(time * 0.031 + 1.1) * 0.11
+    : 0.06 + Math.sin(time * 0.0045) * 0.025;
+  const drive = Math.max(0, Math.min(1.45, audioLevel * 2.75 + speechRhythm));
+  const breathe = 0.5 + 0.5 * Math.sin(time * 0.0048);
+  const burst = speaking ? drive * (0.55 + 0.45 * Math.sin(time * 0.013)) : 0;
 
   ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-  ctx.clip();
 
-  ctx.shadowColor = `rgba(255, 151, 30, ${speaking ? 1 : 0.68})`;
-  ctx.shadowBlur = speaking ? 30 + drive * 30 : 12 + power * 6;
-
-  const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, 67);
-  glow.addColorStop(
+  // FACE_PARTICLE_CLOUD_V1: only a small luminous nucleus remains; no filled orange ball.
+  const nucleusRadius = 13 + drive * 4;
+  const nucleus = ctx.createRadialGradient(cx, cy + 3, 1, cx, cy + 3, nucleusRadius * 2.7);
+  nucleus.addColorStop(
     0,
-    `rgba(255, 231, 135, ${Math.min(1, 0.52 + power * 0.17 + drive * 0.34)})`,
+    `rgba(255, 231, 142, ${Math.min(0.74, 0.24 + power * 0.12 + drive * 0.26)})`,
   );
-  glow.addColorStop(
-    0.46,
-    `rgba(255, 147, 32, ${Math.min(0.98, 0.25 + power * 0.16 + drive * 0.36)})`,
+  nucleus.addColorStop(
+    0.28,
+    `rgba(255, 161, 43, ${Math.min(0.5, 0.12 + drive * 0.22)})`,
   );
-  glow.addColorStop(1, "rgba(255, 105, 15, 0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(cx - 72, cy - 78, 144, 156);
+  nucleus.addColorStop(1, "rgba(255, 117, 20, 0)");
+  ctx.fillStyle = nucleus;
+  ctx.beginPath();
+  ctx.arc(cx, cy + 3, nucleusRadius * 2.7, 0, Math.PI * 2);
+  ctx.fill();
 
-  for (let band = 0; band < 36; band += 1) {
-    const y = cy - 54 + band * 3.1;
-    const ny = (y - cy) / 56;
-    const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 43;
-    const wave = Math.sin(time * 0.006 + band * 0.47) * (0.7 + power * 1.4);
-    const voice = Math.sin(time * 0.015 + band * 0.78) * drive * 5.1;
+  // Broken holographic bands: short, translucent segments rather than a solid ellipse.
+  ctx.shadowColor = "rgba(255, 151, 30, 0.78)";
+  ctx.shadowBlur = speaking ? 10 + drive * 16 : 4 + power * 4;
+  for (let band = 0; band < 31; band += 1) {
+    const y = cy - 48 + band * 3.15;
+    const ny = (y - cy) / 51;
+    const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 39;
+    if (half < 2) continue;
+
+    const wave = Math.sin(time * 0.006 + band * 0.47) * (0.6 + power * 1.1);
+    const voice = Math.sin(time * 0.015 + band * 0.78) * drive * 3.8;
+    const gap = 3.5 + seededRandom(band + 1701) * 8;
+    const leftEnd = cx - gap - seededRandom(band + 1733) * 5;
+    const rightStart = cx + gap + seededRandom(band + 1769) * 5;
+    const edgeFade = Math.max(0, 1 - Math.abs(ny));
+    const alpha = (0.08 + power * 0.09 + drive * 0.16) * (0.35 + edgeFade * 0.65);
+
+    ctx.strokeStyle = gold(alpha);
+    ctx.lineWidth = band % 6 === 0 ? 0.9 : 0.46;
+
     ctx.beginPath();
     ctx.moveTo(cx - half, y);
-    ctx.quadraticCurveTo(cx + wave + voice, y + 1.4, cx + half, y);
-    ctx.strokeStyle = gold(0.26 + power * 0.25 + drive * 0.32);
-    ctx.lineWidth = band % 6 === 0 ? 1.15 : 0.62;
+    ctx.quadraticCurveTo(cx - half * 0.35 + wave + voice, y + 1, leftEnd, y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(rightStart, y);
+    ctx.quadraticCurveTo(cx + half * 0.35 + wave - voice, y + 1, cx + half, y);
     ctx.stroke();
   }
 
-  for (let i = 0; i < 82; i += 1) {
-    const a = seededRandom(i + 701) * Math.PI * 2;
-    const radial = Math.sqrt(seededRandom(i + 743));
-    const sparkle =
-      0.48 + 0.52 * Math.sin(time * 0.018 + i * 1.31 + seededRandom(i + 797));
-    ctx.fillStyle = gold(
-      (0.2 + seededRandom(i + 821) * 0.46) *
-        (0.72 + sparkle * 0.5) *
-        (speaking ? 1.35 + drive * 0.5 : 0.92),
-    );
+  ctx.shadowBlur = 0;
+
+  // Dense center + loose halo. Particles extend outside the former face ellipse and fade naturally.
+  for (let i = 0; i < 188; i += 1) {
+    const seed = i + 1901;
+    const angle = seededRandom(seed) * Math.PI * 2;
+    const radialSeed = seededRandom(seed + 43);
+    const isHalo = radialSeed > 0.69;
+    const radial = isHalo
+      ? 0.72 + seededRandom(seed + 67) * 0.72
+      : Math.pow(seededRandom(seed + 67), 0.72) * 0.9;
+    const rx = isHalo ? 52 : 39;
+    const ry = isHalo ? 67 : 50;
+    const outward = speaking ? burst * (1.5 + seededRandom(seed + 89) * 5.5) : 0;
+    const microDrift = Math.sin(time * (0.0018 + seededRandom(seed + 113) * 0.002) + angle) *
+      (isHalo ? 1.25 : 0.55);
+
+    const x =
+      cx +
+      Math.cos(angle) * (rx * radial + outward) +
+      microDrift * Math.cos(angle);
+    const y =
+      cy +
+      Math.sin(angle) * (ry * radial + outward * 0.82) +
+      microDrift * Math.sin(angle);
+
+    const shimmer =
+      0.38 + 0.62 * Math.max(0, Math.sin(time * 0.015 + i * 0.93 + angle));
+    const edge = Math.max(0.08, 1 - radial * 0.66);
+    const bright = seededRandom(seed + 149) > 0.9;
+    const alpha =
+      (0.1 + seededRandom(seed + 173) * (bright ? 0.62 : 0.38)) *
+      edge *
+      (0.58 + shimmer * 0.62) *
+      (speaking ? 1.12 + drive * 0.45 : 0.82 + breathe * 0.12);
+    const size =
+      (bright ? 0.85 : 0.28) +
+      seededRandom(seed + 211) * (bright ? 1.55 : 0.9);
+
+    if (bright) {
+      ctx.shadowColor = "rgba(255, 188, 73, 0.95)";
+      ctx.shadowBlur = speaking ? 7 + drive * 8 : 4;
+    } else {
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.fillStyle = gold(alpha);
     ctx.beginPath();
-    ctx.arc(
-      cx + Math.cos(a) * 42 * radial,
-      cy + Math.sin(a) * 54 * radial,
-      0.38 + seededRandom(i + 853) * 1.02,
-      0,
-      Math.PI * 2,
-    );
+    ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  // A few diffuse wisps make the edge dissolve instead of closing into a sphere.
+  for (let wisp = 0; wisp < 5; wisp += 1) {
+    const a = seededRandom(wisp + 2401) * Math.PI * 2;
+    const radius = 30 + seededRandom(wisp + 2437) * 34 + burst * 4;
+    const wx = cx + Math.cos(a) * radius;
+    const wy = cy + Math.sin(a) * radius * 1.18;
+    const wr = 12 + seededRandom(wisp + 2473) * 16 + drive * 3;
+    const haze = ctx.createRadialGradient(wx, wy, 0, wx, wy, wr);
+    haze.addColorStop(
+      0,
+      `rgba(255, 155, 37, ${0.04 + drive * 0.055 + (speaking ? 0.04 : 0)})`,
+    );
+    haze.addColorStop(1, "rgba(255, 126, 25, 0)");
+    ctx.fillStyle = haze;
+    ctx.beginPath();
+    ctx.arc(wx, wy, wr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
