@@ -1,0 +1,29 @@
+name: One-shot find Home SDK history
+
+on:
+  push:
+    branches:
+      - feat/home-sdk-1-10-0-native-restore
+    paths:
+      - '.github/workflows/one-shot-find-home-sdk-history.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  find-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch every branch and tag
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --tags --force
+      - name: Search complete Git history for Home SDK archives and Maven artifacts
+        run: |
+          echo '=== matching historical paths ==='
+          git log --all --name-only --pretty=format: | sort -u | grep -Ei 'home\.android\.sdk|play-services-home|\.aar$|home.*sdk.*\.zip|sdk.*home.*\.zip' || true
+          echo '=== matching object paths ==='
+          git rev-list --objects --all | grep -Ei 'home\.android\.sdk|play-services-home|\.aar$|home.*sdk.*\.zip|sdk.*home.*\.zip' || true
+          echo '=== repository root historical SDK-like paths ==='
+          git log --all --name-only --pretty=format: | sort -u | grep -Ei '(^|/)(sdk|home|google).*\.(zip|tgz|tar|aar|pom)$' || true
