@@ -12,33 +12,24 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe production provider and test if ready
+      - name: Probe historical Railway smart-home bridge
         shell: bash
         run: |
-          set -u
-          echo '=== production status ==='
-          STATUS="$(curl -sS --max-time 20 https://nubo.ainubo.com/api/smart-home/light)"
-          echo "$STATUS"
-          AVAILABLE="$(printf '%s' "$STATUS" | jq -r '.available // false')"
-          if [ "$AVAILABLE" != "true" ]; then
-            echo 'NO_CONFIGURED_PROVIDER'
-            exit 0
-          fi
-
-          echo '=== production ON ==='
-          ON="$(curl -sS --max-time 35 \
-            -X POST https://nubo.ainubo.com/api/smart-home/light \
+          set +e
+          BASE='https://nubo-voice-production.up.railway.app/api/smart-home/light'
+          echo '=== historical Railway GET ==='
+          curl -sS -i --max-time 25 "$BASE" || true
+          echo
+          echo '=== historical Railway ON ==='
+          curl -sS -i --max-time 35 \
+            -X POST "$BASE" \
             -H 'Content-Type: application/json' \
-            --data '{"action":"on","room":"NUBO_DIAG","device":"投射燈"}')"
-          echo "$ON"
+            --data '{"action":"on","room":"NUBO_DIAG","device":"投射燈"}' || true
+          echo
           sleep 2
-
-          echo '=== production OFF ==='
-          OFF="$(curl -sS --max-time 35 \
-            -X POST https://nubo.ainubo.com/api/smart-home/light \
+          echo '=== historical Railway OFF ==='
+          curl -sS -i --max-time 35 \
+            -X POST "$BASE" \
             -H 'Content-Type: application/json' \
-            --data '{"action":"off","room":"NUBO_DIAG","device":"投射燈"}')"
-          echo "$OFF"
-
-          test "$(printf '%s' "$ON" | jq -r '.ok // false')" = "true"
-          test "$(printf '%s' "$OFF" | jq -r '.ok // false')" = "true"
+            --data '{"action":"off","room":"NUBO_DIAG","device":"投射燈"}' || true
+          echo
