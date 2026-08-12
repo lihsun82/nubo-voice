@@ -95,21 +95,21 @@ function getRenderProfile(): RenderProfile {
   }
 
   if (cores <= 4) {
-    return { particleCount: 3200, frameInterval: 1000 / 26, dpr: 1 };
+    return { particleCount: 3200, frameInterval: 1000 / 26, dpr: Math.min(window.devicePixelRatio || 1, 1.1) };
   }
 
   if (mobile) {
     return {
       particleCount: 6200,
       frameInterval: 1000 / 30,
-      dpr: Math.min(window.devicePixelRatio || 1, 1.12),
+      dpr: Math.min(window.devicePixelRatio || 1, 1.35),
     };
   }
 
   return {
     particleCount: 12400,
     frameInterval: 1000 / 45,
-    dpr: Math.min(window.devicePixelRatio || 1, 1.32),
+    dpr: Math.min(window.devicePixelRatio || 1, 1.7),
   };
 }
 
@@ -352,7 +352,7 @@ function drawHeadWireframe(
   ctx.shadowColor = "rgba(35, 235, 250, 0.9)";
   ctx.shadowBlur = 8 + power * 8 + speechLift * 7;
 
-  for (let layer = 0; layer < 8; layer += 1) {
+  for (let layer = 0; layer < 10; layer += 1) {
     ctx.beginPath();
     ctx.ellipse(
       cx,
@@ -373,8 +373,8 @@ function drawHeadWireframe(
 
   ctx.shadowBlur = 0;
 
-  for (let band = 0; band < 39; band += 1) {
-    const y = cy - 111 + band * 5.75;
+  for (let band = 0; band < 54; band += 1) {
+    const y = cy - 113 + band * 4.26;
     const ny = (y - cy) / 119;
     const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 86;
     ctx.beginPath();
@@ -399,7 +399,7 @@ function drawTorsoWireframe(
   ctx.shadowColor = "rgba(35, 235, 250, 0.86)";
   ctx.shadowBlur = 8 + power * 8 + speechLift * 7;
 
-  for (let layer = 0; layer < 10; layer += 1) {
+  for (let layer = 0; layer < 12; layer += 1) {
     const d = layer * 5.2;
     ctx.beginPath();
     ctx.moveTo(cx - 53 - d * 0.2, 326 + d * 0.08);
@@ -446,9 +446,9 @@ function drawTorsoWireframe(
 
   ctx.shadowBlur = 0;
 
-  for (let band = 0; band < 13; band += 1) {
-    const y = 383 + band * 16.3;
-    const progress = band / 12;
+  for (let band = 0; band < 20; band += 1) {
+    const y = 379 + band * 10.35;
+    const progress = band / 19;
     const half = 100 + Math.pow(progress, 0.68) * 175;
     ctx.beginPath();
     ctx.moveTo(cx - half, y);
@@ -471,80 +471,106 @@ function drawFaceCore(
   const cx = AVATAR_WIDTH / 2;
   const cy = 220;
   const speechRhythm = speaking
-    ? 0.56 +
-      Math.sin(time * 0.017) * 0.17 +
-      Math.sin(time * 0.031 + 1.1) * 0.11
-    : 0.06 + Math.sin(time * 0.0045) * 0.025;
-  const drive = Math.max(0, Math.min(1.45, audioLevel * 2.75 + speechRhythm));
+    ? 0.58 +
+      Math.sin(time * 0.017) * 0.18 +
+      Math.sin(time * 0.031 + 1.1) * 0.12
+    : 0.07 + Math.sin(time * 0.0045) * 0.025;
+  const drive = Math.max(0, Math.min(1.45, audioLevel * 2.8 + speechRhythm));
   const breathe = 0.5 + 0.5 * Math.sin(time * 0.0048);
-  const burst = speaking ? drive * (0.55 + 0.45 * Math.sin(time * 0.013)) : 0;
+  const burst = speaking ? drive * (0.5 + 0.5 * Math.sin(time * 0.013)) : 0;
 
   ctx.save();
 
-  // FACE_PARTICLE_CLOUD_V1: only a small luminous nucleus remains; no filled orange ball.
-  const nucleusRadius = 13 + drive * 4;
-  const nucleus = ctx.createRadialGradient(cx, cy + 3, 1, cx, cy + 3, nucleusRadius * 2.7);
-  nucleus.addColorStop(
+  // Hologram V3.7: diffuse orange molecular haze, never a filled orange sphere.
+  const faceHaze = ctx.createRadialGradient(
+    cx,
+    cy + 2,
+    2,
+    cx,
+    cy + 2,
+    82 + drive * 5,
+  );
+  faceHaze.addColorStop(
     0,
-    `rgba(255, 231, 142, ${Math.min(0.74, 0.24 + power * 0.12 + drive * 0.26)})`,
+    `rgba(255, 190, 66, ${0.11 + power * 0.045 + drive * 0.09})`,
   );
-  nucleus.addColorStop(
-    0.28,
-    `rgba(255, 161, 43, ${Math.min(0.5, 0.12 + drive * 0.22)})`,
+  faceHaze.addColorStop(
+    0.36,
+    `rgba(255, 143, 30, ${0.075 + drive * 0.07})`,
   );
-  nucleus.addColorStop(1, "rgba(255, 117, 20, 0)");
-  ctx.fillStyle = nucleus;
+  faceHaze.addColorStop(
+    0.72,
+    `rgba(255, 112, 19, ${0.028 + drive * 0.032})`,
+  );
+  faceHaze.addColorStop(1, "rgba(255, 98, 12, 0)");
+  ctx.fillStyle = faceHaze;
   ctx.beginPath();
-  ctx.arc(cx, cy + 3, nucleusRadius * 2.7, 0, Math.PI * 2);
+  ctx.arc(cx, cy + 2, 84 + drive * 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Broken holographic bands: short, translucent segments rather than a solid ellipse.
-  ctx.shadowColor = "rgba(255, 151, 30, 0.78)";
-  ctx.shadowBlur = speaking ? 10 + drive * 16 : 4 + power * 4;
-  for (let band = 0; band < 31; band += 1) {
-    const y = cy - 48 + band * 3.15;
-    const ny = (y - cy) / 51;
-    const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 39;
-    if (half < 2) continue;
+  // Dense horizontal orange scan contours like the reference image.
+  ctx.shadowColor = "rgba(255, 164, 39, 0.92)";
+  ctx.shadowBlur = speaking ? 9 + drive * 14 : 4 + power * 5;
+  for (let band = 0; band < 58; band += 1) {
+    const y = cy - 58 + band * 2.03;
+    const ny = (y - cy) / 59;
+    const half = Math.sqrt(Math.max(0, 1 - ny * ny)) * 49;
+    if (half < 1.6) continue;
 
-    const wave = Math.sin(time * 0.006 + band * 0.47) * (0.6 + power * 1.1);
-    const voice = Math.sin(time * 0.015 + band * 0.78) * drive * 3.8;
-    const gap = 3.5 + seededRandom(band + 1701) * 8;
-    const leftEnd = cx - gap - seededRandom(band + 1733) * 5;
-    const rightStart = cx + gap + seededRandom(band + 1769) * 5;
-    const edgeFade = Math.max(0, 1 - Math.abs(ny));
-    const alpha = (0.08 + power * 0.09 + drive * 0.16) * (0.35 + edgeFade * 0.65);
-
+    const edge = Math.max(0.12, 1 - Math.abs(ny));
+    const wave = Math.sin(time * 0.0045 + band * 0.43) * (0.42 + drive * 0.85);
+    const micro = Math.sin(time * 0.0105 + band * 0.79) * drive * 1.1;
+    const alpha =
+      (0.13 + power * 0.11 + drive * 0.16) * (0.42 + edge * 0.68);
     ctx.strokeStyle = gold(alpha);
-    ctx.lineWidth = band % 6 === 0 ? 0.9 : 0.46;
+    ctx.lineWidth = band % 8 === 0 ? 0.78 : 0.42;
 
-    ctx.beginPath();
-    ctx.moveTo(cx - half, y);
-    ctx.quadraticCurveTo(cx - half * 0.35 + wave + voice, y + 1, leftEnd, y);
-    ctx.stroke();
+    const gap = band % 5 === 0 ? 1.2 + seededRandom(band + 3101) * 2.6 : 0;
+    if (gap > 0) {
+      ctx.beginPath();
+      ctx.moveTo(cx - half, y);
+      ctx.quadraticCurveTo(cx - half * 0.38 + wave, y + micro, cx - gap, y);
+      ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(rightStart, y);
-    ctx.quadraticCurveTo(cx + half * 0.35 + wave - voice, y + 1, cx + half, y);
-    ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + gap, y);
+      ctx.quadraticCurveTo(cx + half * 0.38 - wave, y - micro, cx + half, y);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(cx - half, y);
+      ctx.bezierCurveTo(
+        cx - half * 0.38 + wave,
+        y + micro,
+        cx + half * 0.38 - wave,
+        y - micro,
+        cx + half,
+        y,
+      );
+      ctx.stroke();
+    }
   }
 
   ctx.shadowBlur = 0;
 
-  // Dense center + loose halo. Particles extend outside the former face ellipse and fade naturally.
-  for (let i = 0; i < 244; i += 1) {
-    const seed = i + 1901;
+  // 366 orange particles: 70% small, 23% medium, 7% large.
+  for (let i = 0; i < 366; i += 1) {
+    const seed = i + 3901;
     const angle = seededRandom(seed) * Math.PI * 2;
     const radialSeed = seededRandom(seed + 43);
-    const isHalo = radialSeed > 0.69;
+    const isHalo = radialSeed > 0.72;
     const radial = isHalo
-      ? 0.72 + seededRandom(seed + 67) * 0.72
-      : Math.pow(seededRandom(seed + 67), 0.72) * 0.9;
-    const rx = isHalo ? 52 : 39;
-    const ry = isHalo ? 67 : 50;
-    const outward = speaking ? burst * (1.5 + seededRandom(seed + 89) * 5.5) : 0;
-    const microDrift = Math.sin(time * (0.0018 + seededRandom(seed + 113) * 0.002) + angle) *
-      (isHalo ? 1.25 : 0.55);
+      ? 0.78 + seededRandom(seed + 67) * 0.72
+      : Math.pow(seededRandom(seed + 67), 0.7) * 0.94;
+    const rx = isHalo ? 65 : 44;
+    const ry = isHalo ? 82 : 58;
+    const outward = speaking
+      ? burst * (1.2 + seededRandom(seed + 89) * 5.8)
+      : 0;
+    const microDrift =
+      Math.sin(
+        time * (0.0015 + seededRandom(seed + 113) * 0.0018) + angle,
+      ) * (isHalo ? 1.15 : 0.42);
 
     const x =
       cx +
@@ -555,22 +581,38 @@ function drawFaceCore(
       Math.sin(angle) * (ry * radial + outward * 0.82) +
       microDrift * Math.sin(angle);
 
-    const shimmer =
-      0.38 + 0.62 * Math.max(0, Math.sin(time * 0.015 + i * 0.93 + angle));
-    const edge = Math.max(0.08, 1 - radial * 0.66);
-    const bright = seededRandom(seed + 149) > 0.9;
-    const alpha =
-      (0.1 + seededRandom(seed + 173) * (bright ? 0.62 : 0.38)) *
-      edge *
-      (0.58 + shimmer * 0.62) *
-      (speaking ? 1.12 + drive * 0.45 : 0.82 + breathe * 0.12);
-    const size =
-      (bright ? 0.85 : 0.28) +
-      seededRandom(seed + 211) * (bright ? 1.55 : 0.9);
+    const sizeClass = seededRandom(seed + 131);
+    let size = 0;
+    let baseAlpha = 0;
+    let glow = 0;
 
-    if (bright) {
-      ctx.shadowColor = "rgba(255, 188, 73, 0.95)";
-      ctx.shadowBlur = speaking ? 7 + drive * 8 : 4;
+    if (sizeClass < 0.7) {
+      size = 0.24 + seededRandom(seed + 151) * 0.62;
+      baseAlpha = 0.14 + seededRandom(seed + 173) * 0.34;
+      glow = 0;
+    } else if (sizeClass < 0.93) {
+      size = 0.88 + seededRandom(seed + 151) * 0.72;
+      baseAlpha = 0.24 + seededRandom(seed + 173) * 0.46;
+      glow = 3.5;
+    } else {
+      size = 1.65 + seededRandom(seed + 151) * 1.15;
+      baseAlpha = 0.46 + seededRandom(seed + 173) * 0.42;
+      glow = 7.5;
+    }
+
+    const shimmer =
+      0.42 +
+      0.58 * Math.max(0, Math.sin(time * 0.015 + i * 0.91 + angle));
+    const edge = Math.max(0.08, 1 - radial * 0.62);
+    const alpha =
+      baseAlpha *
+      edge *
+      (0.58 + shimmer * 0.7) *
+      (speaking ? 1.12 + drive * 0.48 : 0.84 + breathe * 0.13);
+
+    if (glow > 0) {
+      ctx.shadowColor = "rgba(255, 191, 78, 0.98)";
+      ctx.shadowBlur = glow + (speaking ? drive * 5 : 0);
     } else {
       ctx.shadowBlur = 0;
     }
@@ -581,17 +623,17 @@ function drawFaceCore(
     ctx.fill();
   }
 
-  // A few diffuse wisps make the edge dissolve instead of closing into a sphere.
-  for (let wisp = 0; wisp < 5; wisp += 1) {
-    const a = seededRandom(wisp + 2401) * Math.PI * 2;
-    const radius = 30 + seededRandom(wisp + 2437) * 34 + burst * 4;
+  // Peripheral wisps keep the orange field molecular instead of spherical.
+  for (let wisp = 0; wisp < 8; wisp += 1) {
+    const a = seededRandom(wisp + 4401) * Math.PI * 2;
+    const radius = 42 + seededRandom(wisp + 4437) * 39 + burst * 4;
     const wx = cx + Math.cos(a) * radius;
-    const wy = cy + Math.sin(a) * radius * 1.18;
-    const wr = 12 + seededRandom(wisp + 2473) * 16 + drive * 3;
+    const wy = cy + Math.sin(a) * radius * 1.2;
+    const wr = 11 + seededRandom(wisp + 4473) * 17 + drive * 2;
     const haze = ctx.createRadialGradient(wx, wy, 0, wx, wy, wr);
     haze.addColorStop(
       0,
-      `rgba(255, 155, 37, ${0.04 + drive * 0.055 + (speaking ? 0.04 : 0)})`,
+      `rgba(255, 155, 37, ${0.035 + drive * 0.052})`,
     );
     haze.addColorStop(1, "rgba(255, 126, 25, 0)");
     ctx.fillStyle = haze;
@@ -613,7 +655,7 @@ function drawOrangeNeckEnergy(
 ) {
   const cx = AVATAR_WIDTH / 2;
   const rhythm = speaking
-    ? 0.72 +
+    ? 0.74 +
       Math.sin(time * 0.015) * 0.15 +
       Math.sin(time * 0.027 + 0.9) * 0.1 +
       audioLevel * 0.95
@@ -622,99 +664,134 @@ function drawOrangeNeckEnergy(
 
   ctx.save();
 
-  const neckGlow = ctx.createRadialGradient(cx, 365, 8, cx, 365, 116);
+  const neckGlow = ctx.createRadialGradient(cx, 365, 8, cx, 365, 138);
   neckGlow.addColorStop(
     0,
-    `rgba(255, 174, 51, ${0.14 + power * 0.08 + drive * 0.34})`,
+    `rgba(255, 174, 51, ${0.12 + power * 0.07 + drive * 0.3})`,
   );
   neckGlow.addColorStop(
-    0.46,
-    `rgba(255, 123, 24, ${0.08 + drive * 0.22})`,
+    0.45,
+    `rgba(255, 123, 24, ${0.065 + drive * 0.18})`,
   );
   neckGlow.addColorStop(1, "rgba(255, 106, 14, 0)");
   ctx.fillStyle = neckGlow;
-  ctx.fillRect(cx - 135, 265, 270, 215);
+  ctx.fillRect(cx - 155, 266, 310, 220);
 
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.shadowColor = "rgba(255, 157, 34, 0.98)";
-  ctx.shadowBlur = speaking ? 18 + drive * 24 : 9 + power * 7;
+  ctx.shadowBlur = speaking ? 16 + drive * 23 : 7 + power * 6;
 
+  // Paired orange nerve bundles: flare below the jaw and converge down the neck.
   for (let sideIndex = 0; sideIndex < 2; sideIndex += 1) {
     const side = sideIndex === 0 ? -1 : 1;
-    for (let branch = 0; branch < 7; branch += 1) {
-      const spread = 11 + branch * 6.4;
+
+    for (let branch = 0; branch < 9; branch += 1) {
+      const start = 13 + branch * 2.2;
+      const flare = 30 + branch * 4.7;
+      const mid = 25 + branch * 3.25;
+      const lower = 8 + branch * 1.9;
+      const pulse =
+        Math.sin(time * 0.008 + branch * 0.72) * (0.7 + drive * 1.3);
+
       ctx.beginPath();
-      ctx.moveTo(cx + side * (18 + branch * 2.5), 281 + branch * 1.3);
+      ctx.moveTo(cx + side * start, 281 + branch * 1.2);
       ctx.bezierCurveTo(
-        cx + side * (23 + spread * 0.9),
-        312,
-        cx + side * (18 + spread * 0.7),
-        340,
-        cx + side * (16 + spread * 0.6),
-        367,
+        cx + side * (flare + pulse),
+        310,
+        cx + side * (flare + 8 + pulse * 0.7),
+        326,
+        cx + side * mid,
+        349,
       );
       ctx.bezierCurveTo(
-        cx + side * (12 + spread * 0.42),
-        396,
-        cx + side * (8 + spread * 0.25),
-        421,
-        cx + side * (9 + branch * 1.65),
-        450,
+        cx + side * (mid - 5),
+        376,
+        cx + side * (lower + 7),
+        414,
+        cx + side * lower,
+        458,
       );
       ctx.strokeStyle = gold(
-        0.3 + power * 0.2 + drive * 0.44 - branch * 0.017,
+        0.2 + power * 0.17 + drive * 0.4 - branch * 0.012,
       );
-      ctx.lineWidth = branch === 0 ? 2.15 : 0.86 + (6 - branch) * 0.07;
+      ctx.lineWidth = branch === 0 ? 1.55 : 0.48 + (8 - branch) * 0.055;
+      ctx.stroke();
+    }
+
+    // Fine outer filaments like the reference image.
+    for (let twig = 0; twig < 5; twig += 1) {
+      const offset = 38 + twig * 5.6;
+      ctx.beginPath();
+      ctx.moveTo(cx + side * (25 + twig * 2.2), 302 + twig * 6);
+      ctx.quadraticCurveTo(
+        cx + side * (offset + 10),
+        338 + twig * 5,
+        cx + side * (24 + twig * 2.1),
+        389 + twig * 7,
+      );
+      ctx.strokeStyle = gold(0.11 + power * 0.09 + drive * 0.24);
+      ctx.lineWidth = 0.42;
       ctx.stroke();
     }
   }
 
-  for (let stem = -2; stem <= 2; stem += 1) {
+  // Fine central strands continue the orange energy into the chest.
+  for (let stem = -3; stem <= 3; stem += 1) {
     ctx.beginPath();
-    ctx.moveTo(cx + stem * 6.2, 331);
+    ctx.moveTo(cx + stem * 6.8, 331);
     ctx.bezierCurveTo(
-      cx + stem * 5.0,
+      cx + stem * 6.0,
       365,
-      cx + stem * 3.6,
-      408,
-      cx + stem * 2.8,
-      461,
+      cx + stem * 4.2,
+      411,
+      cx + stem * 3.0,
+      466,
     );
-    ctx.strokeStyle = gold(0.24 + power * 0.18 + drive * 0.4);
-    ctx.lineWidth = stem === 0 ? 2 : 0.82;
+    ctx.strokeStyle = gold(0.16 + power * 0.14 + drive * 0.36);
+    ctx.lineWidth = stem === 0 ? 1.3 : 0.48;
     ctx.stroke();
   }
 
-  for (let i = 0; i < 118; i += 1) {
-    const p = seededRandom(i + 1103);
-    const side = seededRandom(i + 1129) < 0.5 ? -1 : 1;
-    const spread = (1 - p) * 40 + 7;
-    const x = cx + side * spread * (0.45 + seededRandom(i + 1151) * 0.9);
-    const y = 292 + p * 171 + (seededRandom(i + 1171) - 0.5) * 8;
-    const shimmer = 0.52 + 0.48 * Math.sin(time * 0.016 + i * 0.81);
-    const bright = seededRandom(i + 1237) > 0.9;
+  // Broad molecular cloud around and between the orange nerve lines.
+  for (let i = 0; i < 196; i += 1) {
+    const p = seededRandom(i + 5103);
+    const side = seededRandom(i + 5129) < 0.5 ? -1 : 1;
+    const spread = (1 - p) * 60 + 9;
+    const x =
+      cx + side * spread * (0.34 + seededRandom(i + 5151) * 0.9);
+    const y = 288 + p * 180 + (seededRandom(i + 5171) - 0.5) * 11;
+    const sizeClass = seededRandom(i + 5181);
+    const shimmer = 0.46 + 0.54 * Math.sin(time * 0.016 + i * 0.79);
+
+    let size = 0.26 + seededRandom(i + 5217) * 0.64;
+    let alpha = 0.16 + seededRandom(i + 5193) * 0.36;
+
+    if (sizeClass > 0.91) {
+      size = 1.15 + seededRandom(i + 5237) * 1.15;
+      alpha += 0.2;
+    } else if (sizeClass > 0.68) {
+      size = 0.72 + seededRandom(i + 5237) * 0.72;
+      alpha += 0.1;
+    }
+
     ctx.fillStyle = gold(
-      (0.18 + seededRandom(i + 1193) * 0.4) *
-        (0.68 + shimmer * 0.58) *
-        (1 + drive * 0.95),
+      alpha * (0.64 + shimmer * 0.64) * (1 + drive * 0.88),
     );
-    if (bright && speaking) {
-      ctx.shadowBlur = 8 + drive * 8;
+
+    if (sizeClass > 0.91 && speaking) {
+      ctx.shadowColor = "rgba(255, 183, 67, 0.96)";
+      ctx.shadowBlur = 7 + drive * 8;
     } else {
       ctx.shadowBlur = 0;
     }
+
     ctx.beginPath();
-    ctx.arc(
-      x,
-      y,
-      0.36 + seededRandom(i + 1217) * (bright ? 1.2 : 0.88),
-      0,
-      Math.PI * 2,
-    );
+    ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
