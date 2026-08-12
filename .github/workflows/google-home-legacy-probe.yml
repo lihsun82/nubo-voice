@@ -1,0 +1,29 @@
+name: Google Home Legacy Probe
+
+on:
+  push:
+    branches:
+      - diag/google-home-legacy-probe-2026-08-13
+    paths:
+      - ".github/workflows/google-home-legacy-probe.yml"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe current production bridge
+        shell: bash
+        run: |
+          set +e
+          echo '=== current production ==='
+          curl -sS -i --max-time 20 https://nubo.ainubo.com/api/smart-home/light || true
+          echo
+
+      - name: Probe legacy Render bridge
+        shell: bash
+        run: |
+          set +e
+          echo '=== legacy render ==='
+          curl -sS -i --max-time 30 https://nubo-cloud.onrender.com/api/smart-home/light || true
+          echo
