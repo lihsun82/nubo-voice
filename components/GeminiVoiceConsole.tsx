@@ -273,13 +273,14 @@ export function GeminiVoiceConsole() {
     try {
       const tokenData = await requestJson("/api/gemini-token", { cache: "no-store" });
       const endpoint =
-        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContentConstrained";
+        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
       socket.binaryType = "arraybuffer";
       socketRef.current = socket;
       playbackRef.current = new PcmPlaybackQueue();
 
       socket.onopen = () => {
+        if (socketRef.current !== socket) return;
         socket.send(
           JSON.stringify({
             setup: {
@@ -297,6 +298,7 @@ export function GeminiVoiceConsole() {
       };
 
       socket.onmessage = async (event) => {
+        if (socketRef.current !== socket) return;
         try {
           const message = await parseSocketMessage(event.data);
 
@@ -567,10 +569,17 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       };
 
       socket.onerror = () => {
+        if (socketRef.current !== socket) return;
         setTranscript("即時語音連線異常，NUBO準備自動重連…");
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        if (socketRef.current !== socket) return;
+        console.warn("NUBO Gemini Live socket closed", {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+        });
         void microphoneRef.current?.stop();
         void playbackRef.current?.close();
         microphoneRef.current = null;

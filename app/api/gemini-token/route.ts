@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +54,7 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
   const newSessionMs = getNewSessionMs();
 
   const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1alpha/auth_tokens",
+    "https://generativelanguage.googleapis.com/v1beta/auth_tokens",
     {
       method: "POST",
       headers: {
