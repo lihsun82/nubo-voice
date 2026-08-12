@@ -28,6 +28,7 @@ type HologramParticle = {
   flash: number;
   drift: number;
   region: ParticleRegion;
+  speakingActive: boolean;
 };
 
 type RenderProfile = {
@@ -173,6 +174,7 @@ function createParticles(count: number): HologramParticle[] {
         flash: visual.flash,
         drift: 0.7 + r6 * 1.4,
         region: "head",
+        speakingActive: seededRandom(index + 257) < 0.6,
       };
     }
 
@@ -200,6 +202,7 @@ function createParticles(count: number): HologramParticle[] {
         flash: visual.flash,
         drift: 0.72 + r6 * 1.5,
         region: "body",
+        speakingActive: seededRandom(index + 257) < 0.6,
       };
     }
 
@@ -217,6 +220,7 @@ function createParticles(count: number): HologramParticle[] {
       flash: visual.flash * 0.72,
       drift: 0.9 + r6 * 1.8,
       region: "ambient",
+      speakingActive: seededRandom(index + 257) < 0.6,
     };
   });
 }
@@ -553,8 +557,9 @@ function drawFaceCore(
 
   ctx.shadowBlur = 0;
 
-  // 512 orange particles: about +40%, still 70% small / 23% medium / 7% large.
-  for (let i = 0; i < 512; i += 1) {
+  // 768 orange particles: +50% from the previous 512-dot face core.
+  // Keep the same 70% small / 23% medium / 7% large distribution.
+  for (let i = 0; i < 768; i += 1) {
     const seed = i + 3901;
     const angle = seededRandom(seed) * Math.PI * 2;
     const radialSeed = seededRandom(seed + 43);
@@ -844,7 +849,10 @@ function drawParticles(
     if (particle.region !== region) continue;
 
     const speaking = speechLift > 0.01;
-    const speechPulse = speaking
+    // Deterministic 60% cohort: these particles visibly jump and flare for
+    // the entire audio playback window. The other 40% keep their idle drift.
+    const speechActive = speaking && particle.speakingActive;
+    const speechPulse = speechActive
       ? 0.5 + 0.5 * Math.sin(t * 8.4 + particle.phase * 1.37)
       : 0;
     const motionScale =
@@ -853,11 +861,11 @@ function drawParticles(
         : region === "head"
           ? 0.31
           : 0.27) *
-      (speaking ? 1 + speechLift * 0.46 + speechPulse * 0.16 : 1);
-    const speechBounce = speaking
-      ? Math.sin(t * (6.2 + particle.flash * 0.8) + particle.phase) *
+      (speechActive ? 1 + speechLift * 0.72 + speechPulse * 0.28 : 1);
+    const speechBounce = speechActive
+      ? Math.sin(t * (6.8 + particle.flash * 1.05) + particle.phase) *
         particle.depth *
-        (0.1 + speechLift * 0.34)
+        (1.45 + speechLift * 3.35)
       : 0;
     const driftX =
       Math.sin(t * particle.speed + particle.phase) *
@@ -883,12 +891,12 @@ function drawParticles(
       (0.64 + sparkle * 0.62 + flash * particle.flash * 0.22) *
       (0.78 + power * 0.5) *
       (0.75 + particle.depth * 0.38) *
-      (1 + speechLift * 0.82) *
-      (speaking ? 1 + speechPulse * 0.34 : 1);
+      (1 + speechLift * 0.46) *
+      (speechActive ? 1 + speechLift * 0.58 + speechPulse * 0.6 : 1);
 
     const brightSpark =
       (particle.size > 1.55 && flash > 0.42) ||
-      (speaking && particle.size > 0.72 && flash > 0.72);
+      (speechActive && particle.size > 0.72 && flash > 0.62);
     if (brightSpark) {
       ctx.shadowColor = "rgba(206, 255, 255, 0.9)";
       ctx.shadowBlur = 7 + particle.size * 2.8;
@@ -905,7 +913,7 @@ function drawParticles(
       particle.size *
         0.84 *
         (0.76 + power * 0.19 + speechLift * 0.06) *
-        (speaking ? 1 + speechPulse * 0.075 : 1),
+        (speechActive ? 1 + speechPulse * 0.13 : 1),
       0,
       Math.PI * 2,
     );
