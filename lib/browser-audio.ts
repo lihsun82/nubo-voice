@@ -67,6 +67,15 @@ function dispatchVoiceLevel(level: number) {
   );
 }
 
+function dispatchPlaybackState(active: boolean) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("nubo:audio-playback-state", {
+      detail: { active },
+    }),
+  );
+}
+
 function addForegroundListeners(listener: () => void) {
   document.addEventListener("visibilitychange", listener, true);
   window.addEventListener("focus", listener, true);
@@ -248,9 +257,23 @@ export class PcmPlaybackQueue {
   private readonly scheduleLeadSeconds = 0.08;
   private foregroundListenersAttached = false;
   private retired = false;
+  private playbackActive = false;
+  private playbackTailTimer: number | null = null;
 
   constructor() {
     this.claimExclusiveOutput();
+  }
+
+  private setPlaybackActive(active: boolean) {
+    if (this.playbackActive === active) return;
+    this.playbackActive = active;
+    dispatchPlaybackState(active);
+  }
+
+  private clearPlaybackTailTimer() {
+    if (this.playbackTailTimer === null) return;
+    window.clearTimeout(this.playbackTailTimer);
+    this.playbackTailTimer = null;
   }
 
   private claimExclusiveOutput() {
@@ -350,16 +373,30 @@ export class PcmPlaybackQueue {
     );
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
+    this.clearPlaybackTailTimer();
     this.sources.add(source);
+    this.setPlaybackActive(true);
     source.onended = () => {
       this.sources.delete(source);
       if (this.sources.size === 0 && this.nextStart <= context.currentTime + 0.02) {
         dispatchVoiceLevel(0);
+        this.clearPlaybackTailTimer();
+        this.playbackTailTimer = window.setTimeout(() => {
+          this.playbackTailTimer = null;
+          if (
+            !this.retired &&
+            this.sources.size === 0 &&
+            this.nextStart <= context.currentTime + 0.04
+          ) {
+            this.setPlaybackActive(false);
+          }
+        }, 180);
       }
     };
   }
 
   interrupt() {
+    this.clearPlaybackTailTimer();
     for (const source of this.sources) {
       try {
         source.stop();
@@ -370,6 +407,7 @@ export class PcmPlaybackQueue {
     this.sources.clear();
     this.nextStart = this.context?.currentTime ?? 0;
     dispatchVoiceLevel(0);
+    this.setPlaybackActive(false);
   }
 
   async close() {

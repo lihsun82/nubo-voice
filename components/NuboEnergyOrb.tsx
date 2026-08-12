@@ -553,8 +553,8 @@ function drawFaceCore(
 
   ctx.shadowBlur = 0;
 
-  // 366 orange particles: 70% small, 23% medium, 7% large.
-  for (let i = 0; i < 366; i += 1) {
+  // 512 orange particles: about +40%, still 70% small / 23% medium / 7% large.
+  for (let i = 0; i < 512; i += 1) {
     const seed = i + 3901;
     const angle = seededRandom(seed) * Math.PI * 2;
     const radialSeed = seededRandom(seed + 43);
@@ -603,12 +603,17 @@ function drawFaceCore(
     const shimmer =
       0.42 +
       0.58 * Math.max(0, Math.sin(time * 0.015 + i * 0.91 + angle));
+    const speechSpark = speaking
+      ? 0.5 + 0.5 * Math.sin(time * 0.022 + i * 0.77 + angle)
+      : 0;
     const edge = Math.max(0.08, 1 - radial * 0.62);
     const alpha =
       baseAlpha *
       edge *
       (0.58 + shimmer * 0.7) *
-      (speaking ? 1.12 + drive * 0.48 : 0.84 + breathe * 0.13);
+      (speaking
+        ? 1.18 + drive * 0.52 + speechSpark * 0.24
+        : 0.84 + breathe * 0.13);
 
     if (glow > 0) {
       ctx.shadowColor = "rgba(255, 191, 78, 0.98)";
@@ -619,7 +624,13 @@ function drawFaceCore(
 
     ctx.fillStyle = gold(alpha);
     ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.arc(
+      x,
+      y,
+      size * (speaking ? 1 + speechSpark * 0.1 + drive * 0.035 : 1),
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 
@@ -758,12 +769,15 @@ function drawOrangeNeckEnergy(
     const p = seededRandom(i + 5103);
     const side = seededRandom(i + 5129) < 0.5 ? -1 : 1;
     const spread = (1 - p) * 60 + 9;
+    const speechMotion = speaking ? 1 + drive * 0.62 : 1;
     const neckDriftX =
       Math.sin(time * 0.0018 + i * 0.63) *
-      (0.42 + seededRandom(i + 5251) * 0.72);
+      (0.42 + seededRandom(i + 5251) * 0.72) *
+      speechMotion;
     const neckDriftY =
       Math.cos(time * 0.00145 + i * 0.47) *
-      (0.3 + seededRandom(i + 5279) * 0.56);
+      (0.3 + seededRandom(i + 5279) * 0.56) *
+      speechMotion;
     const x =
       cx +
       side * spread * (0.34 + seededRandom(i + 5151) * 0.9) +
@@ -775,6 +789,9 @@ function drawOrangeNeckEnergy(
       neckDriftY;
     const sizeClass = seededRandom(i + 5181);
     const shimmer = 0.46 + 0.54 * Math.sin(time * 0.016 + i * 0.79);
+    const speechSpark = speaking
+      ? 0.5 + 0.5 * Math.sin(time * 0.023 + i * 0.71)
+      : 0;
 
     let size = 0.22 + seededRandom(i + 5217) * 0.54;
     let alpha = 0.16 + seededRandom(i + 5193) * 0.36;
@@ -788,7 +805,9 @@ function drawOrangeNeckEnergy(
     }
 
     ctx.fillStyle = gold(
-      alpha * (0.64 + shimmer * 0.64) * (1 + drive * 0.88),
+      alpha *
+        (0.64 + shimmer * 0.64) *
+        (1 + drive * 0.88 + speechSpark * 0.24),
     );
 
     if (sizeClass > 0.91 && speaking) {
@@ -799,7 +818,13 @@ function drawOrangeNeckEnergy(
     }
 
     ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.arc(
+      x,
+      y,
+      size * (speaking ? 1 + speechSpark * 0.09 + drive * 0.035 : 1),
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 
@@ -818,23 +843,35 @@ function drawParticles(
   for (const particle of particles) {
     if (particle.region !== region) continue;
 
+    const speaking = speechLift > 0.01;
+    const speechPulse = speaking
+      ? 0.5 + 0.5 * Math.sin(t * 8.4 + particle.phase * 1.37)
+      : 0;
     const motionScale =
-      region === "ambient"
+      (region === "ambient"
         ? 0.84
         : region === "head"
           ? 0.31
-          : 0.27;
+          : 0.27) *
+      (speaking ? 1 + speechLift * 0.46 + speechPulse * 0.16 : 1);
+    const speechBounce = speaking
+      ? Math.sin(t * (6.2 + particle.flash * 0.8) + particle.phase) *
+        particle.depth *
+        (0.1 + speechLift * 0.34)
+      : 0;
     const driftX =
       Math.sin(t * particle.speed + particle.phase) *
       motionScale *
       particle.depth *
-      particle.drift;
+      particle.drift +
+      speechBounce * 0.42;
     const driftY =
       Math.cos(t * particle.speed * 0.73 + particle.phase) *
       motionScale *
       0.8 *
       particle.depth *
-      particle.drift;
+      particle.drift +
+      speechBounce;
 
     const sparkle = 0.46 + 0.54 * Math.sin(t * 2.35 + particle.phase);
     const flash = Math.max(
@@ -846,9 +883,12 @@ function drawParticles(
       (0.64 + sparkle * 0.62 + flash * particle.flash * 0.22) *
       (0.78 + power * 0.5) *
       (0.75 + particle.depth * 0.38) *
-      (1 + speechLift * 0.82);
+      (1 + speechLift * 0.82) *
+      (speaking ? 1 + speechPulse * 0.34 : 1);
 
-    const brightSpark = particle.size > 1.55 && flash > 0.42;
+    const brightSpark =
+      (particle.size > 1.55 && flash > 0.42) ||
+      (speaking && particle.size > 0.72 && flash > 0.72);
     if (brightSpark) {
       ctx.shadowColor = "rgba(206, 255, 255, 0.9)";
       ctx.shadowBlur = 7 + particle.size * 2.8;
@@ -862,7 +902,10 @@ function drawParticles(
     ctx.arc(
       particle.x + driftX,
       particle.y + driftY,
-      particle.size * 0.84 * (0.76 + power * 0.19 + speechLift * 0.06),
+      particle.size *
+        0.84 *
+        (0.76 + power * 0.19 + speechLift * 0.06) *
+        (speaking ? 1 + speechPulse * 0.075 : 1),
       0,
       Math.PI * 2,
     );
@@ -1061,6 +1104,7 @@ export function NuboEnergyOrb() {
     const profile = getRenderProfile();
     const particles = createParticles(profile.particleCount);
     let phase: NuboVoicePhase = "idle";
+    let playbackActive = false;
     let audioLevel = 0;
     let targetAudioLevel = 0;
     let animationFrame = 0;
@@ -1120,6 +1164,11 @@ export function NuboEnergyOrb() {
       }
     };
 
+    const onPlaybackState = (event: Event) => {
+      const active = (event as CustomEvent<{ active?: boolean }>).detail?.active;
+      if (typeof active === "boolean") playbackActive = active;
+    };
+
     const onAssistantText = (event: Event) => {
       const text = (event as CustomEvent<{ text?: string }>).detail?.text;
       if (typeof text === "string") setGestureFromText(text);
@@ -1145,7 +1194,14 @@ export function NuboEnergyOrb() {
 
       if (time - lastFrameAt >= profile.frameInterval) {
         lastFrameAt = time;
-        renderHologram(ctx, particles, time, phase, audioLevel, gesture);
+        renderHologram(
+          ctx,
+          particles,
+          time,
+          playbackActive ? "speaking" : phase,
+          audioLevel,
+          gesture,
+        );
       }
 
       animationFrame = window.requestAnimationFrame(draw);
@@ -1160,6 +1216,7 @@ export function NuboEnergyOrb() {
 
     window.addEventListener("nubo-voice-phase", onPhase);
     window.addEventListener("nubo:voice-level", onAudioLevel);
+    window.addEventListener("nubo:audio-playback-state", onPlaybackState);
     window.addEventListener("nubo:assistant-text", onAssistantText);
     document.addEventListener("visibilitychange", onVisibilityChange);
     animationFrame = window.requestAnimationFrame(draw);
@@ -1169,6 +1226,7 @@ export function NuboEnergyOrb() {
       transcriptObserver.disconnect();
       window.removeEventListener("nubo-voice-phase", onPhase);
       window.removeEventListener("nubo:voice-level", onAudioLevel);
+      window.removeEventListener("nubo:audio-playback-state", onPlaybackState);
       window.removeEventListener("nubo:assistant-text", onAssistantText);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
