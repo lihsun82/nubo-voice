@@ -24,11 +24,17 @@ import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.log10
+import kotlin.math.sqrt
 
 class WakeService : Service() {
     companion object {
         const val ACTION_START = "com.ainubo.nubowake.START"
         const val ACTION_STOP = "com.ainubo.nubowake.STOP"
+        const val PREFS = "nubo_wake_diag"
+        const val KEY_STATE = "state"
+        const val KEY_DETAIL = "detail"
+        const val KEY_UPDATED_AT = "updated_at"
         private const val TAG = "NuboWake"
         private const val CHANNEL_ID = "nubo_local_wake"
         private const val NOTIFICATION_ID = 7301
@@ -43,21 +49,26 @@ class WakeService : Service() {
     private var spotter: KeywordSpotter? = null
     private var stream: OnlineStream? = null
     private var lastWakeAt = 0L
+    private var failed = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         createSilentNotificationChannel()
+        writeDiag("服務已建立", "等待本機 KWS 啟動")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            writeDiag("已停止", "使用者停止本機喚醒")
             stopSelf()
             return START_NOT_STICKY
         }
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            failed = true
+            writeDiag("錯誤", "沒有麥克風權限")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -114,15 +125,24 @@ class WakeService : Service() {
 
     private fun startDetectorIfNeeded() {
         if (!running.compareAndSet(false, true)) return
+        failed = false
         worker = thread(name = "nubo-local-kws", start = true) {
             try {
+                writeDiag("初始化中", "載入 NUBO 本機模型")
                 initKeywordSpotter()
+                writeDiag("模型已載入", "準備麥克風")
                 initRecorder()
+                writeDiag("麥克風監聽中", "等待你說 NUBO；即時音量即將顯示")
                 processMicrophone()
             } catch (t: Throwable) {
+                failed = true
                 Log.e(TAG, "Local KWS failed", t)
+                writeDiag("錯誤", "${t.javaClass.simpleName}: ${t.message ?: "unknown"}")
             } finally {
                 cleanupDetector()
+                if (!failed && getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_STATE, "") != "已偵測") {
+                    writeDiag("已停止", "本機 KWS 已停止")
+                }
                 stopSelf()
             }
         }
@@ -138,7 +158,7 @@ class WakeService : Service() {
             tokens = "$MODEL_DIR/tokens.txt",
             numThreads = 1,
             provider = "cpu",
-            modelType = "zipformer2",
+            modelType = "",
             modelingUnit = "cjkchar",
         )
 
@@ -148,7 +168,7 @@ class WakeService : Service() {
             maxActivePaths = 4,
             keywordsFile = "$MODEL_DIR/keywords.txt",
             keywordsScore = 1.0f,
-            keywordsThreshold = 0.25f,
+            keywordsThreshold = 0.12f,
             numTrailingBlanks = 1,
         )
 
@@ -163,8 +183,10 @@ class WakeService : Service() {
         val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, channel, format)
         check(minimum > 0) { "Invalid AudioRecord buffer size: $minimum" }
 
+        // Match sherpa-onnx's official Android KWS microphone example.
+        // VOICE_RECOGNITION can be aggressively processed by some OEMs and can starve KWS.
         recorder = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
             channel,
             format,
@@ -172,6 +194,7 @@ class WakeService : Service() {
         )
         check(recorder?.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord init failed" }
         recorder!!.startRecording()
+        check(recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "AudioRecord did not enter RECORDING state" }
     }
 
     private fun processMicrophone() {
@@ -179,19 +202,39 @@ class WakeService : Service() {
         val kwsStream = stream ?: return
         val audio = recorder ?: return
         val buffer = ShortArray(1600) // 100 ms at 16 kHz
+        var reads = 0L
+        var lastDiagAt = 0L
 
         while (running.get()) {
             val count = audio.read(buffer, 0, buffer.size)
+            if (count == AudioRecord.ERROR_BAD_VALUE || count == AudioRecord.ERROR_INVALID_OPERATION || count == AudioRecord.ERROR_DEAD_OBJECT) {
+                error("AudioRecord read failed: $count")
+            }
             if (count <= 0) continue
 
-            val samples = FloatArray(count) { index -> buffer[index] / 32768.0f }
+            reads += 1
+            var sumSquares = 0.0
+            val samples = FloatArray(count) { index ->
+                val value = buffer[index] / 32768.0f
+                sumSquares += value * value
+                value
+            }
             kwsStream.acceptWaveform(samples, SAMPLE_RATE)
+
+            val now = System.currentTimeMillis()
+            if (now - lastDiagAt >= 700L) {
+                val rms = sqrt(sumSquares / count.coerceAtLeast(1))
+                val db = if (rms > 0.000001) 20.0 * log10(rms) else -120.0
+                writeDiag("麥克風監聽中", "音量 %.1f dB｜已讀取 %d 個音訊區塊".format(db, reads))
+                lastDiagAt = now
+            }
 
             while (running.get() && kws.isReady(kwsStream)) {
                 kws.decode(kwsStream)
                 val keyword = kws.getResult(kwsStream).keyword.trim()
                 if (keyword.isNotEmpty()) {
                     Log.i(TAG, "Wake keyword detected: $keyword")
+                    writeDiag("已偵測", "命中：$keyword")
                     kws.reset(kwsStream)
                     onWakeDetected(keyword)
                     return
@@ -223,6 +266,15 @@ class WakeService : Service() {
                 },
             )
         }
+    }
+
+    private fun writeDiag(state: String, detail: String) {
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_STATE, state)
+            .putString(KEY_DETAIL, detail)
+            .putLong(KEY_UPDATED_AT, System.currentTimeMillis())
+            .apply()
     }
 
     private fun cleanupDetector() {
