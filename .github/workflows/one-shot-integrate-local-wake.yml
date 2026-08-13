@@ -1,0 +1,101 @@
+name: One-shot integrate NUBO local wake
+
+on:
+  push:
+    branches:
+      - agent/nubo-local-kws-wake-v1
+    paths:
+      - ".github/workflows/one-shot-integrate-local-wake.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  integrate-local-wake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Wire local wake companion into eco lifecycle
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("components/GeminiVoiceConsole.tsx")
+          text = path.read_text()
+          original = text
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly 1 match, got {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";\n',
+              'import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";\nimport { controlNuboLocalWake } from "@/lib/nubo-local-wake";\n',
+              'local wake import',
+          )
+
+          replace_once(
+              '    ecoSleepingRef.current = false;\n    stopEcoWakeListener();\n    sessionHandleRef.current = null;',
+              '    ecoSleepingRef.current = false;\n    stopEcoWakeListener();\n    controlNuboLocalWake("stop");\n    sessionHandleRef.current = null;',
+              'stop companion while waking',
+          )
+
+          replace_once(
+              '    notifyNuboVoicePhase("idle");\n    startEcoWakeListener();\n  };',
+              '    notifyNuboVoicePhase("idle");\n    controlNuboLocalWake("start");\n    startEcoWakeListener();\n  };',
+              'start companion in eco sleep',
+          )
+
+          replace_once(
+              '  const connect = async (isReconnect = false) => {\n    clearReconnectTimer();\n    ecoSleepingRef.current = false;\n    stopEcoWakeListener();',
+              '  const connect = async (isReconnect = false) => {\n    clearReconnectTimer();\n    ecoSleepingRef.current = false;\n    stopEcoWakeListener();\n    controlNuboLocalWake("stop");',
+              'stop companion before Gemini connection',
+          )
+
+          replace_once(
+              '''        if (\n          silentUntilWakeRef.current ||\n          ecoSleepingRef.current ||\n          resumeInProgress\n        ) {\n          return;\n        }''',
+              '''        if (\n          silentUntilWakeRef.current ||\n          resumeInProgress\n        ) {\n          return;\n        }\n\n        // The local KWS companion launches NUBO after a wake phrase.\n        // Foregrounding the existing shell is the wake signal; only now do\n        // we reconnect Gemini, so eco standby itself consumes no Gemini token.\n        if (ecoSleepingRef.current) {\n          wakeFromEco();\n          return;\n        }''',
+              'foreground local wake handoff',
+          )
+
+          if text == original:
+              raise SystemExit("No local wake integration changes were applied")
+
+          path.write_text(text)
+          PY
+
+      - name: Verify local wake integration
+        shell: bash
+        run: |
+          grep -q 'controlNuboLocalWake("start")' components/GeminiVoiceConsole.tsx
+          test "$(grep -c 'controlNuboLocalWake("stop")' components/GeminiVoiceConsole.tsx)" = "2"
+          grep -q 'if (ecoSleepingRef.current)' components/GeminiVoiceConsole.tsx
+          grep -q 'openExternalApp' lib/nubo-local-wake.ts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Commit web integration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-shot-integrate-local-wake.yml
+          git add components/GeminiVoiceConsole.tsx lib/nubo-local-wake.ts
+          git commit -m "feat(wake): hand off 30s eco mode to local KWS companion"
+          git push origin HEAD:agent/nubo-local-kws-wake-v1
