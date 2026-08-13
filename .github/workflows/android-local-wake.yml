@@ -33,7 +33,7 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Install sherpa-onnx keyword tooling
-        run: python -m pip install --disable-pip-version-check "sherpa-onnx==1.13.4" sentencepiece
+        run: python -m pip install --disable-pip-version-check "sherpa-onnx==1.13.4" sentencepiece pypinyin
 
       - name: Fetch official sherpa-onnx Android runtime
         shell: bash
