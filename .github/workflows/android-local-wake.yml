@@ -61,15 +61,15 @@ jobs:
           test -d "$MODEL"
           find "$MODEL" -maxdepth 1 -type f -printf '%f\n' | sort
 
-      - name: Keep low-latency mobile model files and generate NUBO keywords
+      - name: Keep chunk-16 FP32 model and generate multi-pronunciation NUBO keywords
         shell: bash
         run: |
           set -euo pipefail
           MODEL=android-wake/app/src/main/assets/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20
 
-          ENCODER="$MODEL/encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
-          DECODER="$MODEL/decoder-epoch-13-avg-2-chunk-8-left-64.onnx"
-          JOINER="$MODEL/joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
+          ENCODER="$MODEL/encoder-epoch-13-avg-2-chunk-16-left-64.onnx"
+          DECODER="$MODEL/decoder-epoch-13-avg-2-chunk-16-left-64.onnx"
+          JOINER="$MODEL/joiner-epoch-13-avg-2-chunk-16-left-64.onnx"
           TOKENS="$MODEL/tokens.txt"
           LEXICON="$MODEL/en.phone"
 
@@ -84,14 +84,17 @@ jobs:
           fi
 
           cat > "$MODEL/keywords_raw.txt" <<'EOF'
-          NUBO :4.0 #0.10 @NUBO
-          HEY NUBO :4.2 #0.09 @HEY_NUBO
-          HI NUBO :4.2 #0.09 @HI_NUBO
-          努波 :4.0 #0.10 @努波
-          嘿努波 :4.2 #0.09 @嘿努波
-          哈囉努波 :4.2 #0.09 @哈囉努波
-          你好努波 :4.2 #0.09 @你好努波
-          喂努波 :4.2 #0.09 @喂努波
+          NUBO :4.4 #0.07 @NUBO
+          HEY NUBO :4.5 #0.07 @HEY_NUBO
+          HI NUBO :4.5 #0.07 @HI_NUBO
+          努波 :4.4 #0.07 @努波
+          奴波 :4.4 #0.07 @奴波
+          努博 :4.4 #0.07 @努博
+          奴博 :4.4 #0.07 @奴博
+          嘿努波 :4.5 #0.07 @嘿努波
+          哈囉努波 :4.5 #0.07 @哈囉努波
+          你好努波 :4.5 #0.07 @你好努波
+          喂努波 :4.5 #0.07 @喂努波
           EOF
 
           if ! sherpa-onnx-cli text2token \
@@ -99,15 +102,15 @@ jobs:
             --tokens-type phone+ppinyin \
             --lexicon "$LEXICON" \
             "$MODEL/keywords_raw.txt" "$MODEL/keywords.txt"; then
-            echo "Full Traditional-Chinese phrase set was not tokenizable; applying conservative fallback."
+            echo "Full phrase set was not tokenizable; applying conservative fallback."
             cat > "$MODEL/keywords_raw.txt" <<'EOF'
-          NUBO :4.0 #0.10 @NUBO
-          HEY NUBO :4.2 #0.09 @HEY_NUBO
-          HI NUBO :4.2 #0.09 @HI_NUBO
-          努波 :4.0 #0.10 @努波
-          嘿努波 :4.2 #0.09 @嘿努波
-          你好努波 :4.2 #0.09 @你好努波
-          喂努波 :4.2 #0.09 @喂努波
+          NUBO :4.4 #0.07 @NUBO
+          HEY NUBO :4.5 #0.07 @HEY_NUBO
+          HI NUBO :4.5 #0.07 @HI_NUBO
+          努波 :4.4 #0.07 @努波
+          奴波 :4.4 #0.07 @奴波
+          努博 :4.4 #0.07 @努博
+          奴博 :4.4 #0.07 @奴博
           EOF
             sherpa-onnx-cli text2token \
               --tokens "$TOKENS" \
@@ -116,20 +119,26 @@ jobs:
               "$MODEL/keywords_raw.txt" "$MODEL/keywords.txt"
           fi
 
+          cat >> "$MODEL/keywords.txt" <<'EOF'
+          N UW0 B OW1 :4.4 #0.06 @NUBO_EN_STRESS_B
+          N UW1 B OW1 :4.4 #0.06 @NUBO_EN_STRESS_C
+          N Y UW1 B OW0 :4.4 #0.06 @NUBO_EN_NEWBO
+          EOF
+
           test -s "$MODEL/keywords.txt"
           echo "Generated wake keywords:"
           cat "$MODEL/keywords.txt"
 
           find "$MODEL" -maxdepth 1 -type f \( -name '*.onnx' -o -name '*.bin' -o -name '*.pt' \) \
-            ! -name 'encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx' \
-            ! -name 'decoder-epoch-13-avg-2-chunk-8-left-64.onnx' \
-            ! -name 'joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx' \
+            ! -name 'encoder-epoch-13-avg-2-chunk-16-left-64.onnx' \
+            ! -name 'decoder-epoch-13-avg-2-chunk-16-left-64.onnx' \
+            ! -name 'joiner-epoch-13-avg-2-chunk-16-left-64.onnx' \
             -delete
 
-      - name: Build NUBO Wake debug APK
+      - name: Build NUBO Wake v1.2 diagnostic APK
         run: gradle -p android-wake clean assembleDebug --stacktrace
 
-      - name: Verify package and foreground microphone service
+      - name: Verify package version model and foreground microphone service
         shell: bash
         run: |
           set -euo pipefail
@@ -137,13 +146,17 @@ jobs:
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/nubo-wake-badging.txt | head -n 12
           grep -q "package: name='com.ainubo.nubowake'" /tmp/nubo-wake-badging.txt
+          grep -q "versionName='1.2.0-diagnostic'" /tmp/nubo-wake-badging.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/nubo-wake-manifest.txt
           grep -q 'com.ainubo.nubowake.WakeService' /tmp/nubo-wake-manifest.txt
+          unzip -l "$APK" | grep -q 'encoder-epoch-13-avg-2-chunk-16-left-64.onnx'
+          unzip -l "$APK" | grep -q 'decoder-epoch-13-avg-2-chunk-16-left-64.onnx'
+          unzip -l "$APK" | grep -q 'joiner-epoch-13-avg-2-chunk-16-left-64.onnx'
           ls -lh "$APK"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NUBO-Wake-v1.1-MIC-DIAGNOSTIC
+          name: NUBO-Wake-v1.2-CHUNK16-FP32-DIAGNOSTIC
           path: android-wake/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
