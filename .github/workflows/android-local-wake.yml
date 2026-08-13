@@ -84,14 +84,14 @@ jobs:
           fi
 
           cat > "$MODEL/keywords_raw.txt" <<'EOF'
-          NUBO :3.0 #0.20 @NUBO
-          HEY NUBO :3.2 #0.18 @HEY_NUBO
-          HI NUBO :3.2 #0.18 @HI_NUBO
-          努波 :3.0 #0.20 @努波
-          嘿努波 :3.2 #0.18 @嘿努波
-          哈囉努波 :3.2 #0.18 @哈囉努波
-          你好努波 :3.2 #0.18 @你好努波
-          喂努波 :3.2 #0.18 @喂努波
+          NUBO :4.0 #0.10 @NUBO
+          HEY NUBO :4.2 #0.09 @HEY_NUBO
+          HI NUBO :4.2 #0.09 @HI_NUBO
+          努波 :4.0 #0.10 @努波
+          嘿努波 :4.2 #0.09 @嘿努波
+          哈囉努波 :4.2 #0.09 @哈囉努波
+          你好努波 :4.2 #0.09 @你好努波
+          喂努波 :4.2 #0.09 @喂努波
           EOF
 
           if ! sherpa-onnx-cli text2token \
@@ -101,13 +101,13 @@ jobs:
             "$MODEL/keywords_raw.txt" "$MODEL/keywords.txt"; then
             echo "Full Traditional-Chinese phrase set was not tokenizable; applying conservative fallback."
             cat > "$MODEL/keywords_raw.txt" <<'EOF'
-          NUBO :3.0 #0.20 @NUBO
-          HEY NUBO :3.2 #0.18 @HEY_NUBO
-          HI NUBO :3.2 #0.18 @HI_NUBO
-          努波 :3.0 #0.20 @努波
-          嘿努波 :3.2 #0.18 @嘿努波
-          你好努波 :3.2 #0.18 @你好努波
-          喂努波 :3.2 #0.18 @喂努波
+          NUBO :4.0 #0.10 @NUBO
+          HEY NUBO :4.2 #0.09 @HEY_NUBO
+          HI NUBO :4.2 #0.09 @HI_NUBO
+          努波 :4.0 #0.10 @努波
+          嘿努波 :4.2 #0.09 @嘿努波
+          你好努波 :4.2 #0.09 @你好努波
+          喂努波 :4.2 #0.09 @喂努波
           EOF
             sherpa-onnx-cli text2token \
               --tokens "$TOKENS" \
@@ -143,7 +143,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NUBO-Wake-v1-LOCAL-KWS-TEST
+          name: NUBO-Wake-v1.1-MIC-DIAGNOSTIC
           path: android-wake/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
