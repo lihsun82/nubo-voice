@@ -1,0 +1,90 @@
+name: One-shot fix mobile eco wake chime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-shot-fix-mobile-eco-chime.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-mobile-eco-chime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply mobile silent eco fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("components/GeminiVoiceConsole.tsx")
+          text = path.read_text()
+          original = text
+
+          marker = '''  const startEcoWakeListener = () => {\n    stopEcoWakeListener();\n\n    try {\n      const nativeBridge = (window as typeof window & {\n        NuboNative?: { startWakeListener?: () => boolean };\n      }).NuboNative;\n      if (nativeBridge?.startWakeListener?.()) return;\n    } catch {}\n\n    const SpeechRecognition =\n'''
+          replacement = '''  const startEcoWakeListener = () => {\n    stopEcoWakeListener();\n\n    // Android/iOS speech recognizers emit system start/restart chimes in\n    // background/eco mode. Keep mobile eco truly silent: cloud voice stays\n    // stopped and the user taps the existing Start NUBO button to reconnect.\n    const userAgent = window.navigator.userAgent;\n    const isIpadOs =\n      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;\n    const isMobileBrowser =\n      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;\n    if (isMobileBrowser) return;\n\n    try {\n      const nativeBridge = (window as typeof window & {\n        NuboNative?: { startWakeListener?: () => boolean };\n      }).NuboNative;\n      if (nativeBridge?.startWakeListener?.()) return;\n    } catch {}\n\n    const SpeechRecognition =\n'''
+          if text.count(marker) != 1:
+              raise SystemExit(f"eco listener marker count={text.count(marker)}")
+          text = text.replace(marker, replacement, 1)
+
+          old_transcript = '''    setTranscript(\n      "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",\n    );\n'''
+          new_transcript = '''    const userAgent = window.navigator.userAgent;\n    const isIpadOs =\n      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;\n    const isMobileBrowser =\n      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;\n    setTranscript(\n      isMobileBrowser\n        ? "NUBO智慧節約待命中。雲端語音已停止；為避免手機系統提示音，請點『啟動NUBO』重新開始。"\n        : "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",\n    );\n'''
+          if text.count(old_transcript) != 1:
+              raise SystemExit(f"eco transcript marker count={text.count(old_transcript)}")
+          text = text.replace(old_transcript, new_transcript, 1)
+
+          if text == original:
+              raise SystemExit("No mobile eco chime changes applied")
+
+          path.write_text(text)
+          PY
+
+      - name: Verify fix
+        shell: bash
+        run: |
+          grep -q 'if (isMobileBrowser) return;' components/GeminiVoiceConsole.tsx
+          grep -q '為避免手機系統提示音' components/GeminiVoiceConsole.tsx
+          grep -q 'startWakeListener' components/GeminiVoiceConsole.tsx
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Commit and publish
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -- . || true
+          # Re-apply because checkout above only clears typecheck-generated tracked cache changes.
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("components/GeminiVoiceConsole.tsx")
+          text = path.read_text()
+          marker = '''  const startEcoWakeListener = () => {\n    stopEcoWakeListener();\n\n    try {\n      const nativeBridge = (window as typeof window & {\n        NuboNative?: { startWakeListener?: () => boolean };\n      }).NuboNative;\n      if (nativeBridge?.startWakeListener?.()) return;\n    } catch {}\n\n    const SpeechRecognition =\n'''
+          replacement = '''  const startEcoWakeListener = () => {\n    stopEcoWakeListener();\n\n    // Android/iOS speech recognizers emit system start/restart chimes in\n    // background/eco mode. Keep mobile eco truly silent: cloud voice stays\n    // stopped and the user taps the existing Start NUBO button to reconnect.\n    const userAgent = window.navigator.userAgent;\n    const isIpadOs =\n      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;\n    const isMobileBrowser =\n      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;\n    if (isMobileBrowser) return;\n\n    try {\n      const nativeBridge = (window as typeof window & {\n        NuboNative?: { startWakeListener?: () => boolean };\n      }).NuboNative;\n      if (nativeBridge?.startWakeListener?.()) return;\n    } catch {}\n\n    const SpeechRecognition =\n'''
+          if marker in text:
+              text = text.replace(marker, replacement, 1)
+          old_transcript = '''    setTranscript(\n      "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",\n    );\n'''
+          new_transcript = '''    const userAgent = window.navigator.userAgent;\n    const isIpadOs =\n      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;\n    const isMobileBrowser =\n      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;\n    setTranscript(\n      isMobileBrowser\n        ? "NUBO智慧節約待命中。雲端語音已停止；為避免手機系統提示音，請點『啟動NUBO』重新開始。"\n        : "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",\n    );\n'''
+          if old_transcript in text:
+              text = text.replace(old_transcript, new_transcript, 1)
+          path.write_text(text)
+          PY
+          git rm .github/workflows/one-shot-fix-mobile-eco-chime.yml
+          git add components/GeminiVoiceConsole.tsx
+          git commit -m "fix(voice): silence mobile eco wake chimes"
+          git push origin HEAD:main
