@@ -33,11 +33,14 @@ public final class MainActivity extends Activity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
     private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v12";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
+    private static final long ECO_PROBE_INTERVAL_MS = 1500L;
 
     private WebView webView;
     private SpeechRecognizer wakeRecognizer;
     private boolean wakeListenerEnabled = false;
     private final Handler wakeHandler = new Handler(Looper.getMainLooper());
+    private final Handler ecoProbeHandler = new Handler(Looper.getMainLooper());
+    private boolean ecoProbeEnabled = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -165,6 +168,7 @@ public final class MainActivity extends Activity {
                     "document.documentElement.dataset.nuboNative='android-v12';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v12'}}));",
                     null
                 );
+                startEcoStateProbe();
             }
         }
     }
@@ -231,6 +235,16 @@ public final class MainActivity extends Activity {
             || normalized.contains("努波")
             || normalized.contains("努寶")
             || normalized.contains("奴波")
+            || normalized.contains("嘿")
+            || normalized.contains("嗨")
+            || normalized.contains("哈囉")
+            || normalized.contains("哈啰")
+            || normalized.contains("哈羅")
+            || normalized.contains("哈罗")
+            || normalized.contains("你好")
+            || normalized.contains("喂")
+            || normalized.equals("ha")
+            || normalized.equals("哈")
             || normalized.contains("兄弟")
             || normalized.contains("有人嗎")
             || normalized.contains("有人吗");
@@ -242,7 +256,7 @@ public final class MainActivity extends Activity {
             try { wakeRecognizer.cancel(); } catch (Exception ignored) {}
         }
         webView.evaluateJavascript(
-            "window.dispatchEvent(new CustomEvent('nubo:native-wake',{detail:{source:'android'}}));",
+            "window.dispatchEvent(new CustomEvent('nubo:native-wake',{detail:{source:'android-on-device'}}));",
             null
         );
     }
@@ -264,7 +278,7 @@ public final class MainActivity extends Activity {
     private void scheduleWakeRestart() {
         if (!wakeListenerEnabled) return;
         wakeHandler.removeCallbacksAndMessages(null);
-        wakeHandler.postDelayed(this::startWakeRecognition, 700);
+        wakeHandler.postDelayed(this::startWakeRecognition, 900);
     }
 
     private void startWakeRecognition() {
@@ -282,13 +296,30 @@ public final class MainActivity extends Activity {
         );
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW");
         intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5);
         intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 60000L);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 60000L);
+        intent.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 60000L);
         try {
             wakeRecognizer.startListening(intent);
         } catch (Exception ignored) {
             scheduleWakeRestart();
         }
+    }
+
+    private SpeechRecognizer createBestWakeRecognizer() {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && SpeechRecognizer.isOnDeviceRecognitionAvailable(this)
+        ) {
+            try {
+                return SpeechRecognizer.createOnDeviceSpeechRecognizer(this);
+            } catch (Exception ignored) {
+                // Fall back to the device's standard recognizer below.
+            }
+        }
+        return SpeechRecognizer.createSpeechRecognizer(this);
     }
 
     private void startNativeWakeListener() {
@@ -302,7 +333,7 @@ public final class MainActivity extends Activity {
 
         wakeListenerEnabled = true;
         if (wakeRecognizer == null) {
-            wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            wakeRecognizer = createBestWakeRecognizer();
             wakeRecognizer.setRecognitionListener(new RecognitionListener() {
                 @Override public void onReadyForSpeech(Bundle params) {}
                 @Override public void onBeginningOfSpeech() {}
@@ -329,6 +360,34 @@ public final class MainActivity extends Activity {
         if (wakeRecognizer != null) {
             try { wakeRecognizer.cancel(); } catch (Exception ignored) {}
         }
+    }
+
+    private void startEcoStateProbe() {
+        ecoProbeEnabled = true;
+        ecoProbeHandler.removeCallbacksAndMessages(null);
+        ecoProbeHandler.post(this::probeEcoState);
+    }
+
+    private void stopEcoStateProbe() {
+        ecoProbeEnabled = false;
+        ecoProbeHandler.removeCallbacksAndMessages(null);
+    }
+
+    private void probeEcoState() {
+        if (!ecoProbeEnabled || webView == null) return;
+
+        webView.evaluateJavascript(
+            "(function(){var t=document.body?document.body.innerText:'';return t.indexOf('NUBO智慧節約待命中')>=0?'eco':'active';})()",
+            value -> {
+                if (!ecoProbeEnabled) return;
+                if ("\"eco\"".equals(value)) {
+                    startNativeWakeListener();
+                } else {
+                    stopNativeWakeListener();
+                }
+                ecoProbeHandler.postDelayed(this::probeEcoState, ECO_PROBE_INTERVAL_MS);
+            }
+        );
     }
 
     private boolean isAllowedBridgeTarget(String targetUrl, String label) {
@@ -528,10 +587,15 @@ public final class MainActivity extends Activity {
             "window.dispatchEvent(new Event('nubo:native-foreground'));",
             null
         );
+        if (isTrustedNuboUri(Uri.parse(webView.getUrl() == null ? NUBO_URL : webView.getUrl()))) {
+            startEcoStateProbe();
+        }
     }
 
     @Override
     protected void onPause() {
+        stopEcoStateProbe();
+        stopNativeWakeListener();
         webView.evaluateJavascript(
             "window.dispatchEvent(new Event('nubo:native-background'));",
             null
@@ -543,6 +607,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopEcoStateProbe();
         stopNativeWakeListener();
         if (wakeRecognizer != null) {
             wakeRecognizer.destroy();
