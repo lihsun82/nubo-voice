@@ -238,6 +238,16 @@ export function GeminiVoiceConsole() {
   const startEcoWakeListener = () => {
     stopEcoWakeListener();
 
+    // Android/iOS speech recognizers emit system start/restart chimes in
+    // background/eco mode. Keep mobile eco truly silent: cloud voice stays
+    // stopped and the user taps the existing Start NUBO button to reconnect.
+    const userAgent = window.navigator.userAgent;
+    const isIpadOs =
+      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;
+    const isMobileBrowser =
+      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;
+    if (isMobileBrowser) return;
+
     try {
       const nativeBridge = (window as typeof window & {
         NuboNative?: { startWakeListener?: () => boolean };
@@ -302,8 +312,15 @@ export function GeminiVoiceConsole() {
 
     setState("idle");
     setError("");
+    const userAgent = window.navigator.userAgent;
+    const isIpadOs =
+      /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;
+    const isMobileBrowser =
+      /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;
     setTranscript(
-      "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",
+      isMobileBrowser
+        ? "NUBO智慧節約待命中。雲端語音已停止；為避免手機系統提示音，請點『啟動NUBO』重新開始。"
+        : "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",
     );
     notifyNuboVoicePhase("idle");
     startEcoWakeListener();
