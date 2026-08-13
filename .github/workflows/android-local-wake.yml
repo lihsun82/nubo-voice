@@ -67,24 +67,17 @@ jobs:
           set -euo pipefail
           MODEL=android-wake/app/src/main/assets/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20
 
-          ENCODER=$(find "$MODEL" -maxdepth 1 -type f -name 'encoder*chunk-8*int8*.onnx' | head -n1)
-          DECODER=$(find "$MODEL" -maxdepth 1 -type f -name 'decoder*chunk-8*.onnx' | grep -v int8 | head -n1 || true)
-          JOINER=$(find "$MODEL" -maxdepth 1 -type f -name 'joiner*chunk-8*int8*.onnx' | head -n1)
+          ENCODER="$MODEL/encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
+          DECODER="$MODEL/decoder-epoch-13-avg-2-chunk-8-left-64.onnx"
+          JOINER="$MODEL/joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
           TOKENS="$MODEL/tokens.txt"
           LEXICON="$MODEL/en.phone"
 
-          test -n "$ENCODER" && test -f "$ENCODER"
-          if [ -z "$DECODER" ]; then
-            DECODER=$(find "$MODEL" -maxdepth 1 -type f -name 'decoder*chunk-8*.onnx' | head -n1)
-          fi
-          test -n "$DECODER" && test -f "$DECODER"
-          test -n "$JOINER" && test -f "$JOINER"
+          test -f "$ENCODER"
+          test -f "$DECODER"
+          test -f "$JOINER"
           test -f "$TOKENS"
           test -f "$LEXICON"
-
-          cp "$ENCODER" "$MODEL/encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
-          cp "$DECODER" "$MODEL/decoder-epoch-13-avg-2-chunk-8-left-64.onnx"
-          cp "$JOINER" "$MODEL/joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx"
 
           if ! grep -qE '^NUBO[[:space:]]' "$LEXICON"; then
             printf '\nNUBO N UW1 B OW0\n' >> "$LEXICON"
