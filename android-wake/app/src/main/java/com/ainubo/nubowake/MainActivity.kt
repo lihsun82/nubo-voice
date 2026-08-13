@@ -61,21 +61,21 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "NUBO 本機喚醒 v1.1"
+            text = "NUBO 本機喚醒 v1.2"
             textSize = 26f
             setTextColor(Color.rgb(20, 24, 32))
             gravity = Gravity.CENTER
         }
 
         val description = TextView(this).apply {
-            text = "待命時只在手機本機辨識喚醒詞，不連 Gemini。\n\n喚醒詞：NUBO、努波、嘿 NUBO、哈囉 NUBO、你好 NUBO、喂 NUBO、Hey NUBO、Hi NUBO。\n\n這版會顯示真正的麥克風音量與 KWS 狀態，不再只顯示『已啟動』。"
+            text = "待命時只在手機本機辨識喚醒詞，不連 Gemini。\n\n這版改用 chunk-16 FP32 高準確度診斷模型，並加入多組 NUBO／努波發音變體。\n\n畫面會直接顯示 Ready 與 Decode 次數，用來確認 KWS 是否真的持續解碼。"
             textSize = 16f
             setTextColor(Color.rgb(55, 60, 70))
             setPadding(0, 28, 0, 28)
         }
 
         status = TextView(this).apply {
-            text = "狀態：尚未啟動"
+            text = "狀態：尚未啟動\nReady 0｜Decode 0"
             textSize = 16f
             setTextColor(Color.rgb(30, 35, 45))
             setPadding(20, 20, 20, 24)
@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         }
 
         val hint = TextView(this).apply {
-            text = "測試方式：先按『啟用本機喚醒』。狀態若持續顯示『麥克風監聽中』，你說話時 dB 數字應明顯變大（例如 -60 → -25 dB）。接著說『NUBO』。"
+            text = "測試方式：按『啟用本機喚醒』後直接說 NUBO。正常情況下 dB 會隨聲音變化，Ready / Decode 數字也應持續增加；命中後會自動開啟主 NUBO。"
             textSize = 14f
             setTextColor(Color.rgb(90, 95, 105))
             setPadding(0, 24, 0, 0)
@@ -138,7 +138,9 @@ class MainActivity : Activity() {
     private fun startWakeService() {
         getSharedPreferences(WakeService.PREFS, MODE_PRIVATE).edit()
             .putString(WakeService.KEY_STATE, "啟動中")
-            .putString(WakeService.KEY_DETAIL, "等待服務回報真實狀態")
+            .putString(WakeService.KEY_DETAIL, "等待 v1.2 KWS 回報真實狀態")
+            .putLong(WakeService.KEY_READY_COUNT, 0L)
+            .putLong(WakeService.KEY_DECODE_COUNT, 0L)
             .putLong(WakeService.KEY_UPDATED_AT, System.currentTimeMillis())
             .apply()
 
@@ -152,6 +154,8 @@ class MainActivity : Activity() {
         val prefs = getSharedPreferences(WakeService.PREFS, MODE_PRIVATE)
         val state = prefs.getString(WakeService.KEY_STATE, "尚未啟動") ?: "尚未啟動"
         val detail = prefs.getString(WakeService.KEY_DETAIL, "") ?: ""
+        val readyCount = prefs.getLong(WakeService.KEY_READY_COUNT, 0L)
+        val decodeCount = prefs.getLong(WakeService.KEY_DECODE_COUNT, 0L)
         val updatedAt = prefs.getLong(WakeService.KEY_UPDATED_AT, 0L)
         val ageMs = if (updatedAt > 0L) System.currentTimeMillis() - updatedAt else -1L
         val freshness = when {
@@ -159,7 +163,7 @@ class MainActivity : Activity() {
             ageMs < 2_000L -> "｜即時"
             else -> "｜${ageMs / 1000}s 前"
         }
-        status.text = "狀態：$state$freshness\n$detail"
+        status.text = "狀態：$state$freshness\n$detail\nKWS Ready $readyCount｜Decode $decodeCount"
         status.setTextColor(
             when (state) {
                 "錯誤" -> Color.rgb(180, 25, 25)
