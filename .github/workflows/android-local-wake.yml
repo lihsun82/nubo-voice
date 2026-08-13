@@ -80,7 +80,7 @@ jobs:
           test -f "$LEXICON"
 
           if ! grep -qE '^NUBO[[:space:]]' "$LEXICON"; then
-            printf '\nNUBO N UW1 B OW0\n' >> "$LEXICON"
+            printf 'NUBO N UW1 B OW0\n' >> "$LEXICON"
           fi
 
           cat > "$MODEL/keywords_raw.txt" <<'EOF'
