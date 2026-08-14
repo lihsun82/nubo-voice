@@ -19,7 +19,7 @@ on:
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
       - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
-      - "scripts/apply-youtube-ui-agent-v35.py"
+      - "scripts/apply-youtube-no-accessibility-v36.py"
   pull_request:
     branches: [main]
     paths:
@@ -37,7 +37,7 @@ on:
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
       - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
-      - "scripts/apply-youtube-ui-agent-v35.py"
+      - "scripts/apply-youtube-no-accessibility-v36.py"
 
 permissions:
   contents: write
@@ -84,25 +84,28 @@ jobs:
         run: python3 scripts/apply-nubo-v28-build.py
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
-      - name: Apply V35 YouTube UI control agent
-        run: python3 scripts/apply-youtube-ui-agent-v35.py
-      - name: Verify Google Home and V35 YouTube UI agent wiring
+      - name: Apply V36 YouTube no-accessibility switch
+        run: python3 scripts/apply-youtube-no-accessibility-v36.py
+      - name: Verify V36 source wiring and zero accessibility setup
         run: |
+          set -euo pipefail
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'homeArtifact", "17.1.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'public boolean googleHomeControl' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'public boolean switchYouTubeSong' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'NuboYouTubeAccessibilityService' android-nubo/app/src/main/AndroidManifest.xml
-          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' android-nubo/app/src/main/AndroidManifest.xml
-          grep -q 'canPerformGestures="true"' android-nubo/app/src/main/res/xml/nubo_youtube_accessibility_service.xml
-          grep -q 'ACTION_SET_TEXT' android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
-          grep -q 'dispatchGesture' android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
-          grep -q 'v35-ui-control-agent' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'native-youtube-ui-control-agent' lib/mobile-direct-app-v4.ts
+          grep -q 'public boolean playYouTubeNoSetup' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_MULTIPLE_TASK' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'INTENT_ACTION_VIDEO_PLAY_FROM_SEARCH' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'v36-no-setup-fresh-task' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'NUBO_YOUTUBE_LOCAL_FAST_ROUTE_V33' components/GeminiVoiceConsole.tsx
-      - name: Build signed AinuboX1 V35 YouTube UI Agent APK
+          test ! -e android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
+          test ! -e android-nubo/app/src/main/res/xml/nubo_youtube_accessibility_service.xml
+          ! grep -q 'BIND_ACCESSIBILITY_SERVICE' android-nubo/app/src/main/AndroidManifest.xml
+          ! grep -q 'AccessibilityService' android-nubo/app/src/main/AndroidManifest.xml
+      - name: Build signed AinuboX1 V36 YouTube no-accessibility APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
-      - name: Verify APK signature, package, Sense, Google Home and V35 payload
+      - name: Verify APK signature, package, Sense, Google Home and V36 payload
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
@@ -110,31 +113,32 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/ainubox1-badging.txt
           head -n 8 /tmp/ainubox1-badging.txt
-          grep -q "versionCode='35'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='36'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v35-manifest-tree.txt
-          grep -q 'NuboYouTubeAccessibilityService' /tmp/v35-manifest-tree.txt
-          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' /tmp/v35-manifest-tree.txt
-          grep -q 'android.accessibilityservice.AccessibilityService' /tmp/v35-manifest-tree.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v35-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v35-dex-strings.txt
-          grep -q '17.1.0' /tmp/v35-dex-strings.txt
-          grep -q 'NuboYouTubeAccessibilityService' /tmp/v35-dex-strings.txt
-          grep -q 'switchYouTubeSong' /tmp/v35-dex-strings.txt
-          grep -q 'v35-ui-control-agent' /tmp/v35-dex-strings.txt
-      - name: Publish V35 YouTube UI Agent APK
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v36-manifest-tree.txt
+          ! grep -q 'NuboYouTubeAccessibilityService' /tmp/v36-manifest-tree.txt
+          ! grep -q 'BIND_ACCESSIBILITY_SERVICE' /tmp/v36-manifest-tree.txt
+          ! grep -q 'android.accessibilityservice.AccessibilityService' /tmp/v36-manifest-tree.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v36-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v36-dex-strings.txt
+          grep -q '17.1.0' /tmp/v36-dex-strings.txt
+          grep -q 'playYouTubeNoSetup' /tmp/v36-dex-strings.txt
+          grep -q 'v36-no-setup-fresh-task' /tmp/v36-dex-strings.txt
+          grep -q 'android.media.action.VIDEO_PLAY_FROM_SEARCH' /tmp/v36-dex-strings.txt
+          ! grep -q 'NuboYouTubeAccessibilityService' /tmp/v36-dex-strings.txt
+      - name: Publish V36 YouTube no-accessibility APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v36-YOUTUBE-NO-ACCESSIBILITY.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v36-YOUTUBE-NO-ACCESSIBILITY.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V35 YouTube UI Agent APK"
+            git commit -m "build(android): publish AinuboX1 V36 YouTube no-accessibility APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
@@ -142,6 +146,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT
+          name: AinuboX1-v36-YOUTUBE-NO-ACCESSIBILITY
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
