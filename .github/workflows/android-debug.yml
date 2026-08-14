@@ -8,12 +8,14 @@ on:
       - "android-nubo/**"
       - ".github/workflows/android-debug.yml"
       - "scripts/apply-nubo-sense-v25-native-tap.py"
+      - "scripts/apply-nubo-sense-v26-main-voice.py"
   pull_request:
     branches: [main]
     paths:
       - "android-nubo/**"
       - ".github/workflows/android-debug.yml"
       - "scripts/apply-nubo-sense-v25-native-tap.py"
+      - "scripts/apply-nubo-sense-v26-main-voice.py"
 
 permissions:
   contents: write
@@ -53,10 +55,10 @@ jobs:
           grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
           grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
-      - name: Apply V25 native Sense tap and diagnostics
-        run: python3 scripts/apply-nubo-sense-v25-native-tap.py
+      - name: Apply V26 Sense main-voice routing
+        run: python3 scripts/apply-nubo-sense-v26-main-voice.py
 
-      - name: Build signed AinuboX1 V25 NUBO Sense diagnostic release APK
+      - name: Build signed AinuboX1 V26 NUBO Sense main-voice release APK
         run: gradle -p android-nubo clean assembleRelease --stacktrace
 
       - name: Verify APK signature, package and actual packaged icon
@@ -65,7 +67,7 @@ jobs:
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='25'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='26'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
@@ -75,23 +77,23 @@ jobs:
           grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
 
-      - name: Publish V25 NUBO Sense diagnostic APK
+      - name: Publish V26 NUBO Sense main-voice APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v25-NUBO-SENSE-DIAG.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v26-NUBO-SENSE-MAIN-VOICE.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v25-NUBO-SENSE-DIAG.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v26-NUBO-SENSE-MAIN-VOICE.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V25 NUBO Sense diagnostic APK"
+            git commit -m "build(android): publish AinuboX1 V26 NUBO Sense main voice APK"
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v25-NUBO-SENSE-DIAG
+          name: AinuboX1-v26-NUBO-SENSE-MAIN-VOICE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
