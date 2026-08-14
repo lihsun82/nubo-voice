@@ -109,7 +109,7 @@ jobs:
           from pathlib import Path
           s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
           start = s.index('    private boolean launchLegacyYouTubeAppLink(')
-          end = s.index('    private boolean launchYouTubeNoSetup(', start)
+          end = s.index('    private void launchExactYouTubeVideo(', start)
           block = s[start:end]
           required = [
               'new Intent(Intent.ACTION_VIEW, exactUri)',
