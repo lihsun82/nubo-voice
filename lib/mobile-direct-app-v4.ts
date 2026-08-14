@@ -5,6 +5,9 @@ import type { FunctionCall } from "@/lib/browser-nubo-tools";
 type NuboNativeBridge = {
   isNativeApp?: () => boolean;
   openExternalApp?: (targetUrl: string, label: string) => boolean;
+  isYouTubeUiAgentReady?: () => boolean;
+  switchYouTubeSong?: (query: string) => boolean;
+  openYouTubeAgentSettings?: () => boolean;
 };
 
 type NuboNativeWindow = Window & {
@@ -118,6 +121,22 @@ function tryNativeAndroidLaunch(targetUrl: string, label: string) {
   }
 }
 
+function tryNativeYouTubeUiAgent(query: string) {
+  if (typeof window === "undefined" || !query.trim()) return false;
+
+  const host = window as NuboNativeWindow;
+  const bridge = host.NuboNative;
+  if (!bridge?.switchYouTubeSong) return false;
+
+  try {
+    if (bridge.isNativeApp && bridge.isNativeApp() !== true) return false;
+    if (bridge.isYouTubeUiAgentReady?.() !== true) return false;
+    return bridge.switchYouTubeSong(query.trim()) === true;
+  } catch {
+    return false;
+  }
+}
+
 function openInSeparateContext(url: string, targetName: string) {
   try {
     const external = window.open(url, targetName);
@@ -210,6 +229,8 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
     playerUrl?: unknown;
     mobileLabel?: unknown;
     preferredYouTubeApp?: unknown;
+    title?: unknown;
+    query?: unknown;
   };
 
   const targetUrl =
@@ -235,11 +256,43 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
 
   const youtube = isYouTubeUrl(targetUrl);
 
-  // V15.6.41: When NUBO is running inside the native Android WebView shell,
-  // bypass Chrome entirely. The trusted NuboNative bridge starts an explicit
-  // ACTION_VIEW intent for the YouTube / YouTube Music package, so no visible
-  // "開啟：YouTube" web button or synthetic click is required.
   if (youtube) {
+    // V35: if YouTube already owns the foreground window and the user has enabled
+    // NUBO's YouTube-only AccessibilityService, switch the song by operating the
+    // visible YouTube UI directly. This avoids depending on YouTube accepting a
+    // second deep-link intent while NUBO is in PiP. First launch still falls back
+    // to the validated native deep-link path because the agent returns false when
+    // YouTube is not the active window.
+    const agentQuery =
+      typeof payload.title === "string" && payload.title.trim()
+        ? payload.title.trim()
+        : typeof payload.query === "string"
+          ? payload.query.trim()
+          : "";
+
+    if (!preferMusic && agentQuery && tryNativeYouTubeUiAgent(agentQuery)) {
+      return {
+        ...(result as Record<string, unknown>),
+        mobileUrl: undefined,
+        playerUrl: undefined,
+        autoOpen: false,
+        opened: true,
+        mode: "native-youtube-ui-control-agent",
+        externalTab: false,
+        nativeBridge: true,
+        youtubeUiAgent: true,
+        youtubeAppPreferred: true,
+        forcedSameTab: false,
+        preserveNubo: true,
+        launchedUrl: targetUrl,
+        fallbackUrl: targetUrl,
+        mobileLabel: label,
+        launchBlocked: false,
+        singleLaunchOwner: "android-youtube-ui-control-agent",
+        build: "youtube-ui-control-agent-v35-20260815",
+      };
+    }
+
     const nativeTarget = buildYouTubeAppLink(targetUrl, preferMusic);
     const nativeOpened = tryNativeAndroidLaunch(nativeTarget, label);
 
@@ -267,9 +320,6 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
       };
     }
 
-    // Chrome/PWA fallback: keep the visible button. Chrome does not allow a
-    // script-generated click to count as a user gesture for launching an
-    // external Android app, so do not fake-click or open a web tab here.
     const launchUrl = isAndroid()
       ? buildYouTubeAppLink(targetUrl, preferMusic)
       : targetUrl;
