@@ -12,6 +12,7 @@ import {
 } from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
+import { controlNuboLocalWake } from "@/lib/nubo-local-wake";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { NuboQuestionHistory, recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
@@ -250,6 +251,7 @@ export function GeminiVoiceConsole() {
     if (!ecoSleepingRef.current) return;
     ecoSleepingRef.current = false;
     stopEcoWakeListener();
+    controlNuboLocalWake("stop");
     sessionHandleRef.current = null;
     reconnectAttemptsRef.current = 0;
     noteVoiceInteraction();
@@ -345,6 +347,7 @@ export function GeminiVoiceConsole() {
         : "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",
     );
     notifyNuboVoicePhase("idle");
+    controlNuboLocalWake("start");
     startEcoWakeListener();
   };
 
@@ -437,6 +440,7 @@ export function GeminiVoiceConsole() {
     clearReconnectTimer();
     ecoSleepingRef.current = false;
     stopEcoWakeListener();
+    controlNuboLocalWake("stop");
     noteVoiceInteraction();
     setError("");
 
@@ -830,9 +834,16 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
         if (
           silentUntilWakeRef.current ||
-          ecoSleepingRef.current ||
           resumeInProgress
         ) {
+          return;
+        }
+
+        // The local KWS companion launches NUBO after a wake phrase.
+        // Foregrounding the existing shell is the wake signal; only now do
+        // we reconnect Gemini, so eco standby itself consumes no Gemini token.
+        if (ecoSleepingRef.current) {
+          wakeFromEco();
           return;
         }
 
