@@ -20,12 +20,12 @@ import android.widget.FrameLayout;
 import org.json.JSONObject;
 
 /**
- * NUBO-owned YouTube playback surface backed by the official YouTube IFrame API.
+ * NUBO Room Music playback surface backed by the official YouTube IFrame API.
  *
- * The first song opens this Activity. Later song changes are delivered through an
- * in-app broadcast and switched in the SAME player with loadVideoById(). No
- * AccessibilityService, NotificationListener, third-party YouTube task or user
- * setup is required.
+ * V38 deliberately starts each video muted, waits for the YouTube player to enter
+ * PLAYING, and only then promotes it to speaker audio. This avoids the common
+ * unmuted-autoplay rejection while preserving a zero-tap hotel-room experience.
+ * Later song changes stay inside the SAME player via loadVideoById().
  */
 public final class NuboYouTubePlayerActivity extends Activity {
     public static final String EXTRA_VIDEO_ID = "nubo_video_id";
@@ -110,7 +110,7 @@ public final class NuboYouTubePlayerActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(
-            settings.getUserAgentString() + " NUBO-Android-Player/37"
+            settings.getUserAgentString() + " NUBO-Android-Player/38"
         );
 
         CookieManager cookies = CookieManager.getInstance();
@@ -183,36 +183,26 @@ public final class NuboYouTubePlayerActivity extends Activity {
     private void loadNativePlayerDocument() {
         pageReady = false;
         String initialVideo = JSONObject.quote(pendingVideoId);
-        String initialTitle = JSONObject.quote(pendingTitle);
-        String initialChannel = JSONObject.quote(pendingChannel);
 
         String html = "<!doctype html><html><head>"
             + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
-            + "<style>html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;font-family:Arial,sans-serif;overflow:hidden}"
-            + "#wrap{position:fixed;inset:0;background:#000}#player{position:absolute;inset:0;width:100%;height:100%}"
-            + "#meta{position:absolute;left:12px;right:12px;top:12px;z-index:4;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.55);pointer-events:none}"
-            + "#title{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-            + "#channel{font-size:12px;opacity:.72;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-            + "#status{position:absolute;left:12px;bottom:14px;z-index:5;padding:7px 10px;border-radius:10px;background:rgba(0,0,0,.58);font-size:12px;pointer-events:none}"
-            + "</style></head><body><div id='wrap'><div id='player'></div><div id='meta'><div id='title'></div><div id='channel'></div></div><div id='status'>NUBO PLAYER</div></div>"
-            + "<script>"
-            + "var player=null,currentId=" + initialVideo + ",currentTitle=" + initialTitle + ",currentChannel=" + initialChannel + ";"
-            + "function setText(){document.getElementById('title').textContent=currentTitle||'NUBO YouTube';document.getElementById('channel').textContent=currentChannel||'';}"
-            + "function status(t){document.getElementById('status').textContent=t;}"
-            + "function promoteAudio(){if(!player)return;try{player.setVolume(100);player.unMute();player.playVideo();}catch(e){}}"
-            + "function playCurrent(){if(!player||!currentId)return false;try{setText();status('正在切換…');player.setVolume(100);player.unMute();player.loadVideoById(currentId);player.playVideo();[120,350,800,1500,3000].forEach(function(d){setTimeout(promoteAudio,d)});return true}catch(e){status('播放器重試中…');return false}}"
-            + "window.nuboYouTubeLoadVideo=function(id,title,channel){if(!/^[A-Za-z0-9_-]{11}$/.test(id||''))return false;currentId=id;currentTitle=title||'';currentChannel=channel||'';setText();if(!player){status('播放器載入中…');return true}return playCurrent();};"
+            + "<meta name='referrer' content='strict-origin-when-cross-origin'>"
+            + "<style>html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}body{position:fixed;inset:0}iframe{display:block;width:100%!important;height:100%!important;border:0}</style>"
+            + "</head><body><div id='player'></div><script>"
+            + "var player=null,currentId=" + initialVideo + ",playGeneration=0,unmuteTimers=[];"
+            + "function clearUnmuteTimers(){while(unmuteTimers.length){clearTimeout(unmuteTimers.pop());}}"
+            + "function promoteAudio(gen){if(!player||gen!==playGeneration)return;try{player.setVolume(100);player.unMute();player.playVideo();}catch(e){}}"
+            + "function scheduleAudioPromotion(gen){clearUnmuteTimers();[180,450,900,1600,2800,4500].forEach(function(delay){unmuteTimers.push(setTimeout(function(){promoteAudio(gen)},delay));});}"
+            + "function startExactVideo(id){if(!player||!/^[A-Za-z0-9_-]{11}$/.test(id||''))return false;currentId=id;playGeneration+=1;var gen=playGeneration;clearUnmuteTimers();try{player.mute();player.setVolume(100);player.loadVideoById({videoId:currentId,startSeconds:0});player.playVideo();return true}catch(e){return false}}"
+            + "window.nuboYouTubeLoadVideo=function(id,title,channel){if(!/^[A-Za-z0-9_-]{11}$/.test(id||''))return false;currentId=id;if(!player)return true;return startExactVideo(id);};"
+            + "window.nuboResumePlayback=function(){if(!player)return false;try{player.playVideo();if(player.getPlayerState()===1)scheduleAudioPromotion(playGeneration);return true}catch(e){return false}};"
             + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:'100%',videoId:currentId,playerVars:{autoplay:1,playsinline:1,controls:1,rel:0,enablejsapi:1,origin:'https://nubo.ainubo.com'},events:{"
-            + "onReady:function(e){status('正在播放');try{e.target.setVolume(100);e.target.unMute();e.target.loadVideoById(currentId);e.target.playVideo();[150,500,1200,2500].forEach(function(d){setTimeout(promoteAudio,d)})}catch(x){}},"
-            + "onStateChange:function(e){if(e.data===1)status('播放中');else if(e.data===3)status('載入中…');else if(e.data===2)status('已暫停')},"
-            + "onAutoplayBlocked:function(e){status('正在自動啟動播放…');try{e.target.mute();e.target.loadVideoById(currentId);e.target.playVideo();setTimeout(promoteAudio,300);setTimeout(promoteAudio,1000)}catch(x){}},"
-            + "onError:function(){status('此影片無法播放，請再指定另一首')}'"
-            + "}});setText();}"
+            + "onReady:function(){startExactVideo(currentId);},"
+            + "onStateChange:function(e){if(e.data===1){scheduleAudioPromotion(playGeneration);}else if(e.data===2){clearUnmuteTimers();}},"
+            + "onAutoplayBlocked:function(){try{player.mute();player.playVideo();}catch(e){}},"
+            + "onError:function(){clearUnmuteTimers();}"
+            + "}});}"
             + "</script><script src='https://www.youtube.com/iframe_api'></script></body></html>";
-
-        // Fix the final JS object quote generated above while keeping the Java string
-        // readable. This exact replacement is local and deterministic.
-        html = html.replace("onError:function(){status('此影片無法播放，請再指定另一首')}'", "onError:function(){status('此影片無法播放，請再指定另一首')}");
 
         webView.loadDataWithBaseURL(
             BASE_ORIGIN,
@@ -262,6 +252,29 @@ public final class NuboYouTubePlayerActivity extends Activity {
     protected void onStart() {
         super.onStart();
         running = true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) {
+            webView.onResume();
+            webView.resumeTimers();
+            if (pageReady) {
+                webView.evaluateJavascript(
+                    "window.nuboResumePlayback&&window.nuboResumePlayback();",
+                    null
+                );
+            }
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        if (webView != null) {
+            webView.onPause();
+        }
+        super.onPause();
     }
 
     @Override
