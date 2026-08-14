@@ -3,7 +3,8 @@ import runpy
 
 # V37 starts from the fully validated V36 zero-accessibility build. It preserves
 # Google Home, Gemini voice, PiP, Sense/YAMNet, avatar/UI and the V36 external
-# YouTube fallbacks, but makes NUBO's own YouTube PlayerActivity the primary path.
+# YouTube fallback, but replaces V36's PRIMARY playback implementation with a
+# NUBO-owned YouTube IFrame player.
 runpy.run_path("scripts/apply-youtube-no-accessibility-v36.py", run_name="__main__")
 
 
@@ -27,47 +28,61 @@ app.write_text(s)
 main = Path("android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java")
 s = main.read_text()
 
-bridge_marker = '''        @JavascriptInterface
+method_start_marker = '''        @JavascriptInterface
+        public boolean playYouTubeNoSetup(
+'''
+method_end_marker = '''        @JavascriptInterface
         public boolean startWakeListener() {
 '''
 
-bridge = r'''        @JavascriptInterface
-        public boolean openNuboYouTubePlayer(
-            String targetUrl,
-            String title,
-            String channel
-        ) {
-            if (targetUrl == null) return false;
+method_start = s.find(method_start_marker)
+method_end = s.find(method_end_marker, method_start + 1)
+if method_start < 0 or method_end < 0:
+    raise SystemExit("missing V36 playYouTubeNoSetup bridge boundaries")
 
+bridge = r'''        @JavascriptInterface
+        public boolean playYouTubeNoSetup(
+            String query,
+            String targetUrl,
+            String label
+        ) {
+            if (targetUrl == null || label == null) return false;
+
+            String safeQuery = query == null ? "" : query.trim();
             String safeTarget = targetUrl.trim();
-            if (safeTarget.isEmpty()) return false;
+            String safeLabel = label.trim();
+            if (safeTarget.isEmpty() || safeLabel.isEmpty()) return false;
+            if (!activity.isAllowedBridgeTarget(safeTarget, safeLabel)) return false;
 
             Uri target = Uri.parse(safeTarget);
             String videoId = activity.extractYouTubeVideoId(target);
             if (videoId == null || !videoId.matches("^[A-Za-z0-9_-]{11}$")) {
-                return false;
+                // Keep the proven V36 package-scoped fallback for unusual URLs.
+                activity.runOnUiThread(() -> activity.launchYouTubeNoSetup(
+                    safeQuery,
+                    safeTarget,
+                    safeLabel
+                ));
+                return true;
             }
 
-            String safeTitle = title == null ? "" : title.trim();
-            String safeChannel = channel == null ? "" : channel.trim();
-
             activity.runOnUiThread(() -> {
-                // Once the NUBO player is already foreground, never launch another
-                // Activity or third-party YouTube task. Deliver the new video ID
-                // directly to the existing player through an in-app broadcast.
+                // Critical V37 path: when the NUBO player is already visible, do
+                // not launch ANY activity. Send the new videoId to the existing
+                // same-process player; it calls YouTube IFrame loadVideoById().
                 if (NuboYouTubePlayerActivity.isRunning()) {
                     NuboYouTubePlayerActivity.sendSongSwitch(
                         activity,
                         videoId,
-                        safeTitle,
-                        safeChannel
+                        safeQuery,
+                        ""
                     );
                     return;
                 }
 
-                // First song only: keep the Gemini voice session alive in PiP and
-                // open NUBO's own player in a separate task. Subsequent switches do
-                // not touch task management at all.
+                // First song only: keep Gemini voice alive in PiP and open NUBO's
+                // own player in a separate task. No accessibility or notification
+                // permission is involved.
                 boolean alreadyInPip = activity.isNuboInPictureInPicture();
                 if (!alreadyInPip) {
                     activity.beginExternalVoiceKeepAlive();
@@ -89,11 +104,11 @@ bridge = r'''        @JavascriptInterface
                     );
                     playerIntent.putExtra(
                         NuboYouTubePlayerActivity.EXTRA_TITLE,
-                        safeTitle
+                        safeQuery
                     );
                     playerIntent.putExtra(
                         NuboYouTubePlayerActivity.EXTRA_CHANNEL,
-                        safeChannel
+                        ""
                     );
                     playerIntent.putExtra(
                         "nubo_youtube_player_build",
@@ -108,7 +123,12 @@ bridge = r'''        @JavascriptInterface
                     try {
                         activity.startActivity(playerIntent);
                     } catch (RuntimeException ignored) {
-                        // The web layer retains V36 as a fail-open fallback.
+                        // Fail open to the validated V36 external YouTube path.
+                        activity.launchYouTubeNoSetup(
+                            safeQuery,
+                            safeTarget,
+                            safeLabel
+                        );
                     }
                 }, delayMs);
             });
@@ -117,14 +137,7 @@ bridge = r'''        @JavascriptInterface
 
 '''
 
-if "public boolean openNuboYouTubePlayer" not in s:
-    s = replace_once(
-        s,
-        bridge_marker,
-        bridge + bridge_marker,
-        "V37 NUBO YouTube player bridge",
-    )
-
+s = s[:method_start] + bridge + s[method_end:]
 s = s.replace("android-v36", "android-v37")
 s = s.replace("NUBO-Android/36", "NUBO-Android/37")
 main.write_text(s)
