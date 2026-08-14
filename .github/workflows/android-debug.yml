@@ -92,11 +92,15 @@ jobs:
           git add public/downloads/AinuboX1-v28-SMOOTH-PIP-VOICE.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
             git commit -m "build(android): publish AinuboX1 V28 APK"
+            # Build transforms intentionally modify tracked Android sources in the runner.
+            # The APK commit is complete, so restore those temporary worktree edits before rebase.
+            git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
           fi
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: AinuboX1-v28-SMOOTH-PIP-VOICE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
