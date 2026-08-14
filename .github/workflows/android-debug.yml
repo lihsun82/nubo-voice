@@ -61,6 +61,22 @@ jobs:
           grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
           grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
 
+      - name: Download official Google Home Android SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          HOME_SDK_ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          HOME_SDK_REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 \
+            'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' \
+            -o "$HOME_SDK_ZIP"
+          test "$(stat -c%s "$HOME_SDK_ZIP")" -gt 100000000
+          mkdir -p "$HOME_SDK_REPO"
+          unzip -q "$HOME_SDK_ZIP" -d "$HOME_SDK_REPO"
+          test -f "$HOME_SDK_REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          test -f "$HOME_SDK_REPO/com/google/android/gms/play-services-home-types/17.1.0/play-services-home-types-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$HOME_SDK_REPO" >> "$GITHUB_ENV"
+
       - name: Apply unchanged V28 voice and UI build
         run: python3 scripts/apply-nubo-v28-build.py
 
@@ -92,16 +108,16 @@ jobs:
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
-          echo "Packaged launcher icon: $ICON_PATH"
           unzip -p "$APK" "$ICON_PATH" > /tmp/packaged-launcher-icon
           test "$(xxd -p -l 3 /tmp/packaged-launcher-icon)" = "ffd8ff"
           grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
           unzip -l "$APK" | grep -q 'play-services-home-types.properties'
-          unzip -p "$APK" classes.dex | strings | grep -q 'GoogleHomeGatewayImpl'
-          unzip -p "$APK" classes.dex | strings | grep -q 'nubo:google-home-result'
-          unzip -p "$APK" classes.dex | strings | grep -q '17.1.0'
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v29-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v29-dex-strings.txt
+          grep -q 'nubo:google-home-result' /tmp/v29-dex-strings.txt
+          grep -q '17.1.0' /tmp/v29-dex-strings.txt
 
       - name: Publish V29 Google Home restored APK
         if: github.event_name == 'push'
