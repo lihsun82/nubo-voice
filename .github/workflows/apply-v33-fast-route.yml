@@ -1,0 +1,32 @@
+name: Apply V33 YouTube Fast Route
+
+on:
+  push:
+    branches: [fix/v33-youtube-local-fast-route]
+    paths:
+      - "scripts/apply-youtube-fast-route-v33-web.py"
+      - ".github/workflows/apply-v33-fast-route.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v33-youtube-local-fast-route
+      - name: Apply V33 web source patch
+        run: python3 scripts/apply-youtube-fast-route-v33-web.py
+      - name: Commit materialized source
+        run: |
+          if git diff --quiet -- components/GeminiVoiceConsole.tsx; then
+            echo "Already applied"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/GeminiVoiceConsole.tsx
+          git commit -m "fix(voice): route named YouTube song changes locally"
+          git push origin HEAD:fix/v33-youtube-local-fast-route
