@@ -5,7 +5,7 @@ import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
 const AVATAR_WIDTH = 560;
 const AVATAR_HEIGHT = 620;
-const ACTION_AMPLITUDE = 1.4;
+const ACTION_AMPLITUDE = 1.75;
 
 type ParticleRegion = "head" | "body" | "ambient";
 type AvatarGesture =
@@ -96,14 +96,14 @@ function getRenderProfile(): RenderProfile {
   }
 
   if (cores <= 4) {
-    return { particleCount: 3200, frameInterval: 1000 / 26, dpr: Math.min(window.devicePixelRatio || 1, 1.1) };
+    return { particleCount: 2700, frameInterval: 1000 / 25, dpr: Math.min(window.devicePixelRatio || 1, 1.05) };
   }
 
   if (mobile) {
     return {
-      particleCount: 6200,
+      particleCount: 4700,
       frameInterval: 1000 / 30,
-      dpr: Math.min(window.devicePixelRatio || 1, 1.35),
+      dpr: Math.min(window.devicePixelRatio || 1, 1.18),
     };
   }
 
@@ -313,28 +313,28 @@ function getGesturePose(
 
   if (gesture.kind === "nod") {
     const wave = Math.sin(progress * Math.PI * 3.8) * envelope;
-    headY += wave * 6.3 * ACTION_AMPLITUDE;
-    headScaleY -= Math.max(0, wave) * 0.014 * ACTION_AMPLITUDE;
+    headY += wave * 9.0 * ACTION_AMPLITUDE;
+    headScaleY -= Math.max(0, wave) * 0.021 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "question") {
     headY -= envelope * 4.8 * ACTION_AMPLITUDE;
     headX += envelope * 2.1 * ACTION_AMPLITUDE;
     headRoll += envelope * 0.032 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "shake") {
     const wave = Math.sin(progress * Math.PI * 4.8) * envelope;
-    headX += wave * 6.4 * ACTION_AMPLITUDE;
-    headRoll += wave * 0.014 * ACTION_AMPLITUDE;
+    headX += wave * 10.0 * ACTION_AMPLITUDE;
+    headRoll += wave * 0.024 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "think") {
     headY -= envelope * 7.2 * ACTION_AMPLITUDE;
     headX += envelope * 1.5 * ACTION_AMPLITUDE;
     headRoll -= envelope * 0.018 * ACTION_AMPLITUDE;
     headScaleY += envelope * 0.012 * ACTION_AMPLITUDE;
   } else if (gesture.kind === "shrug") {
-    shoulderLift = envelope * 4.6 * ACTION_AMPLITUDE;
-    headY -= envelope * 1.4 * ACTION_AMPLITUDE;
+    shoulderLift = envelope * 9.0 * ACTION_AMPLITUDE;
+    headY -= envelope * 3.0 * ACTION_AMPLITUDE;
     headRoll +=
       Math.sin(progress * Math.PI * 2) *
       envelope *
-      0.012 *
+      0.022 *
       ACTION_AMPLITUDE;
   } else if (gesture.kind === "emphasis") {
     const wave = Math.sin(progress * Math.PI * 2.2) * envelope;
@@ -1118,6 +1118,9 @@ export function NuboEnergyOrb() {
     let animationFrame = 0;
     let lastFrameAt = 0;
     let visible = document.visibilityState === "visible";
+    let intersecting = true;
+    let scrolling = false;
+    let scrollTimer: number | null = null;
     let gesture: GestureState = {
       kind: "neutral",
       startedAt: 0,
@@ -1195,12 +1198,18 @@ export function NuboEnergyOrb() {
 
     const draw = (time: number) => {
       animationFrame = 0;
-      if (!visible) return;
+      if (!visible || !intersecting) return;
 
       audioLevel += (targetAudioLevel - audioLevel) * 0.22;
       targetAudioLevel *= 0.9;
 
-      if (time - lastFrameAt >= profile.frameInterval) {
+      // Scrolling gets priority over decorative canvas work. As soon as scrolling
+      // stops, the avatar returns to its normal frame rate.
+      const effectiveFrameInterval = scrolling
+        ? Math.max(profile.frameInterval, 1000 / 16)
+        : profile.frameInterval;
+
+      if (time - lastFrameAt >= effectiveFrameInterval) {
         lastFrameAt = time;
         renderHologram(
           ctx,
@@ -1217,11 +1226,35 @@ export function NuboEnergyOrb() {
 
     const onVisibilityChange = () => {
       visible = document.visibilityState === "visible";
-      if (visible && !animationFrame) {
+      if (visible && intersecting && !animationFrame) {
         animationFrame = window.requestAnimationFrame(draw);
       }
     };
 
+    const intersectionObserver = new IntersectionObserver(
+      ([entry]) => {
+        intersecting = entry?.isIntersecting ?? true;
+        if (intersecting && visible && !animationFrame) {
+          animationFrame = window.requestAnimationFrame(draw);
+        }
+      },
+      { rootMargin: "140px 0px" },
+    );
+    intersectionObserver.observe(canvas);
+
+    const onScroll = () => {
+      scrolling = true;
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        scrolling = false;
+        scrollTimer = null;
+        if (visible && intersecting && !animationFrame) {
+          animationFrame = window.requestAnimationFrame(draw);
+        }
+      }, 140);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("nubo-voice-phase", onPhase);
     window.addEventListener("nubo:voice-level", onAudioLevel);
     window.addEventListener("nubo:audio-playback-state", onPlaybackState);
@@ -1231,6 +1264,9 @@ export function NuboEnergyOrb() {
 
     return () => {
       if (animationFrame) window.cancelAnimationFrame(animationFrame);
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer);
+      intersectionObserver.disconnect();
+      window.removeEventListener("scroll", onScroll);
       transcriptObserver.disconnect();
       window.removeEventListener("nubo-voice-phase", onPhase);
       window.removeEventListener("nubo:voice-level", onAudioLevel);

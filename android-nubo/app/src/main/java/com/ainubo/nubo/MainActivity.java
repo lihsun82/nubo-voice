@@ -2,6 +2,7 @@ package com.ainubo.nubo;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PictureInPictureParams;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -26,6 +27,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.util.Rational;
 
 import org.json.JSONObject;
 
@@ -48,6 +50,7 @@ public final class MainActivity extends Activity {
     private boolean senseTtsReady = false;
     private boolean activityForeground = false;
     private String voicePhase = "idle";
+    private volatile boolean externalVoiceKeepAliveActive = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -284,10 +287,66 @@ public final class MainActivity extends Activity {
                 return false;
             }
 
-            activity.runOnUiThread(
-                () -> activity.launchExternalTarget(safeTarget, safeLabel)
-            );
+            activity.runOnUiThread(() -> {
+                activity.beginExternalVoiceKeepAlive();
+                activity.webView.postDelayed(
+                    () -> activity.launchExternalTarget(safeTarget, safeLabel),
+                    180L
+                );
+            });
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean isExternalVoiceKeepAliveActive() {
+            return activity.externalVoiceKeepAliveActive;
+        }
+
+        @JavascriptInterface
+        public boolean endExternalVoiceKeepAlive() {
+            activity.runOnUiThread(activity::endExternalVoiceKeepAlive);
+            return true;
+        }
+    }
+
+    private boolean isNuboInPictureInPicture() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            && isInPictureInPictureMode();
+    }
+
+    private void beginExternalVoiceKeepAlive() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            externalVoiceKeepAliveActive = false;
+            return;
+        }
+        try {
+            PictureInPictureParams params = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(9, 16))
+                .build();
+            externalVoiceKeepAliveActive = enterPictureInPictureMode(params);
+            if (externalVoiceKeepAliveActive) {
+                activityForeground = true;
+                webView.resumeTimers();
+            }
+        } catch (RuntimeException ignored) {
+            externalVoiceKeepAliveActive = false;
+        }
+    }
+
+    private void endExternalVoiceKeepAlive() {
+        externalVoiceKeepAliveActive = false;
+        if (isNuboInPictureInPicture()) {
+            moveTaskToBack(true);
+        }
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean inPictureInPictureMode) {
+        super.onPictureInPictureModeChanged(inPictureInPictureMode);
+        externalVoiceKeepAliveActive = inPictureInPictureMode;
+        if (inPictureInPictureMode) {
+            activityForeground = true;
+            webView.resumeTimers();
         }
     }
 
@@ -741,6 +800,9 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         activityForeground = true;
+        if (!isNuboInPictureInPicture()) {
+            externalVoiceKeepAliveActive = false;
+        }
         webView.onResume();
         webView.resumeTimers();
         webView.evaluateJavascript(
@@ -752,14 +814,22 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
-        activityForeground = false;
-        stopSenseAmbientCapture();
-        webView.evaluateJavascript(
-            "window.dispatchEvent(new Event('nubo:native-background'));",
-            null
-        );
-        webView.onPause();
-        webView.pauseTimers();
+        final boolean keepVoiceAlive =
+            externalVoiceKeepAliveActive || isNuboInPictureInPicture();
+        if (keepVoiceAlive) {
+            // PiP remains visible, so do not suspend Chromium timers or microphone.
+            activityForeground = true;
+            webView.resumeTimers();
+        } else {
+            activityForeground = false;
+            stopSenseAmbientCapture();
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new Event('nubo:native-background'));",
+                null
+            );
+            webView.onPause();
+            webView.pauseTimers();
+        }
         super.onPause();
     }
 

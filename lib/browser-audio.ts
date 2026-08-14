@@ -122,6 +122,18 @@ function removeForegroundListeners(listener: () => void) {
   window.removeEventListener("pageshow", listener, true);
 }
 
+function nativeExternalVoiceKeepAliveActive() {
+  if (typeof window === "undefined") return false;
+  try {
+    const bridge = (window as typeof window & {
+      NuboNative?: { isExternalVoiceKeepAliveActive?: () => boolean };
+    }).NuboNative;
+    return bridge?.isExternalVoiceKeepAliveActive?.() === true;
+  } catch {
+    return false;
+  }
+}
+
 export class MicrophonePcmStream {
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
@@ -137,7 +149,7 @@ export class MicrophonePcmStream {
   private preRoll: string[] = [];
 
   private readonly handleForeground = () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "visible" || nativeExternalVoiceKeepAliveActive()) {
       this.ecoSleeping = false;
       this.lastVoiceAt = Date.now();
       this.preRoll = [];
@@ -214,7 +226,7 @@ export class MicrophonePcmStream {
       forwardPcmToNativeSense(pcm);
       const base64 = toBase64(pcm);
 
-      if (document.visibilityState !== "visible") {
+      if (document.visibilityState !== "visible" && !nativeExternalVoiceKeepAliveActive()) {
         this.ecoSleeping = true;
         this.preRoll = [];
         return;
