@@ -35,7 +35,7 @@ import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
-    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v23";
+    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v24";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
 
     private WebView webView;
@@ -89,7 +89,7 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(
-            settings.getUserAgentString() + " NUBO-Android/23"
+            settings.getUserAgentString() + " NUBO-Android/24"
         );
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -210,7 +210,7 @@ public final class MainActivity extends Activity {
             super.onPageFinished(view, url);
             if (isTrustedNuboUri(Uri.parse(url))) {
                 view.evaluateJavascript(
-                    "document.documentElement.dataset.nuboNative='android-v23';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v23',sense:'v1'}}));",
+                    "document.documentElement.dataset.nuboNative='android-v24';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v24',sense:'v1'}}));",
                     null
                 );
             }
@@ -231,7 +231,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getNativeVersion() {
-            return "android-v23";
+            return "android-v24";
         }
 
         @JavascriptInterface
@@ -257,6 +257,15 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public boolean isSenseReady() {
             return activity.senseDetector != null && activity.senseDetector.isReady();
+        }
+
+        @JavascriptInterface
+        public boolean pushSensePcm16Base64(String pcmBase64) {
+            if (pcmBase64 == null || pcmBase64.isEmpty() || pcmBase64.length() > 100_000) {
+                return false;
+            }
+            activity.runOnUiThread(() -> activity.pushSensePcm16Base64(pcmBase64));
+            return true;
         }
 
         @JavascriptInterface
@@ -345,8 +354,22 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void pushSensePcm16Base64(String pcmBase64) {
+        if (!activityForeground || !"listening".equals(voicePhase)) return;
+        try {
+            byte[] pcm = android.util.Base64.decode(pcmBase64, android.util.Base64.DEFAULT);
+            ensureSenseDetector();
+            if (senseDetector != null) senseDetector.classifyPcm16(pcm);
+        } catch (RuntimeException ignored) {
+            // Gemini audio must continue even if Sense diagnostics fail.
+        }
+    }
+
     private void handleSenseEvent(NuboSenseAudioDetector.SenseEvent event) {
-        if (event == null || !canRunSenseAmbient()) return;
+        if (event == null || !activityForeground) return;
+        if (!("idle".equals(voicePhase)
+            || "error".equals(voicePhase)
+            || "listening".equals(voicePhase))) return;
 
         dispatchSenseEventToWeb(event);
         String phrase = localSenseResponse(event);
