@@ -44,6 +44,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".NuboYouTubePlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
+            android:excludeFromRecents="false"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="unspecified"
+            android:taskAffinity="com.ainubo.nubo.youtubeplayer"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>
