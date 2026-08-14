@@ -20,6 +20,9 @@ body {
   aspect-ratio: 560 / 620;
   display: grid;
   place-items: center;
+  contain: layout paint;
+  transform: translateZ(0);
+  backface-visibility: hidden;
   filter: drop-shadow(0 0 30px rgba(53, 220, 255, 0.32)) drop-shadow(0 0 70px rgba(19, 116, 255, 0.18));
 }
 

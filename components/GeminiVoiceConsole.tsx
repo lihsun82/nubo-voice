@@ -345,6 +345,12 @@ export function GeminiVoiceConsole() {
         : "NUBO智慧節約待命中。雲端語音已停止，請說 nubo、嗨 nubo、兄弟或有人嗎喚醒。",
     );
     notifyNuboVoicePhase("idle");
+    try {
+      const bridge = (window as typeof window & {
+        NuboNative?: { endExternalVoiceKeepAlive?: () => boolean };
+      }).NuboNative;
+      bridge?.endExternalVoiceKeepAlive?.();
+    } catch {}
     startEcoWakeListener();
   };
 
@@ -894,14 +900,14 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
               activeSocket?.readyState ===
               WebSocket.OPEN
             ) {
-              /*
-               * 即使WebSocket表面仍開啟，
-               * 手機背景期間的麥克風與音訊可能已暫停。
-               * 關閉後交由既有重連機制建立乾淨連線。
-               */
-              activeSocket.close(
-                1012,
-                "NUBO foreground resume",
+              // V28 PiP keeps the existing Gemini session alive while YouTube /
+              // LINE / Maps is foreground. Reuse it instead of throwing it away.
+              void microphoneRef.current?.resume();
+              setState("connected");
+              setTranscript(
+                returningFromExternal
+                  ? "已返回NUBO，語音持續連線。"
+                  : "NUBO語音已恢復。",
               );
             } else if (
               activeSocket?.readyState !==
