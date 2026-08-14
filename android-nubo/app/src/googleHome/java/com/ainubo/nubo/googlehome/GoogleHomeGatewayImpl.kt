@@ -244,25 +244,6 @@ class GoogleHomeGatewayImpl(
     }
 
     private suspend fun findOnOffTrait(device: HomeDevice): OnOff? {
-        if (device.has(OnOffPluginUnitDevice)) {
-            return device.type(OnOffPluginUnitDevice).first().standardTraits.onOff
-        }
-        if (device.has(OnOffLightDevice)) {
-            return device.type(OnOffLightDevice).first().standardTraits.onOff
-        }
-        if (device.has(DimmableLightDevice)) {
-            return device.type(DimmableLightDevice).first().standardTraits.onOff
-        }
-        if (device.has(ExtendedColorLightDevice)) {
-            return device.type(ExtendedColorLightDevice).first().standardTraits.onOff
-        }
-        if (device.has(ColorTemperatureLightDevice)) {
-            return device.type(ColorTemperatureLightDevice).first().standardTraits.onOff
-        }
-        if (device.has(OnOffLightSwitchDevice)) {
-            return device.type(OnOffLightSwitchDevice).first().standardTraits.onOff
-        }
-
         val types = device.types().first()
         for (type in types) {
             val trait = type.trait(OnOff)
@@ -272,13 +253,13 @@ class GoogleHomeGatewayImpl(
     }
 
     private fun controlPath(device: HomeDevice): String = when {
-        device.has(OnOffPluginUnitDevice) -> "OnOffPluginUnitDevice.standardTraits.onOff"
-        device.has(OnOffLightDevice) -> "OnOffLightDevice.standardTraits.onOff"
-        device.has(DimmableLightDevice) -> "DimmableLightDevice.standardTraits.onOff"
-        device.has(ExtendedColorLightDevice) -> "ExtendedColorLightDevice.standardTraits.onOff"
-        device.has(ColorTemperatureLightDevice) -> "ColorTemperatureLightDevice.standardTraits.onOff"
-        device.has(OnOffLightSwitchDevice) -> "OnOffLightSwitchDevice.standardTraits.onOff"
-        else -> "generic type.trait(OnOff) fallback"
+        device.has(OnOffPluginUnitDevice) -> "OnOffPluginUnitDevice"
+        device.has(OnOffLightDevice) -> "OnOffLightDevice"
+        device.has(DimmableLightDevice) -> "DimmableLightDevice"
+        device.has(ExtendedColorLightDevice) -> "ExtendedColorLightDevice"
+        device.has(ColorTemperatureLightDevice) -> "ColorTemperatureLightDevice"
+        device.has(OnOffLightSwitchDevice) -> "OnOffLightSwitchDevice"
+        else -> "generic type.trait(OnOff)"
     }
 
     private suspend fun executeOnOff(trait: OnOff, action: String) {
