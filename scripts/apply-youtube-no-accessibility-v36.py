@@ -94,7 +94,7 @@ helpers = r'''    private boolean startYouTubeIntentNoSetup(Intent intent) {
                 overridePendingTransition(0, 0);
             }
             return true;
-        } catch (ActivityNotFoundException | SecurityException | RuntimeException ignored) {
+        } catch (RuntimeException ignored) {
             return false;
         }
     }
