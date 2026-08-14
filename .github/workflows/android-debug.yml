@@ -12,6 +12,7 @@ on:
       - "scripts/apply-nubo-sense-v27-hide-debug.py"
       - "scripts/apply-nubo-v28-build.py"
       - "scripts/apply-google-home-v29.py"
+      - "scripts/apply-youtube-switch-v30.py"
   pull_request:
     branches: [main]
     paths:
@@ -22,6 +23,7 @@ on:
       - "scripts/apply-nubo-sense-v27-hide-debug.py"
       - "scripts/apply-nubo-v28-build.py"
       - "scripts/apply-google-home-v29.py"
+      - "scripts/apply-youtube-switch-v30.py"
 
 permissions:
   contents: write
@@ -83,7 +85,10 @@ jobs:
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
 
-      - name: Verify isolated Google Home source wiring
+      - name: Apply YouTube instant track switching only
+        run: python3 scripts/apply-youtube-switch-v30.py
+
+      - name: Verify isolated Google Home and YouTube switch wiring
         run: |
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeActivity.java
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeGateway.java
@@ -94,17 +99,21 @@ jobs:
           grep -q 'play-services-home-types:17.1.0' android-nubo/app/build.gradle
           grep -q 'public String googleHomeStatus()' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'public boolean googleHomeControl' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_NEW_TASK' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_CLEAR_TOP' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_SINGLE_TOP' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'v30-instant-switch' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
 
-      - name: Build signed AinuboX1 V29 Google Home restored APK
+      - name: Build signed AinuboX1 V30 YouTube instant switch APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify APK signature, package, Sense and Google Home payload
+      - name: Verify APK signature, package, Sense, Google Home and YouTube switch payload
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='29'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='30'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
@@ -114,22 +123,23 @@ jobs:
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
           unzip -l "$APK" | grep -q 'play-services-home-types.properties'
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v29-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v29-dex-strings.txt
-          grep -q 'nubo:google-home-result' /tmp/v29-dex-strings.txt
-          grep -q '17.1.0' /tmp/v29-dex-strings.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v30-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v30-dex-strings.txt
+          grep -q 'nubo:google-home-result' /tmp/v30-dex-strings.txt
+          grep -q '17.1.0' /tmp/v30-dex-strings.txt
+          grep -q 'v30-instant-switch' /tmp/v30-dex-strings.txt
 
-      - name: Publish V29 Google Home restored APK
+      - name: Publish V30 YouTube instant switch APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v29-GOOGLE-HOME-RESTORED.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v30-YOUTUBE-INSTANT-SWITCH.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v29-GOOGLE-HOME-RESTORED.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v30-YOUTUBE-INSTANT-SWITCH.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V29 Google Home restored APK"
+            git commit -m "build(android): publish AinuboX1 V30 YouTube instant switch APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
@@ -138,6 +148,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v29-GOOGLE-HOME-RESTORED
+          name: AinuboX1-v30-YOUTUBE-INSTANT-SWITCH
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
