@@ -1,0 +1,38 @@
+name: Apply NUBO V28 source patch
+
+on:
+  push:
+    branches: [agent/nubo-v28-smooth-motion-pip-voice]
+    paths:
+      - "scripts/apply-nubo-v28-source.py"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/nubo-v28-smooth-motion-pip-voice
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply V28 source patch
+        run: python3 scripts/apply-nubo-v28-source.py
+      - name: Verify web source
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
+          npm run build
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/NuboEnergyOrb.tsx lib/browser-audio.ts components/GeminiVoiceConsole.tsx app/orb-theme.css android-nubo/app/src/main/AndroidManifest.xml android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          if ! git diff --cached --quiet; then
+            git commit -m "feat: NUBO V28 smoother avatar and PiP voice continuity"
+            git push origin HEAD:agent/nubo-v28-smooth-motion-pip-voice
+          fi
