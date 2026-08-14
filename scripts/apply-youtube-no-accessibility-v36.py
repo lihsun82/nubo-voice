@@ -202,6 +202,60 @@ helpers = r'''    private boolean startYouTubeIntentNoSetup(Intent intent) {
 if "private boolean launchYouTubeNoSetup" not in s:
     s = replace_once(s, launch_marker, helpers + launch_marker, "V36 no-setup helpers")
 
+old_music_launch = '''        if (normalizedLabel.equals("youtube music")) {
+            launchPackageOrFallback(
+                "com.google.android.apps.youtube.music",
+                target,
+                target
+            );
+            return;
+        }
+'''
+new_music_launch = '''        if (normalizedLabel.equals("youtube music")) {
+            if (launchYouTubeNoSetup("", targetUrl, label)) {
+                return;
+            }
+            launchPackageOrFallback(
+                "com.google.android.apps.youtube.music",
+                target,
+                target
+            );
+            return;
+        }
+'''
+s = replace_once(s, old_music_launch, new_music_launch, "V36 YouTube Music fresh-task route")
+
+old_youtube_launch = '''        if (
+            normalizedLabel.equals("youtube")
+                || targetUrl.contains("youtube.com")
+                || targetUrl.contains("youtu.be")
+        ) {
+            launchPackageOrFallback(
+                "com.google.android.youtube",
+                target,
+                target
+            );
+            return;
+        }
+'''
+new_youtube_launch = '''        if (
+            normalizedLabel.equals("youtube")
+                || targetUrl.contains("youtube.com")
+                || targetUrl.contains("youtu.be")
+        ) {
+            if (launchYouTubeNoSetup("", targetUrl, label)) {
+                return;
+            }
+            launchPackageOrFallback(
+                "com.google.android.youtube",
+                target,
+                target
+            );
+            return;
+        }
+'''
+s = replace_once(s, old_youtube_launch, new_youtube_launch, "V36 YouTube fresh-task route")
+
 s = s.replace('"v34-bal-pendingintent"', '"v36-no-accessibility-fresh-task"', 1)
 s = s.replace("android-v34", "android-v36")
 s = s.replace("NUBO-Android/34", "NUBO-Android/36")
