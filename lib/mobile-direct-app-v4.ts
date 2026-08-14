@@ -5,9 +5,11 @@ import type { FunctionCall } from "@/lib/browser-nubo-tools";
 type NuboNativeBridge = {
   isNativeApp?: () => boolean;
   openExternalApp?: (targetUrl: string, label: string) => boolean;
-  isYouTubeUiAgentReady?: () => boolean;
-  switchYouTubeSong?: (query: string) => boolean;
-  openYouTubeAgentSettings?: () => boolean;
+  playYouTubeNoSetup?: (
+    query: string,
+    targetUrl: string,
+    label: string,
+  ) => boolean;
 };
 
 type NuboNativeWindow = Window & {
@@ -121,17 +123,22 @@ function tryNativeAndroidLaunch(targetUrl: string, label: string) {
   }
 }
 
-function tryNativeYouTubeUiAgent(query: string) {
-  if (typeof window === "undefined" || !query.trim()) return false;
+function tryNativeYouTubeNoSetup(
+  query: string,
+  targetUrl: string,
+  label: string,
+) {
+  if (typeof window === "undefined" || !targetUrl.trim() || !label.trim()) {
+    return false;
+  }
 
   const host = window as NuboNativeWindow;
   const bridge = host.NuboNative;
-  if (!bridge?.switchYouTubeSong) return false;
+  if (!bridge?.playYouTubeNoSetup) return false;
 
   try {
     if (bridge.isNativeApp && bridge.isNativeApp() !== true) return false;
-    if (bridge.isYouTubeUiAgentReady?.() !== true) return false;
-    return bridge.switchYouTubeSong(query.trim()) === true;
+    return bridge.playYouTubeNoSetup(query.trim(), targetUrl.trim(), label.trim()) === true;
   } catch {
     return false;
   }
@@ -257,30 +264,29 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
   const youtube = isYouTubeUrl(targetUrl);
 
   if (youtube) {
-    // V35: if YouTube already owns the foreground window and the user has enabled
-    // NUBO's YouTube-only AccessibilityService, switch the song by operating the
-    // visible YouTube UI directly. This avoids depending on YouTube accepting a
-    // second deep-link intent while NUBO is in PiP. First launch still falls back
-    // to the validated native deep-link path because the agent returns false when
-    // YouTube is not the active window.
-    const agentQuery =
+    const switchQuery =
       typeof payload.title === "string" && payload.title.trim()
         ? payload.title.trim()
         : typeof payload.query === "string"
           ? payload.query.trim()
           : "";
 
-    if (!preferMusic && agentQuery && tryNativeYouTubeUiAgent(agentQuery)) {
+    // V36: no AccessibilityService and no extra Android setup. The native bridge
+    // sends the exact video to a genuinely fresh YouTube task; when an exact ID is
+    // unavailable it can use Android's standard media-play-from-search action.
+    if (
+      isAndroid()
+      && tryNativeYouTubeNoSetup(switchQuery, targetUrl, label)
+    ) {
       return {
         ...(result as Record<string, unknown>),
         mobileUrl: undefined,
         playerUrl: undefined,
         autoOpen: false,
         opened: true,
-        mode: "native-youtube-ui-control-agent",
+        mode: "native-youtube-no-setup-fresh-task",
         externalTab: false,
         nativeBridge: true,
-        youtubeUiAgent: true,
         youtubeAppPreferred: true,
         forcedSameTab: false,
         preserveNubo: true,
@@ -288,8 +294,8 @@ export function forceDirectMobileOpen(result: unknown, callName: string) {
         fallbackUrl: targetUrl,
         mobileLabel: label,
         launchBlocked: false,
-        singleLaunchOwner: "android-youtube-ui-control-agent",
-        build: "youtube-ui-control-agent-v35-20260815",
+        singleLaunchOwner: "android-youtube-v36-no-setup",
+        build: "youtube-no-accessibility-v36-20260815",
       };
     }
 
