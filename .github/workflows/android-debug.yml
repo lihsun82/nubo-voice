@@ -17,6 +17,7 @@ on:
       - "scripts/apply-youtube-switch-v31-force-reset.py"
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
+      - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
   pull_request:
     branches: [main]
     paths:
@@ -32,6 +33,7 @@ on:
       - "scripts/apply-youtube-switch-v31-force-reset.py"
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
+      - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
 
 permissions:
   contents: write
@@ -93,10 +95,10 @@ jobs:
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
 
-      - name: Apply V33 package over validated exact-video launcher
-        run: python3 scripts/apply-youtube-fast-route-v33-build.py
+      - name: Apply V34 YouTube PendingIntent BAL package
+        run: python3 scripts/apply-youtube-switch-v34-pendingintent-bal.py
 
-      - name: Verify isolated Google Home and V33 YouTube fast-route wiring
+      - name: Verify Google Home and V34 YouTube BAL wiring
         run: |
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeActivity.java
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeGateway.java
@@ -108,22 +110,25 @@ jobs:
           grep -q 'public String googleHomeStatus()' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'public boolean googleHomeControl' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'vnd.youtube:' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'FLAG_ACTIVITY_REORDER_TO_FRONT' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'v33-local-fast-route' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'PendingIntent.getActivity' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'setPendingIntentCreatorBackgroundActivityStartMode' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'setPendingIntentBackgroundActivityStartMode' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'MODE_BACKGROUND_ACTIVITY_START_ALLOWED' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'v34-bal-pendingintent' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'NUBO_YOUTUBE_LOCAL_FAST_ROUTE_V33' components/GeminiVoiceConsole.tsx
           grep -q 'extractYouTubeFastRouteQuery' components/GeminiVoiceConsole.tsx
           grep -q 'local-youtube-fast-route-v33' components/GeminiVoiceConsole.tsx
 
-      - name: Build signed AinuboX1 V33 YouTube local fast-route APK
+      - name: Build signed AinuboX1 V34 YouTube BAL APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify APK signature, package, Sense, Google Home and V33 payload
+      - name: Verify APK signature, package, Sense, Google Home and V34 payload
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='33'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='34'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
@@ -133,24 +138,25 @@ jobs:
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
           unzip -l "$APK" | grep -q 'play-services-home-types.properties'
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v33-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v33-dex-strings.txt
-          grep -q 'nubo:google-home-result' /tmp/v33-dex-strings.txt
-          grep -q '17.1.0' /tmp/v33-dex-strings.txt
-          grep -q 'vnd.youtube:' /tmp/v33-dex-strings.txt
-          grep -q 'v33-local-fast-route' /tmp/v33-dex-strings.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v34-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v34-dex-strings.txt
+          grep -q 'nubo:google-home-result' /tmp/v34-dex-strings.txt
+          grep -q '17.1.0' /tmp/v34-dex-strings.txt
+          grep -q 'vnd.youtube:' /tmp/v34-dex-strings.txt
+          grep -q 'PendingIntent' /tmp/v34-dex-strings.txt
+          grep -q 'v34-bal-pendingintent' /tmp/v34-dex-strings.txt
 
-      - name: Publish V33 YouTube local fast-route APK
+      - name: Publish V34 YouTube BAL APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v33-YOUTUBE-LOCAL-FAST-ROUTE.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v33-YOUTUBE-LOCAL-FAST-ROUTE.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V33 YouTube local fast-route APK"
+            git commit -m "build(android): publish AinuboX1 V34 YouTube BAL APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
@@ -159,6 +165,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v33-YOUTUBE-LOCAL-FAST-ROUTE
+          name: AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
