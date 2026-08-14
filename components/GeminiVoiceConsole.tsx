@@ -184,6 +184,28 @@ export function GeminiVoiceConsole() {
   }, []);
 
   useEffect(() => {
+    const handleSenseEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string; confidence?: number }>).detail;
+      if (!detail?.type) return;
+      const names: Record<string, string> = {
+        cough: "咳嗽",
+        sneeze: "打噴嚏",
+        yawn: "打哈欠",
+        breathing: "喘息／嘆氣",
+        scream: "叫聲／尖叫",
+        laughter: "笑聲",
+        crying: "哭聲",
+      };
+      const confidence = typeof detail.confidence === "number"
+        ? ` ${Math.round(detail.confidence * 100)}%`
+        : "";
+      setTranscript(`NUBO Sense 偵測：${names[detail.type] ?? detail.type}${confidence}`);
+    };
+    window.addEventListener("nubo:sense-event", handleSenseEvent);
+    return () => window.removeEventListener("nubo:sense-event", handleSenseEvent);
+  }, []);
+
+  useEffect(() => {
     if (state === "idle") notifyNuboVoicePhase("idle");
     else if (state === "connecting") notifyNuboVoicePhase("connecting");
     else if (state === "connected") notifyNuboVoicePhase("listening");

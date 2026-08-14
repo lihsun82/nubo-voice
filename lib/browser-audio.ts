@@ -17,6 +17,40 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+let nativeSenseChunks: Uint8Array[] = [];
+let nativeSenseBytes = 0;
+const NUBO_NATIVE_SENSE_FRAME_BYTES = 32_000;
+
+function resetNativeSenseBuffer() {
+  nativeSenseChunks = [];
+  nativeSenseBytes = 0;
+}
+
+function forwardPcmToNativeSense(pcm: Uint8Array) {
+  if (typeof window === "undefined") return;
+  const bridge = (window as typeof window & {
+    NuboNative?: { pushSensePcm16Base64?: (pcmBase64: string) => boolean };
+  }).NuboNative;
+  if (!bridge?.pushSensePcm16Base64) return;
+  nativeSenseChunks.push(pcm.slice());
+  nativeSenseBytes += pcm.length;
+  if (nativeSenseBytes < NUBO_NATIVE_SENSE_FRAME_BYTES) return;
+  const merged = new Uint8Array(nativeSenseBytes);
+  let offset = 0;
+  for (const chunk of nativeSenseChunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  const frame = merged.slice(0, NUBO_NATIVE_SENSE_FRAME_BYTES);
+  const remainder = merged.slice(NUBO_NATIVE_SENSE_FRAME_BYTES);
+  resetNativeSenseBuffer();
+  if (remainder.length) {
+    nativeSenseChunks = [remainder];
+    nativeSenseBytes = remainder.length;
+  }
+  try { bridge.pushSensePcm16Base64(toBase64(frame)); } catch {}
+}
+
 function fromBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -136,6 +170,7 @@ export class MicrophonePcmStream {
     this.noiseFloor = 0.012;
     this.hotFrames = 0;
     this.preRoll = [];
+    resetNativeSenseBuffer();
 
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -176,6 +211,7 @@ export class MicrophonePcmStream {
       const pcm = floatToPcm16(
         downsample(input, event.inputBuffer.sampleRate, 16000),
       );
+      forwardPcmToNativeSense(pcm);
       const base64 = toBase64(pcm);
 
       if (document.visibilityState !== "visible") {

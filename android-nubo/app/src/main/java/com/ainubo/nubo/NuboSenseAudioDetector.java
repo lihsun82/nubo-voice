@@ -112,8 +112,8 @@ public final class NuboSenseAudioDetector {
                 AudioClassifier.AudioClassifierOptions.builder()
                     .setBaseOptions(baseOptions)
                     .setRunningMode(RunningMode.AUDIO_STREAM)
-                    .setScoreThreshold(0.20f)
-                    .setMaxResults(12)
+                    .setScoreThreshold(0.05f)
+                    .setMaxResults(30)
                     .setResultListener(this::handleClassifierResult)
                     .setErrorListener(this::handleClassifierError)
                     .build();
@@ -122,6 +122,38 @@ public final class NuboSenseAudioDetector {
         } catch (RuntimeException error) {
             classifier = null;
             reportError("NUBO Sense 模型初始化失敗: " + safeMessage(error));
+        }
+    }
+
+    public synchronized boolean classifyPcm16(byte[] pcmLittleEndian) {
+        if (pcmLittleEndian == null || pcmLittleEndian.length < 2) return false;
+        if (classifier == null) {
+            initializeClassifier();
+            if (classifier == null) return false;
+        }
+        int availableSamples = pcmLittleEndian.length / 2;
+        int copySamples = Math.min(availableSamples, SAMPLE_RATE_HZ);
+        int sourceSampleOffset = Math.max(0, availableSamples - copySamples);
+        short[] samples = new short[SAMPLE_RATE_HZ];
+        int destinationOffset = SAMPLE_RATE_HZ - copySamples;
+        for (int i = 0; i < copySamples; i++) {
+            int byteIndex = (sourceSampleOffset + i) * 2;
+            int lo = pcmLittleEndian[byteIndex] & 0xff;
+            int hi = pcmLittleEndian[byteIndex + 1];
+            samples[destinationOffset + i] = (short) (lo | (hi << 8));
+        }
+        try {
+            AudioData.AudioDataFormat format = AudioData.AudioDataFormat.builder()
+                .setNumOfChannels(1)
+                .setSampleRate(SAMPLE_RATE_HZ)
+                .build();
+            AudioData audioData = AudioData.create(format, SAMPLE_RATE_HZ);
+            audioData.load(samples);
+            classifier.classifyAsync(audioData, SystemClock.uptimeMillis());
+            return true;
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Live PCM classification failed", error);
+            return false;
         }
     }
 
@@ -220,7 +252,7 @@ public final class NuboSenseAudioDetector {
     }
 
     private void handleClassifierResult(AudioClassifierResult result) {
-        if (!ambientRunning || result == null) return;
+        if (result == null) return;
 
         Map<String, BestMatch> bestByType = new HashMap<>();
         List<ClassificationResult> resultBlocks = result.classificationResults();
@@ -283,22 +315,22 @@ public final class NuboSenseAudioDetector {
     private static DetectionRule ruleFor(String type, String rawLabel) {
         switch (type) {
             case "cough":
-                return new DetectionRule(0.45f, 1, 20_000L);
+                return new DetectionRule(0.18f, 1, 15_000L);
             case "sneeze":
-                return new DetectionRule(0.50f, 1, 30_000L);
+                return new DetectionRule(0.20f, 1, 20_000L);
             case "yawn":
-                return new DetectionRule(0.42f, 2, 50_000L);
+                return new DetectionRule(0.16f, 1, 30_000L);
             case "breathing": {
                 String normalized = rawLabel.toLowerCase(Locale.ROOT);
-                float threshold = normalized.contains("gasp") ? 0.70f : 0.58f;
-                return new DetectionRule(threshold, 2, 40_000L);
+                float threshold = normalized.contains("gasp") ? 0.26f : 0.20f;
+                return new DetectionRule(threshold, 1, 25_000L);
             }
             case "scream":
-                return new DetectionRule(0.62f, 1, 15_000L);
+                return new DetectionRule(0.22f, 1, 10_000L);
             case "laughter":
-                return new DetectionRule(0.54f, 2, 25_000L);
+                return new DetectionRule(0.18f, 1, 15_000L);
             case "crying":
-                return new DetectionRule(0.60f, 2, 40_000L);
+                return new DetectionRule(0.22f, 1, 25_000L);
             default:
                 return null;
         }
