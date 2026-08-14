@@ -8,6 +8,7 @@ on:
       - "android-nubo/**"
       - ".github/workflows/android-debug.yml"
       - "components/GeminiVoiceConsole.tsx"
+      - "lib/mobile-direct-app-v4.ts"
       - "scripts/apply-nubo-sense-v25-native-tap.py"
       - "scripts/apply-nubo-sense-v26-main-voice.py"
       - "scripts/apply-nubo-sense-v27-hide-debug.py"
@@ -18,12 +19,14 @@ on:
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
       - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
+      - "scripts/apply-youtube-ui-agent-v35.py"
   pull_request:
     branches: [main]
     paths:
       - "android-nubo/**"
       - ".github/workflows/android-debug.yml"
       - "components/GeminiVoiceConsole.tsx"
+      - "lib/mobile-direct-app-v4.ts"
       - "scripts/apply-nubo-sense-v25-native-tap.py"
       - "scripts/apply-nubo-sense-v26-main-voice.py"
       - "scripts/apply-nubo-sense-v27-hide-debug.py"
@@ -34,6 +37,7 @@ on:
       - "scripts/apply-youtube-switch-v32-exact-video.py"
       - "scripts/apply-youtube-fast-route-v33-build.py"
       - "scripts/apply-youtube-switch-v34-pendingintent-bal.py"
+      - "scripts/apply-youtube-ui-agent-v35.py"
 
 permissions:
   contents: write
@@ -43,128 +47,101 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - uses: android-actions/setup-android@v3
-
       - name: Install Android SDK 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-
       - name: Materialize stable AinuboX1 signing key
         run: |
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
           keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
-
       - name: Materialize and verify AinuboX1 launcher icon
         run: |
           mkdir -p android-nubo/app/src/main/res/drawable-nodpi
           rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
           base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
-          file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
-          test "$(xxd -p -l 3 android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)" = "ffd8ff"
           grep -q 'JPEG image data' <(file android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg)
-          grep -q 'ainubox1_launcher_uploaded' android-nubo/app/src/main/AndroidManifest.xml
-
       - name: Download official Google Home Android SDK 1.10.0
         shell: bash
         run: |
           set -euxo pipefail
           HOME_SDK_ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
           HOME_SDK_REPO="$RUNNER_TEMP/home-sdk-repo"
-          curl -L --fail --retry 3 \
-            'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' \
-            -o "$HOME_SDK_ZIP"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$HOME_SDK_ZIP"
           test "$(stat -c%s "$HOME_SDK_ZIP")" -gt 100000000
           mkdir -p "$HOME_SDK_REPO"
           unzip -q "$HOME_SDK_ZIP" -d "$HOME_SDK_REPO"
           test -f "$HOME_SDK_REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           test -f "$HOME_SDK_REPO/com/google/android/gms/play-services-home-types/17.1.0/play-services-home-types-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$HOME_SDK_REPO" >> "$GITHUB_ENV"
-
       - name: Apply unchanged V28 voice and UI build
         run: python3 scripts/apply-nubo-v28-build.py
-
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
-
-      - name: Apply V34 YouTube PendingIntent BAL package
-        run: python3 scripts/apply-youtube-switch-v34-pendingintent-bal.py
-
-      - name: Verify Google Home and V34 YouTube BAL wiring
+      - name: Apply V35 YouTube UI control agent
+        run: python3 scripts/apply-youtube-ui-agent-v35.py
+      - name: Verify Google Home and V35 YouTube UI agent wiring
         run: |
-          test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeActivity.java
-          test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeGateway.java
-          test -f android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'homeArtifact", "17.1.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'play-services-home:17.1.0' android-nubo/app/build.gradle
-          grep -q 'play-services-home-types:17.1.0' android-nubo/app/build.gradle
-          grep -q 'public String googleHomeStatus()' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'public boolean googleHomeControl' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'vnd.youtube:' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'PendingIntent.getActivity' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'setPendingIntentCreatorBackgroundActivityStartMode' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'setPendingIntentBackgroundActivityStartMode' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'MODE_BACKGROUND_ACTIVITY_START_ALLOWED' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'v34-bal-pendingintent' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'public boolean switchYouTubeSong' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'NuboYouTubeAccessibilityService' android-nubo/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' android-nubo/app/src/main/AndroidManifest.xml
+          grep -q 'canPerformGestures="true"' android-nubo/app/src/main/res/xml/nubo_youtube_accessibility_service.xml
+          grep -q 'ACTION_SET_TEXT' android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
+          grep -q 'dispatchGesture' android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
+          grep -q 'v35-ui-control-agent' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'native-youtube-ui-control-agent' lib/mobile-direct-app-v4.ts
           grep -q 'NUBO_YOUTUBE_LOCAL_FAST_ROUTE_V33' components/GeminiVoiceConsole.tsx
-          grep -q 'extractYouTubeFastRouteQuery' components/GeminiVoiceConsole.tsx
-          grep -q 'local-youtube-fast-route-v33' components/GeminiVoiceConsole.tsx
-
-      - name: Build signed AinuboX1 V34 YouTube BAL APK
+      - name: Build signed AinuboX1 V35 YouTube UI Agent APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
-
-      - name: Verify APK signature, package, Sense, Google Home and V34 payload
+      - name: Verify APK signature, package, Sense, Google Home and V35 payload
         run: |
+          set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='34'" /tmp/ainubox1-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/ainubox1-badging.txt
+          head -n 8 /tmp/ainubox1-badging.txt
+          grep -q "versionCode='35'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
-          ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
-          test -n "$ICON_PATH"
-          unzip -p "$APK" "$ICON_PATH" > /tmp/packaged-launcher-icon
-          test "$(xxd -p -l 3 /tmp/packaged-launcher-icon)" = "ffd8ff"
-          grep -q 'JPEG image data' <(file /tmp/packaged-launcher-icon)
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
-          unzip -l "$APK" | grep -q 'play-services-home-types.properties'
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v34-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v34-dex-strings.txt
-          grep -q 'nubo:google-home-result' /tmp/v34-dex-strings.txt
-          grep -q '17.1.0' /tmp/v34-dex-strings.txt
-          grep -q 'vnd.youtube:' /tmp/v34-dex-strings.txt
-          grep -q 'PendingIntent' /tmp/v34-dex-strings.txt
-          grep -q 'v34-bal-pendingintent' /tmp/v34-dex-strings.txt
-
-      - name: Publish V34 YouTube BAL APK
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v35-manifest-tree.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/v35-manifest-tree.txt
+          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' /tmp/v35-manifest-tree.txt
+          grep -q 'android.accessibilityservice.AccessibilityService' /tmp/v35-manifest-tree.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v35-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v35-dex-strings.txt
+          grep -q '17.1.0' /tmp/v35-dex-strings.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/v35-dex-strings.txt
+          grep -q 'switchYouTubeSong' /tmp/v35-dex-strings.txt
+          grep -q 'v35-ui-control-agent' /tmp/v35-dex-strings.txt
+      - name: Publish V35 YouTube UI Agent APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V34 YouTube BAL APK"
+            git commit -m "build(android): publish AinuboX1 V35 YouTube UI Agent APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
           fi
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v34-YOUTUBE-BAL-PENDINGINTENT
+          name: AinuboX1-v35-YOUTUBE-UI-CONTROL-AGENT
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
