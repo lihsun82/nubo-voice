@@ -104,15 +104,20 @@ jobs:
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
       - name: Verify APK signature, package, Sense, Google Home and V35 payload
         run: |
+          set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/ainubox1-badging.txt
+          head -n 8 /tmp/ainubox1-badging.txt
           grep -q "versionCode='35'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
-          unzip -l "$APK" | grep -q 'res/xml/nubo_youtube_accessibility_service.xml'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v35-manifest-tree.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/v35-manifest-tree.txt
+          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' /tmp/v35-manifest-tree.txt
+          grep -q 'android.accessibilityservice.AccessibilityService' /tmp/v35-manifest-tree.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/v35-dex-strings.txt
           grep -q 'GoogleHomeGatewayImpl' /tmp/v35-dex-strings.txt
           grep -q '17.1.0' /tmp/v35-dex-strings.txt
