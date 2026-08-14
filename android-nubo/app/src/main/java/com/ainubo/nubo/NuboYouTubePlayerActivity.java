@@ -7,9 +7,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
 import android.media.AudioManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -20,11 +20,12 @@ import android.widget.FrameLayout;
 import org.json.JSONObject;
 
 /**
- * NUBO-owned YouTube playback surface.
+ * NUBO-owned YouTube playback surface backed by the official YouTube IFrame API.
  *
  * The first song opens this Activity. Later song changes are delivered through an
- * in-app broadcast and switched inside the existing YouTube IFrame player with
- * loadVideoById(), so NUBO never needs to manipulate the third-party YouTube app.
+ * in-app broadcast and switched in the SAME player with loadVideoById(). No
+ * AccessibilityService, NotificationListener, third-party YouTube task or user
+ * setup is required.
  */
 public final class NuboYouTubePlayerActivity extends Activity {
     public static final String EXTRA_VIDEO_ID = "nubo_video_id";
@@ -33,8 +34,7 @@ public final class NuboYouTubePlayerActivity extends Activity {
 
     private static final String ACTION_SWITCH =
         "com.ainubo.nubo.action.SWITCH_NUBO_YOUTUBE_VIDEO";
-    private static final String PLAYER_BASE_URL =
-        "https://nubo.ainubo.com/youtube-player";
+    private static final String BASE_ORIGIN = "https://nubo.ainubo.com/";
 
     private static volatile boolean running = false;
 
@@ -81,6 +81,7 @@ public final class NuboYouTubePlayerActivity extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
 
         webView = new WebView(this);
@@ -121,8 +122,8 @@ public final class NuboYouTubePlayerActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                pageReady = url != null && url.startsWith(PLAYER_BASE_URL);
-                if (pageReady && isValidVideoId(pendingVideoId)) {
+                pageReady = true;
+                if (isValidVideoId(pendingVideoId)) {
                     switchPlayerInPlace(
                         pendingVideoId,
                         pendingTitle,
@@ -175,25 +176,51 @@ public final class NuboYouTubePlayerActivity extends Activity {
                 );
                 return;
             }
-
-            loadPlayerPage(
-                pendingVideoId,
-                pendingTitle,
-                pendingChannel
-            );
+            loadNativePlayerDocument();
         });
     }
 
-    private void loadPlayerPage(String videoId, String title, String channel) {
+    private void loadNativePlayerDocument() {
         pageReady = false;
-        Uri url = Uri.parse(PLAYER_BASE_URL)
-            .buildUpon()
-            .appendQueryParameter("videoId", videoId)
-            .appendQueryParameter("title", title)
-            .appendQueryParameter("channel", channel)
-            .appendQueryParameter("native", "1")
-            .build();
-        webView.loadUrl(url.toString());
+        String initialVideo = JSONObject.quote(pendingVideoId);
+        String initialTitle = JSONObject.quote(pendingTitle);
+        String initialChannel = JSONObject.quote(pendingChannel);
+
+        String html = "<!doctype html><html><head>"
+            + "<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no'>"
+            + "<style>html,body{margin:0;width:100%;height:100%;background:#000;color:#fff;font-family:Arial,sans-serif;overflow:hidden}"
+            + "#wrap{position:fixed;inset:0;background:#000}#player{position:absolute;inset:0;width:100%;height:100%}"
+            + "#meta{position:absolute;left:12px;right:12px;top:12px;z-index:4;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.55);pointer-events:none}"
+            + "#title{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+            + "#channel{font-size:12px;opacity:.72;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+            + "#status{position:absolute;left:12px;bottom:14px;z-index:5;padding:7px 10px;border-radius:10px;background:rgba(0,0,0,.58);font-size:12px;pointer-events:none}"
+            + "</style></head><body><div id='wrap'><div id='player'></div><div id='meta'><div id='title'></div><div id='channel'></div></div><div id='status'>NUBO PLAYER</div></div>"
+            + "<script>"
+            + "var player=null,currentId=" + initialVideo + ",currentTitle=" + initialTitle + ",currentChannel=" + initialChannel + ";"
+            + "function setText(){document.getElementById('title').textContent=currentTitle||'NUBO YouTube';document.getElementById('channel').textContent=currentChannel||'';}"
+            + "function status(t){document.getElementById('status').textContent=t;}"
+            + "function promoteAudio(){if(!player)return;try{player.setVolume(100);player.unMute();player.playVideo();}catch(e){}}"
+            + "function playCurrent(){if(!player||!currentId)return false;try{setText();status('正在切換…');player.setVolume(100);player.unMute();player.loadVideoById(currentId);player.playVideo();[120,350,800,1500,3000].forEach(function(d){setTimeout(promoteAudio,d)});return true}catch(e){status('播放器重試中…');return false}}"
+            + "window.nuboYouTubeLoadVideo=function(id,title,channel){if(!/^[A-Za-z0-9_-]{11}$/.test(id||''))return false;currentId=id;currentTitle=title||'';currentChannel=channel||'';setText();if(!player){status('播放器載入中…');return true}return playCurrent();};"
+            + "function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:'100%',videoId:currentId,playerVars:{autoplay:1,playsinline:1,controls:1,rel:0,enablejsapi:1,origin:'https://nubo.ainubo.com'},events:{"
+            + "onReady:function(e){status('正在播放');try{e.target.setVolume(100);e.target.unMute();e.target.loadVideoById(currentId);e.target.playVideo();[150,500,1200,2500].forEach(function(d){setTimeout(promoteAudio,d)})}catch(x){}},"
+            + "onStateChange:function(e){if(e.data===1)status('播放中');else if(e.data===3)status('載入中…');else if(e.data===2)status('已暫停')},"
+            + "onAutoplayBlocked:function(e){status('正在自動啟動播放…');try{e.target.mute();e.target.loadVideoById(currentId);e.target.playVideo();setTimeout(promoteAudio,300);setTimeout(promoteAudio,1000)}catch(x){}},"
+            + "onError:function(){status('此影片無法播放，請再指定另一首')}'"
+            + "}});setText();}"
+            + "</script><script src='https://www.youtube.com/iframe_api'></script></body></html>";
+
+        // Fix the final JS object quote generated above while keeping the Java string
+        // readable. This exact replacement is local and deterministic.
+        html = html.replace("onError:function(){status('此影片無法播放，請再指定另一首')}'", "onError:function(){status('此影片無法播放，請再指定另一首')}");
+
+        webView.loadDataWithBaseURL(
+            BASE_ORIGIN,
+            html,
+            "text/html",
+            "UTF-8",
+            null
+        );
     }
 
     private void switchPlayerInPlace(
@@ -215,7 +242,7 @@ public final class NuboYouTubePlayerActivity extends Activity {
 
         webView.evaluateJavascript(script, result -> {
             if (!"true".equals(result)) {
-                loadPlayerPage(videoId, title, channel);
+                loadNativePlayerDocument();
             }
         });
     }
