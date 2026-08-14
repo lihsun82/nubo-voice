@@ -14,6 +14,7 @@ on:
       - "scripts/apply-google-home-v29.py"
       - "scripts/apply-youtube-switch-v30.py"
       - "scripts/apply-youtube-switch-v31-force-reset.py"
+      - "scripts/apply-youtube-switch-v32-exact-video.py"
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +27,7 @@ on:
       - "scripts/apply-google-home-v29.py"
       - "scripts/apply-youtube-switch-v30.py"
       - "scripts/apply-youtube-switch-v31-force-reset.py"
+      - "scripts/apply-youtube-switch-v32-exact-video.py"
 
 permissions:
   contents: write
@@ -87,10 +89,10 @@ jobs:
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
 
-      - name: Apply YouTube forced task reset only
-        run: python3 scripts/apply-youtube-switch-v31-force-reset.py
+      - name: Apply YouTube exact-video switching only
+        run: python3 scripts/apply-youtube-switch-v32-exact-video.py
 
-      - name: Verify isolated Google Home and V31 YouTube reset wiring
+      - name: Verify isolated Google Home and V32 YouTube wiring
         run: |
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeActivity.java
           test -f android-nubo/app/src/main/java/com/ainubo/nubo/GoogleHomeGateway.java
@@ -101,20 +103,21 @@ jobs:
           grep -q 'play-services-home-types:17.1.0' android-nubo/app/build.gradle
           grep -q 'public String googleHomeStatus()' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           grep -q 'public boolean googleHomeControl' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'FLAG_ACTIVITY_NEW_TASK' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'FLAG_ACTIVITY_CLEAR_TASK' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'v31-force-task-reset' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'vnd.youtube:' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'FLAG_ACTIVITY_REORDER_TO_FRONT' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'v32-exact-video' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          ! grep -q 'v31-force-task-reset' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
 
-      - name: Build signed AinuboX1 V31 YouTube force reset APK
+      - name: Build signed AinuboX1 V32 YouTube exact-video APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify APK signature, package, Sense, Google Home and V31 payload
+      - name: Verify APK signature, package, Sense, Google Home and V32 payload
         run: |
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/ainubox1-badging.txt | head -n 8
-          grep -q "versionCode='31'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='32'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           ICON_PATH=$(sed -n "s/^application-icon-160:'\([^']*\)'.*/\1/p" /tmp/ainubox1-badging.txt | head -n1)
           test -n "$ICON_PATH"
@@ -124,23 +127,24 @@ jobs:
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
           unzip -l "$APK" | grep -q 'play-services-home-types.properties'
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v31-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v31-dex-strings.txt
-          grep -q 'nubo:google-home-result' /tmp/v31-dex-strings.txt
-          grep -q '17.1.0' /tmp/v31-dex-strings.txt
-          grep -q 'v31-force-task-reset' /tmp/v31-dex-strings.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v32-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v32-dex-strings.txt
+          grep -q 'nubo:google-home-result' /tmp/v32-dex-strings.txt
+          grep -q '17.1.0' /tmp/v32-dex-strings.txt
+          grep -q 'vnd.youtube:' /tmp/v32-dex-strings.txt
+          grep -q 'v32-exact-video' /tmp/v32-dex-strings.txt
 
-      - name: Publish V31 YouTube force reset APK
+      - name: Publish V32 YouTube exact-video APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v31-YOUTUBE-FORCE-RESET.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v32-YOUTUBE-EXACT-VIDEO.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v31-YOUTUBE-FORCE-RESET.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v32-YOUTUBE-EXACT-VIDEO.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V31 YouTube force reset APK"
+            git commit -m "build(android): publish AinuboX1 V32 YouTube exact-video APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
@@ -149,6 +153,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v31-YOUTUBE-FORCE-RESET
+          name: AinuboX1-v32-YOUTUBE-EXACT-VIDEO
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
