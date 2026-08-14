@@ -1,13 +1,8 @@
 from pathlib import Path
-import runpy
 
-# V39 deliberately starts from V38 so current Google Home, Gemini voice/PiP,
-# Sense/YAMNet, avatar/UI and exact-video resolver remain intact. It then removes
-# the V37/V38 NUBO-owned IFrame player and restores the historically successful
-# V15.6.41 native YouTube App ACTION_VIEW path. The only new behavior is runtime
-# discovery of YouTube's actual deep-link handler so a second exact videoId is
-# delivered to the URL dispatcher instead of merely resurrecting the old task.
-runpy.run_path("scripts/apply-youtube-room-player-v38.py", run_name="__main__")
+# V39 is intentionally a SMALL patch applied directly after V28 + V29.
+# It does NOT run V30-V38. This restores the proven native YouTube App bridge
+# instead of carrying forward the failed task/IFrame/accessibility experiments.
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -16,33 +11,12 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-def replace_java_method(text: str, signature: str, replacement: str, label: str) -> str:
-    start = text.find(signature)
-    if start < 0:
-        raise SystemExit(f"missing Java method: {label}")
-    brace = text.find("{", start)
-    if brace < 0:
-        raise SystemExit(f"missing Java method brace: {label}")
-    depth = 0
-    i = brace
-    while i < len(text):
-        ch = text[i]
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[:start] + replacement + text[i + 1:]
-        i += 1
-    raise SystemExit(f"unterminated Java method: {label}")
-
-
 app = Path("android-nubo/app/build.gradle")
 s = app.read_text()
-s = replace_once(s, "versionCode 38", "versionCode 39", "V39 versionCode")
+s = replace_once(s, "versionCode 29", "versionCode 39", "V39 versionCode")
 s = replace_once(
     s,
-    'versionName "0.38.0-room-music-autoplay"',
+    'versionName "0.29.0-googlehome"',
     'versionName "0.39.0-native-youtube-app-restored"',
     "V39 versionName",
 )
@@ -56,16 +30,19 @@ if "import android.content.ComponentName;" not in s:
         s,
         "import android.content.ActivityNotFoundException;\n",
         "import android.content.ActivityNotFoundException;\nimport android.content.ComponentName;\n",
-        "V39 ComponentName import",
+        "ComponentName import",
     )
 if "import android.content.pm.ResolveInfo;" not in s:
     s = replace_once(
         s,
         "import android.content.pm.PackageManager;\n",
         "import android.content.pm.PackageManager;\nimport android.content.pm.ResolveInfo;\n",
-        "V39 ResolveInfo import",
+        "ResolveInfo import",
     )
 
+# Keep the historic openExternalApp bridge untouched. Add one dedicated YouTube
+# method because the web layer already prefers playYouTubeNoSetup when available.
+marker = '''        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive() {\n'''
 bridge = r'''        @JavascriptInterface
         public boolean playYouTubeNoSetup(
             String query,
@@ -81,8 +58,6 @@ bridge = r'''        @JavascriptInterface
             if (!activity.isAllowedBridgeTarget(safeTarget, safeLabel)) return false;
 
             activity.runOnUiThread(() -> {
-                // Preserve the proven NUBO PiP voice keep-alive. A second song is
-                // launched immediately from the already-visible PiP activity.
                 boolean alreadyInPip = activity.isNuboInPictureInPicture();
                 if (!alreadyInPip) {
                     activity.beginExternalVoiceKeepAlive();
@@ -94,7 +69,7 @@ bridge = r'''        @JavascriptInterface
 
                 long delayMs = alreadyInPip ? 25L : 180L;
                 activity.webView.postDelayed(
-                    () -> activity.launchYouTubeNoSetup(
+                    () -> activity.launchExactYouTubeVideo(
                         safeQuery,
                         safeTarget,
                         safeLabel
@@ -104,15 +79,36 @@ bridge = r'''        @JavascriptInterface
             });
             return true;
         }
-'''
-s = replace_java_method(
-    s,
-    "        @JavascriptInterface\n        public boolean playYouTubeNoSetup",
-    bridge,
-    "V39 playYouTubeNoSetup bridge",
-)
 
-helpers = r'''    private int scoreYouTubeDeepLinkActivity(
+'''
+s = replace_once(s, marker, bridge + marker, "V39 JS bridge")
+
+# Add runtime resolver immediately before the existing launchExternalTarget method.
+marker = '''    private void launchExternalTarget(String targetUrl, String label) {\n'''
+helpers = r'''    private String extractYouTubeVideoId(Uri uri) {
+        if (uri == null) return null;
+        String host = uri.getHost();
+        if (host == null) return null;
+        host = host.toLowerCase(Locale.ROOT);
+        if (host.equals("youtu.be") || host.endsWith(".youtu.be")) {
+            List<String> segments = uri.getPathSegments();
+            return segments.isEmpty() ? null : segments.get(0);
+        }
+        if (host.equals("youtube.com") || host.endsWith(".youtube.com")) {
+            String id = uri.getQueryParameter("v");
+            if (id != null && !id.isEmpty()) return id;
+            List<String> segments = uri.getPathSegments();
+            if (segments.size() >= 2) {
+                String first = segments.get(0);
+                if ("shorts".equals(first) || "embed".equals(first) || "live".equals(first)) {
+                    return segments.get(1);
+                }
+            }
+        }
+        return null;
+    }
+
+    private int scoreYouTubeDeepLinkActivity(
         ResolveInfo info,
         ComponentName launcherComponent,
         String packageName
@@ -142,13 +138,21 @@ helpers = r'''    private int scoreYouTubeDeepLinkActivity(
         return score;
     }
 
+    private boolean startYouTubeIntent(Intent intent) {
+        if (intent == null) return false;
+        try {
+            startActivity(intent);
+            return true;
+        } catch (ActivityNotFoundException | SecurityException ignored) {
+            return false;
+        }
+    }
+
     private boolean launchResolvedYouTubeDeepLink(
         String packageName,
         Uri exactUri,
         String query
     ) {
-        if (exactUri == null) return false;
-
         Intent probe = new Intent(Intent.ACTION_VIEW, exactUri);
         probe.setPackage(packageName);
         probe.addCategory(Intent.CATEGORY_BROWSABLE);
@@ -172,11 +176,7 @@ helpers = r'''    private int scoreYouTubeDeepLinkActivity(
         ResolveInfo best = null;
         int bestScore = Integer.MIN_VALUE;
         for (ResolveInfo info : handlers) {
-            int score = scoreYouTubeDeepLinkActivity(
-                info,
-                launcherComponent,
-                packageName
-            );
+            int score = scoreYouTubeDeepLinkActivity(info, launcherComponent, packageName);
             if (score > bestScore) {
                 best = info;
                 bestScore = score;
@@ -190,20 +190,11 @@ helpers = r'''    private int scoreYouTubeDeepLinkActivity(
             best.activityInfo.name
         ));
         exactIntent.addCategory(Intent.CATEGORY_BROWSABLE);
-        exactIntent.putExtra(
-            "nubo_youtube_switch_build",
-            "v39-runtime-deeplink-handler"
-        );
-        exactIntent.putExtra(
-            "nubo_youtube_switch_query",
-            query == null ? "" : query
-        );
+        exactIntent.putExtra("nubo_youtube_switch_build", "v39-runtime-deeplink-handler");
+        exactIntent.putExtra("nubo_youtube_switch_query", query == null ? "" : query);
 
-        // Intentionally NO NEW_TASK/CLEAR_TASK/MULTIPLE_TASK flags here. The old
-        // V15.6.41 path worked by letting YouTube's own URL dispatcher consume the
-        // watch URI. V39 explicitly addresses that dispatcher instead of reviving
-        // YouTube's launcher/player task.
-        return startYouTubeIntentNoSetup(exactIntent);
+        // No task flags: address YouTube's URL dispatcher, not its old player task.
+        return startYouTubeIntent(exactIntent);
     }
 
     private boolean launchLegacyYouTubeAppLink(
@@ -211,25 +202,18 @@ helpers = r'''    private int scoreYouTubeDeepLinkActivity(
         Uri exactUri,
         String query
     ) {
-        if (exactUri == null) return false;
         Intent legacyIntent = new Intent(Intent.ACTION_VIEW, exactUri);
         legacyIntent.setPackage(packageName);
         legacyIntent.addCategory(Intent.CATEGORY_BROWSABLE);
-        legacyIntent.putExtra(
-            "nubo_youtube_switch_build",
-            "v39-v15-6-41-legacy-app-link"
-        );
-        legacyIntent.putExtra(
-            "nubo_youtube_switch_query",
-            query == null ? "" : query
-        );
-        // This is deliberately equivalent to the proven V15.6.41 bridge:
-        // ACTION_VIEW + exact watch URI + package + CATEGORY_BROWSABLE, no task flags.
-        return startYouTubeIntentNoSetup(legacyIntent);
+        legacyIntent.putExtra("nubo_youtube_switch_build", "v39-v15-6-41-legacy-app-link");
+        legacyIntent.putExtra("nubo_youtube_switch_query", query == null ? "" : query);
+
+        // Exact semantic restore of V15.6.41: ACTION_VIEW + package + BROWSABLE,
+        // deliberately with no NEW_TASK/CLEAR_TASK/MULTIPLE_TASK flags.
+        return startYouTubeIntent(legacyIntent);
     }
 
-'''
-launch_method = r'''    private boolean launchYouTubeNoSetup(
+    private void launchExactYouTubeVideo(
         String query,
         String targetUrl,
         String label
@@ -243,67 +227,35 @@ launch_method = r'''    private boolean launchYouTubeNoSetup(
             ? "com.google.android.apps.youtube.music"
             : "com.google.android.youtube";
 
-        Uri target = targetUrl == null || targetUrl.trim().isEmpty()
-            ? null
-            : Uri.parse(targetUrl.trim());
-        if (target == null) return false;
-
+        Uri target = Uri.parse(targetUrl);
         String videoId = extractYouTubeVideoId(target);
         Uri exactUri = target;
         if (videoId != null && videoId.matches("^[A-Za-z0-9_-]{11}$")) {
             exactUri = music
                 ? Uri.parse("https://music.youtube.com/watch?v=" + Uri.encode(videoId))
-                : Uri.parse(
-                    "https://www.youtube.com/watch?v="
-                        + Uri.encode(videoId)
-                        + "&autoplay=1"
-                );
+                : Uri.parse("https://www.youtube.com/watch?v=" + Uri.encode(videoId) + "&autoplay=1");
         }
 
-        // V39 primary path: resolve the CURRENT installed YouTube build's exported
-        // watch/deep-link Activity at runtime and send the exact URI there. This is
-        // designed for the second-song case where simply targeting the package can
-        // bring the old player task back without consuming the new videoId.
-        if (launchResolvedYouTubeDeepLink(packageName, exactUri, query)) {
-            return true;
-        }
+        // First choice adapts to the user's currently installed YouTube build.
+        if (launchResolvedYouTubeDeepLink(packageName, exactUri, query)) return;
 
-        // Historical safety net: restore the V15.6.41 native bridge verbatim in
-        // semantics. This was NUBO's known working zero-click YouTube App path.
-        if (launchLegacyYouTubeAppLink(packageName, exactUri, query)) {
-            return true;
-        }
+        // Safety net is the known-good V15.6.41 launch behavior.
+        if (launchLegacyYouTubeAppLink(packageName, exactUri, query)) return;
 
-        return false;
+        launchGenericUri(exactUri);
     }
+
 '''
+s = replace_once(s, marker, helpers + marker, "V39 YouTube helpers")
 
-s = replace_java_method(
-    s,
-    "    private boolean launchYouTubeNoSetup(",
-    helpers + launch_method,
-    "V39 native YouTube launcher",
-)
-
-s = s.replace("v38-room-music-autoplay", "v39-native-youtube-app-restored")
-s = s.replace("android-v38", "android-v39")
-s = s.replace("NUBO-Android/38", "NUBO-Android/39")
+s = s.replace("android-v28", "android-v39")
+s = s.replace("NUBO-Android/28", "NUBO-Android/39")
 main.write_text(s)
 
-manifest = Path("android-nubo/app/src/main/AndroidManifest.xml")
-m = manifest.read_text()
-player_activity = '''\n        <activity\n            android:name=".NuboYouTubePlayerActivity"\n            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"\n            android:excludeFromRecents="false"\n            android:exported="false"\n            android:launchMode="singleTask"\n            android:screenOrientation="unspecified"\n            android:taskAffinity="com.ainubo.nubo.youtubeplayer"\n            android:windowSoftInputMode="adjustResize" />'''
-if player_activity in m:
-    m = m.replace(player_activity, "", 1)
-manifest.write_text(m)
-
-player = Path(
-    "android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubePlayerActivity.java"
-)
-if player.exists():
-    player.unlink()
-
+# Assertions make this patch fail closed if the historical baseline changes.
+final_source = main.read_text()
 required = [
+    "public boolean playYouTubeNoSetup",
     "queryIntentActivities",
     "scoreYouTubeDeepLinkActivity",
     "v39-runtime-deeplink-handler",
@@ -312,20 +264,20 @@ required = [
     "Intent.CATEGORY_BROWSABLE",
     "com.google.android.youtube",
 ]
-final_source = main.read_text()
-for marker in required:
-    if marker not in final_source:
-        raise SystemExit(f"missing V39 native YouTube marker: {marker}")
+for token in required:
+    if token not in final_source:
+        raise SystemExit(f"missing V39 native YouTube marker: {token}")
 
+# These only existed in the failed V30-V38 native experiments and must never be
+# materialized by this direct-from-V29 build.
 for forbidden in [
-    "NuboYouTubePlayerActivity.isRunning",
+    "NuboYouTubePlayerActivity",
     "FLAG_ACTIVITY_MULTIPLE_TASK",
     "v38-room-music-autoplay",
+    "v37-nubo-youtube-playback-agent",
+    "NuboYouTubeAccessibilityService",
 ]:
     if forbidden in final_source:
-        raise SystemExit(f"forbidden V39 old-player/task marker remains: {forbidden}")
+        raise SystemExit(f"forbidden old YouTube architecture remains: {forbidden}")
 
-if "NuboYouTubePlayerActivity" in manifest.read_text():
-    raise SystemExit("V39 manifest still contains NuboYouTubePlayerActivity")
-
-print("Applied V39 restored native YouTube App bridge + runtime deep-link handler")
+print("Applied V39 directly over V29: restored native YouTube App bridge + runtime deep-link handler")
