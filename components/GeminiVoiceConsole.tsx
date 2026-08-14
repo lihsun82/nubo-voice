@@ -61,6 +61,56 @@ function includesVoiceCommand(text: string, words: string[]) {
   return words.some((word) => normalized.includes(normalizeVoiceCommandText(word)));
 }
 
+
+// NUBO_YOUTUBE_LOCAL_FAST_ROUTE_V33
+// Named-song commands are deterministic device-control intents, not open-ended chat.
+// Route them from Live input transcription straight to the existing YouTube search +
+// Android native bridge instead of waiting for the model to decide to emit a tool call.
+const NUBO_YOUTUBE_FAST_ROUTE_DEDUPE_MS = 12_000;
+
+function normalizeYouTubeFastQuery(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[\s　，,。.!！?？、:：;；'"“”‘’（）()【】\[\]_-]+/g, "");
+}
+
+function extractYouTubeFastRouteQuery(text: string) {
+  const cleaned = text
+    .trim()
+    .replace(/^(?:嗨|嘿|hi|hey)?\s*nubo[，,。.!！?？\s]*/iu, "")
+    .replace(/^努寶[，,。.!！?？\s]*/u, "");
+
+  if (!cleaned || /(?:不要|不用|別)(?:播放|播|放|換)/u.test(cleaned)) return "";
+
+  const match = cleaned.match(
+    /(?:換成|換歌(?:換成)?|改播|改成(?:播放|播)?|切到|播放|播一下|播|我要聽|我想聽|幫我(?:播放|播|放)|放一下|放)\s*(.+)$/u,
+  );
+  if (!match?.[1]) return "";
+
+  const query = match[1]
+    .replace(/^(?:youtube|yt|油管)[，,。.!！?？\s]*/iu, "")
+    .replace(/(?:可以嗎|好嗎|麻煩了|謝謝|這首歌|這一首|這首|歌曲|音樂)[，,。.!！?？\s]*$/u, "")
+    .trim();
+
+  const generic = normalizeYouTubeFastQuery(query);
+  if (
+    !query ||
+    query.length < 2 ||
+    ["換歌", "下一首", "下一首歌", "另一首", "另一首歌", "一首", "別首", "別的"].includes(generic)
+  ) {
+    return "";
+  }
+
+  return query;
+}
+
+function sameYouTubeFastQuery(left: string, right: string) {
+  const a = normalizeYouTubeFastQuery(left);
+  const b = normalizeYouTubeFastQuery(right);
+  if (!a || !b) return false;
+  return a === b || (Math.min(a.length, b.length) >= 4 && (a.includes(b) || b.includes(a)));
+}
+
 export function GeminiVoiceConsole() {
   const socketRef = useRef<WebSocket | null>(null);
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
@@ -78,6 +128,12 @@ export function GeminiVoiceConsole() {
   const ecoSleepingRef = useRef(false);
   const ecoTimerRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
+  const youtubeFastRouteTimerRef = useRef<number | null>(null);
+  const youtubeFastRouteRef = useRef<{
+    query: string;
+    at: number;
+    result?: unknown;
+  } | null>(null);
   const ecoRecognitionRef = useRef<any>(null);
   const ecoRecognitionRestartRef = useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
@@ -128,6 +184,15 @@ export function GeminiVoiceConsole() {
     void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
       // Token prewarm is optional. NUBO can still request a token when connecting.
     });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (youtubeFastRouteTimerRef.current !== null) {
+        window.clearTimeout(youtubeFastRouteTimerRef.current);
+        youtubeFastRouteTimerRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -549,6 +614,51 @@ export function GeminiVoiceConsole() {
               trimmedUserText,
             );
 
+            const fastYouTubeQuery =
+              extractYouTubeFastRouteQuery(trimmedUserText);
+
+            if (fastYouTubeQuery) {
+              if (youtubeFastRouteTimerRef.current !== null) {
+                window.clearTimeout(youtubeFastRouteTimerRef.current);
+              }
+
+              // Live transcription can arrive in short revisions. A tiny debounce lets
+              // the final song title settle while still beating the model tool-call path.
+              youtubeFastRouteTimerRef.current = window.setTimeout(() => {
+                youtubeFastRouteTimerRef.current = null;
+                const startedAt = Date.now();
+                youtubeFastRouteRef.current = {
+                  query: fastYouTubeQuery,
+                  at: startedAt,
+                };
+
+                setTranscript(`正在切換歌曲：${fastYouTubeQuery}…`);
+
+                void executeNuboBrowserTool({
+                  name: "open_youtube",
+                  args: {
+                    query: fastYouTubeQuery,
+                    service: "youtube",
+                  },
+                })
+                  .then((result) => {
+                    const current = youtubeFastRouteRef.current;
+                    if (current?.at === startedAt) {
+                      current.result = result;
+                    }
+                    setTranscript(`已送出換歌：${fastYouTubeQuery}`);
+                    notifyNuboVoicePhase("listening");
+                  })
+                  .catch((cause) => {
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "YouTube換歌失敗",
+                    );
+                  });
+              }, 180);
+            }
+
             // NUBO_TRAVEL_BACKGROUND_PREFETCH
             if (
               /(日本|東京|大阪|京都|沖繩|北海道|機票|航班|旅遊|旅行|行程)/.test(
@@ -607,7 +717,30 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
               try {
                 if (call.name === "research_now") {
                 }
-                const result = await executeNuboBrowserTool(call);
+
+                const toolQuery =
+                  call.name === "open_youtube"
+                    ? String(call.args?.query ?? "").trim()
+                    : "";
+                const recentFastRoute = youtubeFastRouteRef.current;
+                const fastRouteDuplicate = Boolean(
+                  call.name === "open_youtube" &&
+                    recentFastRoute &&
+                    Date.now() - recentFastRoute.at <
+                      NUBO_YOUTUBE_FAST_ROUTE_DEDUPE_MS &&
+                    sameYouTubeFastQuery(toolQuery, recentFastRoute.query),
+                );
+
+                // The model may still emit open_youtube after the local fast route already
+                // switched the song. Treat that tool call as acknowledged, not a second launch.
+                const result = fastRouteDuplicate
+                  ? recentFastRoute?.result ?? {
+                      ok: true,
+                      alreadyHandled: true,
+                      route: "local-youtube-fast-route-v33",
+                      query: recentFastRoute?.query ?? toolQuery,
+                    }
+                  : await executeNuboBrowserTool(call);
 
                 // NUBO_MOBILE_APP_AUTO_OPEN_V1
                 const mobileAction =
