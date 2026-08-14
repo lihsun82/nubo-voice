@@ -115,7 +115,7 @@ class GoogleHomeGatewayImpl(
                         val offSupported = trait?.supports(OnOff.Command.Off) == true
                         val toggleSupported = trait?.supports(OnOff.Command.Toggle) == true
                         val stateSupported = trait?.supports(OnOff.Attribute.onOff) == true
-                        val controllable = onSupported || offSupported || (toggleSupported && stateSupported)
+                        val controllable = onSupported || offSupported
 
                         devicesJson.put(
                             JSONObject()
@@ -132,7 +132,7 @@ class GoogleHomeGatewayImpl(
                                 .put("offSupported", offSupported)
                                 .put("toggleSupported", toggleSupported)
                                 .put("stateSupported", stateSupported)
-                                .put("state", if (stateSupported) trait?.onOff else JSONObject.NULL),
+                                .put("state", JSONObject.NULL),
                         )
                     }
                 }
@@ -285,30 +285,16 @@ class GoogleHomeGatewayImpl(
         val turnOn = action == "on"
         val directCommand = if (turnOn) OnOff.Command.On else OnOff.Command.Off
 
-        if (trait.supports(directCommand)) {
-            withTimeout(7_000L) {
-                if (turnOn) trait.on() else trait.off()
-            }
-            return
+        if (!trait.supports(directCommand)) {
+            throw UnsupportedOperationException(
+                if (turnOn) "此裝置的 Google Home OnOff trait 不支援 On 指令"
+                else "此裝置的 Google Home OnOff trait 不支援 Off 指令",
+            )
         }
 
-        val canToggle = trait.supports(OnOff.Command.Toggle)
-        val canReadState = trait.supports(OnOff.Attribute.onOff)
-        if (canToggle && canReadState) {
-            val currentState = trait.onOff
-                ?: throw IllegalStateException("裝置可讀取 OnOff，但目前沒有回傳開關狀態")
-            if (currentState != turnOn) {
-                withTimeout(7_000L) {
-                    trait.toggle()
-                }
-            }
-            return
+        withTimeout(7_000L) {
+            if (turnOn) trait.on() else trait.off()
         }
-
-        throw UnsupportedOperationException(
-            if (turnOn) "此裝置的 Google Home OnOff trait 不支援 On 指令"
-            else "此裝置的 Google Home OnOff trait 不支援 Off 指令",
-        )
     }
 
     private fun matches(actual: String, wanted: String): Boolean {
