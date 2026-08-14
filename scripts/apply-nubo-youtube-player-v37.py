@@ -28,15 +28,16 @@ app.write_text(s)
 main = Path("android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java")
 s = main.read_text()
 
-method_start_marker = '''        @JavascriptInterface
-        public boolean playYouTubeNoSetup(
-'''
-method_end_marker = '''        @JavascriptInterface
-        public boolean startWakeListener() {
-'''
-
-method_start = s.find(method_start_marker)
-method_end = s.find(method_end_marker, method_start + 1)
+# V36 currently emits the bridge signature on one line. Match only the stable
+# annotation + method name so future whitespace/signature formatting cannot break
+# the V37 layer again.
+method_start = s.find(
+    "        @JavascriptInterface\n        public boolean playYouTubeNoSetup"
+)
+method_end = s.find(
+    "        @JavascriptInterface\n        public boolean startWakeListener()",
+    method_start + 1,
+)
 if method_start < 0 or method_end < 0:
     raise SystemExit("missing V36 playYouTubeNoSetup bridge boundaries")
 
