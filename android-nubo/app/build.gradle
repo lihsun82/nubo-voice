@@ -10,8 +10,8 @@ android {
         applicationId "com.ainubo.nubo"
         minSdk 26
         targetSdk 35
-        versionCode 22
-        versionName "0.22.0"
+        versionCode 23
+        versionName "0.23.0"
     }
 
     signingConfigs {
@@ -50,4 +50,33 @@ android {
             excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
         }
     }
+}
+
+def yamnetModelUrl = "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite"
+def yamnetModelFile = file("$projectDir/src/main/assets/yamnet.tflite")
+
+tasks.register("downloadYamnetModel") {
+    outputs.file(yamnetModelFile)
+    doLast {
+        if (!yamnetModelFile.exists() || yamnetModelFile.length() < 1_000_000L) {
+            yamnetModelFile.parentFile.mkdirs()
+            println "Downloading official MediaPipe YAMNet model for NUBO Sense..."
+            new URL(yamnetModelUrl).withInputStream { input ->
+                yamnetModelFile.withOutputStream { output ->
+                    output << input
+                }
+            }
+        }
+        if (!yamnetModelFile.exists() || yamnetModelFile.length() < 1_000_000L) {
+            throw new GradleException("YAMNet model download failed or model is unexpectedly small")
+        }
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(tasks.named("downloadYamnetModel"))
+}
+
+dependencies {
+    implementation "com.google.mediapipe:tasks-audio:1.0.0"
 }

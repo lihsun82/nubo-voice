@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -15,6 +16,7 @@ import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -25,19 +27,27 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
     private static final String NUBO_HOST = "nubo.ainubo.com";
-    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v12";
+    private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v23";
     private static final int MICROPHONE_PERMISSION_REQUEST = 8111;
 
     private WebView webView;
     private SpeechRecognizer wakeRecognizer;
     private boolean wakeListenerEnabled = false;
     private final Handler wakeHandler = new Handler(Looper.getMainLooper());
+
+    private NuboSenseAudioDetector senseDetector;
+    private TextToSpeech senseTts;
+    private boolean senseTtsReady = false;
+    private boolean activityForeground = false;
+    private String voicePhase = "idle";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,6 +67,7 @@ public final class MainActivity extends Activity {
         );
 
         configureWebView(webView);
+        initializeSenseTts();
 
         if (savedInstanceState == null) {
             webView.loadUrl(NUBO_URL);
@@ -78,7 +89,7 @@ public final class MainActivity extends Activity {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSafeBrowsingEnabled(true);
         settings.setUserAgentString(
-            settings.getUserAgentString() + " NUBO-Android/12"
+            settings.getUserAgentString() + " NUBO-Android/23"
         );
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -107,6 +118,9 @@ public final class MainActivity extends Activity {
                 List<String> granted = new ArrayList<>();
                 for (String resource : request.getResources()) {
                     if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                        // Hard guard: WebView/Gemini gets exclusive microphone access.
+                        // This prevents the local classifier from degrading live voice capture.
+                        stopSenseAmbientCapture();
                         granted.add(resource);
                     }
                 }
@@ -120,6 +134,23 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void initializeSenseTts() {
+        senseTts = new TextToSpeech(this, status -> {
+            if (status != TextToSpeech.SUCCESS || senseTts == null) return;
+            int languageResult = senseTts.setLanguage(Locale.TAIWAN);
+            senseTtsReady = languageResult != TextToSpeech.LANG_MISSING_DATA
+                && languageResult != TextToSpeech.LANG_NOT_SUPPORTED;
+            senseTts.setSpeechRate(1.02f);
+            senseTts.setPitch(1.0f);
+            senseTts.setAudioAttributes(
+                new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            );
+        });
+    }
+
     private void requestMicrophonePermissionIfNeeded() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return;
@@ -127,6 +158,7 @@ public final class MainActivity extends Activity {
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED) {
+            syncSenseForVoicePhase();
             return;
         }
 
@@ -134,6 +166,22 @@ public final class MainActivity extends Activity {
             new String[]{Manifest.permission.RECORD_AUDIO},
             MICROPHONE_PERMISSION_REQUEST
         );
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+        int requestCode,
+        String[] permissions,
+        int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (
+            requestCode == MICROPHONE_PERMISSION_REQUEST
+                && grantResults.length > 0
+                && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            syncSenseForVoicePhase();
+        }
     }
 
     private static boolean isTrustedNuboUri(Uri uri) {
@@ -162,7 +210,7 @@ public final class MainActivity extends Activity {
             super.onPageFinished(view, url);
             if (isTrustedNuboUri(Uri.parse(url))) {
                 view.evaluateJavascript(
-                    "document.documentElement.dataset.nuboNative='android-v12';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v12'}}));",
+                    "document.documentElement.dataset.nuboNative='android-v23';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v23',sense:'v1'}}));",
                     null
                 );
             }
@@ -183,7 +231,7 @@ public final class MainActivity extends Activity {
 
         @JavascriptInterface
         public String getNativeVersion() {
-            return "android-v12";
+            return "android-v23";
         }
 
         @JavascriptInterface
@@ -196,6 +244,19 @@ public final class MainActivity extends Activity {
         public boolean stopWakeListener() {
             activity.runOnUiThread(activity::stopNativeWakeListener);
             return true;
+        }
+
+        @JavascriptInterface
+        public boolean setVoicePhase(String phase) {
+            if (phase == null) return false;
+            String safePhase = phase.trim().toLowerCase(Locale.ROOT);
+            activity.runOnUiThread(() -> activity.updateVoicePhase(safePhase));
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean isSenseReady() {
+            return activity.senseDetector != null && activity.senseDetector.isReady();
         }
 
         @JavascriptInterface
@@ -218,6 +279,137 @@ public final class MainActivity extends Activity {
                 () -> activity.launchExternalTarget(safeTarget, safeLabel)
             );
             return true;
+        }
+    }
+
+    private void updateVoicePhase(String phase) {
+        switch (phase) {
+            case "idle":
+            case "connecting":
+            case "listening":
+            case "thinking":
+            case "speaking":
+            case "error":
+                voicePhase = phase;
+                break;
+            default:
+                return;
+        }
+        syncSenseForVoicePhase();
+    }
+
+    private void ensureSenseDetector() {
+        if (senseDetector != null) return;
+        senseDetector = new NuboSenseAudioDetector(
+            this,
+            new NuboSenseAudioDetector.Listener() {
+                @Override
+                public void onSenseEvent(NuboSenseAudioDetector.SenseEvent event) {
+                    runOnUiThread(() -> handleSenseEvent(event));
+                }
+
+                @Override
+                public void onSenseError(String message) {
+                    // Keep this fail-open: Gemini and the existing NUBO UI must continue
+                    // working even if local audio classification is unavailable.
+                }
+            }
+        );
+    }
+
+    private boolean canRunSenseAmbient() {
+        if (!activityForeground) return false;
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            return false;
+        }
+        // Local Sense owns the microphone only when cloud voice is not active.
+        return "idle".equals(voicePhase) || "error".equals(voicePhase);
+    }
+
+    private void syncSenseForVoicePhase() {
+        if (!canRunSenseAmbient()) {
+            stopSenseAmbientCapture();
+            return;
+        }
+
+        ensureSenseDetector();
+        if (senseDetector != null) {
+            senseDetector.startAmbientCapture();
+        }
+    }
+
+    private void stopSenseAmbientCapture() {
+        if (senseDetector != null) {
+            senseDetector.stopAmbientCapture();
+        }
+    }
+
+    private void handleSenseEvent(NuboSenseAudioDetector.SenseEvent event) {
+        if (event == null || !canRunSenseAmbient()) return;
+
+        dispatchSenseEventToWeb(event);
+        String phrase = localSenseResponse(event);
+        if (phrase == null || phrase.isEmpty()) return;
+
+        if (senseTtsReady && senseTts != null) {
+            senseTts.speak(
+                phrase,
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                "nubo-sense-" + event.timestampMs
+            );
+        }
+    }
+
+    private void dispatchSenseEventToWeb(NuboSenseAudioDetector.SenseEvent event) {
+        if (webView == null) return;
+        try {
+            JSONObject detail = new JSONObject();
+            detail.put("type", event.type);
+            detail.put("label", event.rawLabel);
+            detail.put("confidence", event.confidence);
+            detail.put("source", "android-local-yamnet");
+            detail.put("timestamp", event.timestampMs);
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('nubo:sense-event',{detail:"
+                    + detail.toString()
+                    + "}));",
+                null
+            );
+        } catch (Exception ignored) {
+            // Event telemetry is optional; local spoken response still works.
+        }
+    }
+
+    private String localSenseResponse(NuboSenseAudioDetector.SenseEvent event) {
+        String raw = event.rawLabel == null
+            ? ""
+            : event.rawLabel.toLowerCase(Locale.ROOT);
+
+        switch (event.type) {
+            case "cough":
+                return "有聽到你咳了一下，先喝口水吧。";
+            case "sneeze":
+                return "哈啾，保重喔。";
+            case "yawn":
+                return "哈欠被我抓到了，你是不是累了？";
+            case "breathing":
+                if (raw.contains("sigh")) {
+                    return "聽到你嘆氣了，今天有點累嗎？";
+                }
+                if (raw.contains("gasp")) {
+                    return "欸，怎麼了？剛剛好像嚇了一下。";
+                }
+                return "你呼吸有點急，還好嗎？";
+            case "scream":
+                return "欸，怎麼了？需要我幫忙嗎？";
+            case "laughter":
+                return "哈哈，什麼事這麼好笑？";
+            case "crying":
+                return "我有聽到你的聲音不太對，還好嗎？";
+            default:
+                return null;
         }
     }
 
@@ -300,6 +492,8 @@ public final class MainActivity extends Activity {
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
 
+        // SpeechRecognizer and the local classifier cannot safely own the same mic.
+        stopSenseAmbientCapture();
         wakeListenerEnabled = true;
         if (wakeRecognizer == null) {
             wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
@@ -329,6 +523,7 @@ public final class MainActivity extends Activity {
         if (wakeRecognizer != null) {
             try { wakeRecognizer.cancel(); } catch (Exception ignored) {}
         }
+        syncSenseForVoicePhase();
     }
 
     private boolean isAllowedBridgeTarget(String targetUrl, String label) {
@@ -522,16 +717,20 @@ public final class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        activityForeground = true;
         webView.onResume();
         webView.resumeTimers();
         webView.evaluateJavascript(
             "window.dispatchEvent(new Event('nubo:native-foreground'));",
             null
         );
+        syncSenseForVoicePhase();
     }
 
     @Override
     protected void onPause() {
+        activityForeground = false;
+        stopSenseAmbientCapture();
         webView.evaluateJavascript(
             "window.dispatchEvent(new Event('nubo:native-background'));",
             null
@@ -543,11 +742,22 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        activityForeground = false;
         stopNativeWakeListener();
         if (wakeRecognizer != null) {
             wakeRecognizer.destroy();
             wakeRecognizer = null;
         }
+        if (senseDetector != null) {
+            senseDetector.close();
+            senseDetector = null;
+        }
+        if (senseTts != null) {
+            senseTts.stop();
+            senseTts.shutdown();
+            senseTts = null;
+        }
+        senseTtsReady = false;
         webView.removeJavascriptInterface("NuboNative");
         webView.stopLoading();
         webView.destroy();

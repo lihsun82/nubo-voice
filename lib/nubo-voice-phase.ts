@@ -11,11 +11,30 @@ export type NuboVoicePhase =
 let lastSpeakingAt = 0;
 let delayedListeningTimer: number | null = null;
 const SPEAKING_HOLD_MS = 2400;
+const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
+
+function notifyNativePhase(phase: NuboVoicePhase) {
+  try {
+    const nativeBridge = (window as typeof window & {
+      NuboNative?: { setVoicePhase?: (phase: string) => boolean };
+    }).NuboNative;
+
+    if (!nativeBridge?.setVoicePhase) return;
+
+    // Explicit NUBO silence always wins over ambient Sense reactions.
+    const isSilent =
+      window.localStorage.getItem(NUBO_SILENT_STORAGE_KEY) === "true";
+    nativeBridge.setVoicePhase(isSilent ? "speaking" : phase);
+  } catch {
+    // Browser-only NUBO keeps working when the native bridge is absent.
+  }
+}
 
 function dispatchPhase(phase: NuboVoicePhase) {
   window.dispatchEvent(
     new CustomEvent("nubo-voice-phase", { detail: { phase } }),
   );
+  notifyNativePhase(phase);
 }
 
 export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
