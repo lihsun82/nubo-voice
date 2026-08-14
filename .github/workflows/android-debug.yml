@@ -14,6 +14,7 @@ on:
       - "scripts/apply-nubo-v28-build.py"
       - "scripts/apply-google-home-v29.py"
       - "scripts/apply-youtube-native-app-v39.py"
+      - "scripts/apply-youtube-hybrid-v40.py"
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +27,7 @@ on:
       - "scripts/apply-nubo-v28-build.py"
       - "scripts/apply-google-home-v29.py"
       - "scripts/apply-youtube-native-app-v39.py"
+      - "scripts/apply-youtube-hybrid-v40.py"
 
 permissions:
   contents: write
@@ -78,16 +80,18 @@ jobs:
       - name: Restore Google Home SDK 1.10.0 bridge only
         run: python3 scripts/apply-google-home-v29.py
 
-      - name: Apply V39 restored native YouTube App build
-        run: python3 scripts/apply-youtube-native-app-v39.py
+      - name: Apply V40 hybrid YouTube switch build
+        run: python3 scripts/apply-youtube-hybrid-v40.py
 
-      - name: Verify V39 historical bridge equivalence and switch routing
+      - name: Verify V40 hybrid switch and non-regression baselines
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
+          SERVICE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
+          SERVICE_XML=android-nubo/app/src/main/res/xml/nubo_youtube_accessibility_service.xml
 
-          # Non-regression baselines.
+          # Non-regression baselines: Google Home, voice/PiP and exact resolver stay intact.
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'homeArtifact", "17.1.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           grep -q 'public boolean googleHomeControl' "$MAIN"
@@ -97,66 +101,36 @@ jobs:
           grep -q 'youtube.com/oembed' lib/youtube-quality-search.ts
           ! grep -q 'results?search_query' app/api/youtube/open/route.ts
 
-          # V39 primary switch path: runtime discovery of the CURRENT YouTube deep-link handler.
+          # First song remains V39 native exact deep-link behavior.
           grep -q 'queryIntentActivities' "$MAIN"
           grep -q 'scoreYouTubeDeepLinkActivity' "$MAIN"
           grep -q 'v39-runtime-deeplink-handler' "$MAIN"
-          grep -q 'new ComponentName' "$MAIN"
+          grep -q 'v39-v15-6-41-legacy-app-link' "$MAIN"
 
-          # Historical V15.6.41 semantic fallback must be present exactly: ACTION_VIEW,
-          # package-scoped, BROWSABLE, with NO activity-task flags in this method.
-          python3 - <<'PY'
-          from pathlib import Path
-          s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
-          start = s.index('    private boolean launchLegacyYouTubeAppLink(')
-          end = s.index('    private void launchExactYouTubeVideo(', start)
-          block = s[start:end]
-          required = [
-              'new Intent(Intent.ACTION_VIEW, exactUri)',
-              'legacyIntent.setPackage(packageName)',
-              'legacyIntent.addCategory(Intent.CATEGORY_BROWSABLE)',
-              'v39-v15-6-41-legacy-app-link',
-          ]
-          for token in required:
-              assert token in block, token
-          assert 'FLAG_ACTIVITY_' not in block
-          assert '.setFlags(' not in block
-          print('V15.6.41 historical bridge equivalence: PASS')
-          PY
+          # Repeated songs now use the foreground YouTube UI controller.
+          grep -q 'NuboYouTubeAccessibilityService.isReady()' "$MAIN"
+          grep -q 'NuboYouTubeAccessibilityService.requestSongSwitch(uiQuery)' "$MAIN"
+          grep -q 'Settings.ACTION_ACCESSIBILITY_SETTINGS' "$MAIN"
+          grep -q 'public boolean isYouTubeUiAgentReady' "$MAIN"
+          grep -q 'public boolean openYouTubeControlSettings' "$MAIN"
+          grep -q 'NuboYouTubeAccessibilityService' "$MANIFEST"
+          grep -q 'android.permission.BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
+          grep -q 'ACTION_SET_TEXT' "$SERVICE"
+          grep -q 'ACTION_IME_ENTER' "$SERVICE"
+          grep -q 'secondPassIfSearchStillVisible' "$SERVICE"
+          grep -q 'do NOT use a generic Pause' "$SERVICE"
+          grep -q 'dispatchGesture' "$SERVICE"
+          grep -q 'packageNames="com.google.android.youtube"' "$SERVICE_XML"
 
-          # Simulated scoring test: URL/deep-link handler must outrank launcher/player-like handlers.
-          python3 - <<'PY'
-          def score(name, launcher=False):
-              n = name.lower(); v = 1
-              if not launcher: v += 100
-              if 'url' in n: v += 90
-              if 'deeplink' in n or 'deep_link' in n: v += 85
-              if 'link' in n: v += 70
-              if 'dispatch' in n: v += 65
-              if 'router' in n: v += 55
-              if 'watch' in n: v += 45
-              if 'intent' in n: v += 35
-              if 'open' in n: v += 20
-              return v
-          assert score('com.google.android.youtube.UrlActivity') > score('com.google.android.youtube.HomeActivity', launcher=True)
-          assert score('com.google.android.youtube.DeepLinkRouterActivity') > score('com.google.android.youtube.WatchWhileActivity')
-          print('V39 deep-link resolver scoring: PASS')
-          PY
-
-          # Old failed architectures must be absent from the materialized APK source.
+          # Do not bring back the failed embedded IFrame/player architecture.
           test ! -e android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubePlayerActivity.java
           ! grep -q 'NuboYouTubePlayerActivity' "$MANIFEST"
-          ! grep -q 'FLAG_ACTIVITY_MULTIPLE_TASK' "$MAIN"
-          ! grep -q 'v38-room-music-autoplay' "$MAIN"
-          test ! -e android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
-          test ! -e android-nubo/app/src/main/res/xml/nubo_youtube_accessibility_service.xml
-          ! grep -q 'BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
-          ! grep -q 'AccessibilityService' "$MANIFEST"
+          ! grep -q 'www.youtube.com/iframe_api' "$SERVICE"
 
-      - name: Build signed AinuboX1 V39 native YouTube App APK
+      - name: Build signed AinuboX1 V40 hybrid YouTube APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify APK signature, package, Sense, Google Home and V39 payload
+      - name: Verify APK signature, package, Google Home and V40 payload
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
@@ -164,37 +138,38 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/ainubox1-badging.txt
           head -n 8 /tmp/ainubox1-badging.txt
-          grep -q "versionCode='39'" /tmp/ainubox1-badging.txt
+          grep -q "versionCode='40'" /tmp/ainubox1-badging.txt
           grep -q "application-label:'AinuboX1'" /tmp/ainubox1-badging.txt
           unzip -l "$APK" | grep -q 'assets/yamnet.tflite'
           unzip -l "$APK" | grep -q 'play-services-home.properties'
 
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v39-manifest-tree.txt
-          ! grep -q 'NuboYouTubePlayerActivity' /tmp/v39-manifest-tree.txt
-          ! grep -q 'NuboYouTubeAccessibilityService' /tmp/v39-manifest-tree.txt
-          ! grep -q 'BIND_ACCESSIBILITY_SERVICE' /tmp/v39-manifest-tree.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/v40-manifest-tree.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/v40-manifest-tree.txt
+          grep -q 'BIND_ACCESSIBILITY_SERVICE' /tmp/v40-manifest-tree.txt
+          ! grep -q 'NuboYouTubePlayerActivity' /tmp/v40-manifest-tree.txt
 
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v39-dex-strings.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v39-dex-strings.txt
-          grep -q '17.1.0' /tmp/v39-dex-strings.txt
-          grep -q 'com.google.android.youtube' /tmp/v39-dex-strings.txt
-          grep -q 'v39-runtime-deeplink-handler' /tmp/v39-dex-strings.txt
-          grep -q 'v39-v15-6-41-legacy-app-link' /tmp/v39-dex-strings.txt
-          ! grep -q 'NuboYouTubePlayerActivity' /tmp/v39-dex-strings.txt
-          ! grep -q 'www.youtube.com/iframe_api' /tmp/v39-dex-strings.txt
-          ! grep -q 'NuboYouTubeAccessibilityService' /tmp/v39-dex-strings.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v40-dex-strings.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v40-dex-strings.txt
+          grep -q '17.1.0' /tmp/v40-dex-strings.txt
+          grep -q 'com.google.android.youtube' /tmp/v40-dex-strings.txt
+          grep -q 'v39-runtime-deeplink-handler' /tmp/v40-dex-strings.txt
+          grep -q 'v39-v15-6-41-legacy-app-link' /tmp/v40-dex-strings.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/v40-dex-strings.txt
+          grep -q 'secondPassIfSearchStillVisible' /tmp/v40-dex-strings.txt
+          ! grep -q 'NuboYouTubePlayerActivity' /tmp/v40-dex-strings.txt
+          ! grep -q 'www.youtube.com/iframe_api' /tmp/v40-dex-strings.txt
 
-      - name: Publish V39 restored native YouTube App APK
+      - name: Publish V40 hybrid YouTube APK
         if: github.event_name == 'push'
         run: |
           mkdir -p public/downloads
-          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v39-YOUTUBE-NATIVE-RESTORED.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v40-YOUTUBE-HYBRID-SWITCH.apk
           cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/downloads/AinuboX1-v39-YOUTUBE-NATIVE-RESTORED.apk public/downloads/AinuboX1-latest.apk
+          git add public/downloads/AinuboX1-v40-YOUTUBE-HYBRID-SWITCH.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
-            git commit -m "build(android): publish AinuboX1 V39 restored native YouTube App APK"
+            git commit -m "build(android): publish AinuboX1 V40 hybrid YouTube APK"
             git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
@@ -203,6 +178,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: AinuboX1-v39-YOUTUBE-NATIVE-RESTORED
+          name: AinuboX1-v40-YOUTUBE-HYBRID-SWITCH
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
