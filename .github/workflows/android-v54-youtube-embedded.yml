@@ -1,18 +1,23 @@
-name: Android V55 YouTube Bottom Banner APK
+name: Android V56 YouTube Nonmodal Wake Recovery APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/apply-youtube-v56-nonmodal-wake-recovery.py"
+      - ".github/workflows/android-v54-youtube-embedded.yml"
   push:
     branches: [main]
     paths:
-      - "scripts/apply-youtube-v55-bottom-banner.py"
+      - "scripts/apply-youtube-v56-nonmodal-wake-recovery.py"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v55:
+  build-v56:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,43 +53,42 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-youtube-v55-bottom-banner.py
+      - run: python3 scripts/apply-youtube-v56-nonmodal-wake-recovery.py
 
-      - name: Verify V55 bottom banner scope
+      - name: Verify V56 non-modal wake recovery scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'versionCode 55' android-nubo/app/build.gradle
-          grep -q '0.55.0-youtube-bottom-banner-referer' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/55' "$MAIN"
-          grep -q 'showEmbeddedYouTubeV55' "$MAIN"
+          grep -q 'versionCode 56' android-nubo/app/build.gradle
+          grep -q '0.56.0-youtube-nonmodal-wake-recovery' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/56' "$MAIN"
+          grep -q 'embeddedYouTubeOverlayV56' "$MAIN"
+          grep -q 'root.addView(overlay, overlayParams)' "$MAIN"
+          ! grep -q 'private Dialog embeddedYouTubeDialogV56' "$MAIN"
+          grep -q 'webView.resumeTimers();' "$MAIN"
+          grep -q 'onStateChange:function(e)' "$MAIN"
+          grep -q 'getPlayerState()===3' "$MAIN"
           grep -q 'loadDataWithBaseURL("https://nubo.ainubo.com/' "$MAIN"
-          grep -q 'strict-origin-when-cross-origin' "$MAIN"
-          grep -q 'widget_referrer' "$MAIN"
-          grep -q 'setGravity(Gravity.BOTTOM)' "$MAIN"
-          grep -q 'setDimAmount(0f)' "$MAIN"
-          grep -q 'loadVideoById' "$MAIN"
-          grep -q 'setAcceptThirdPartyCookies' "$MAIN"
           grep -q 'YOUTUBE_RELAUNCH_GUARD_MS = 60_000L' "$MAIN"
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
 
-      - name: Build signed V55 APK
+      - name: Build signed V56 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V55 APK
+      - name: Verify V56 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v55.txt
-          grep -q "versionCode='55'" /tmp/v55.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v55-dex.txt
-          grep -q 'NUBO-Android/55' /tmp/v55-dex.txt
-          grep -q 'https://nubo.ainubo.com/' /tmp/v55-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v55-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v56.txt
+          grep -q "versionCode='56'" /tmp/v56.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v56-dex.txt
+          grep -q 'NUBO-Android/56' /tmp/v56-dex.txt
+          grep -q 'embeddedYouTubeOverlayV56' /tmp/v56-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v56-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v55-YOUTUBE-BOTTOM-BANNER
+          name: AinuboX1-v56-YOUTUBE-NONMODAL-WAKE-RECOVERY
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
