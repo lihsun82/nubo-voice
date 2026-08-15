@@ -1,10 +1,13 @@
-name: Android V66 Voice Stability APK
+name: Android V67 Geo YouTube Home Stability APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v67-location-youtube-home.py"
+      - "scripts/apply-web-v67-location-performance-home.cjs"
+      - "app/api/places/search/route.ts"
       - "scripts/apply-v66-voice-stability.py"
       - "scripts/apply-web-v66-voice-stability.cjs"
       - "scripts/apply-v65-response-sla.py"
@@ -15,20 +18,17 @@ on:
       - "scripts/apply-web-v63-voice-intent-guard.cjs"
       - "scripts/apply-v62-hotel-monitor-bridge.py"
       - "scripts/apply-v61-smart-assistant.py"
-      - "scripts/apply-ui-v60-hide-capabilities.py"
-      - "scripts/apply-web-v61-smart-assistant.mjs"
       - "package.json"
-      - "lib/browser-audio.ts"
-      - "lib/nubo-feedback-audio.ts"
-      - "components/GeminiVoiceConsole.tsx"
+      - "lib/browser-nubo-tools.ts"
       - "lib/browser-nubo-tools-line.ts"
+      - "android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v66:
+  build-v67:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -64,44 +64,45 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v66-voice-stability.py
+      - run: python3 scripts/apply-v67-location-youtube-home.py
 
-      - name: Verify V66 scope
+      - name: Verify V67 scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 66' android-nubo/app/build.gradle
-          grep -q '0.66.0-voice-stability' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/66' "$MAIN"
-          grep -q 'bundle=v66' "$MAIN"
-          grep -q 'nubo-v66-hide-panels' "$MAIN"
-          grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
+          grep -q 'versionCode 67' android-nubo/app/build.gradle
+          grep -q '0.67.0-geo-youtube-home-stable' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/67' "$MAIN"
+          grep -q 'bundle=v67' "$MAIN"
+          grep -q 'RENDERER_PRIORITY_IMPORTANT' "$MAIN"
+          grep -q 'setOffscreenPreRaster(true)' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'nubo_google_home_permission_v61' "$HOME"
           grep -q 'CACHED_GRANTED' "$HOME"
-          grep -q 'putBoolean("granted", true)' "$HOME"
+          grep -q 'putBoolean("granted", true).commit()' "$HOME"
           grep -q 'sdk", "1.10.0"' "$HOME"
+          if grep -q 'remove("granted")' "$HOME"; then exit 1; fi
 
-      - name: Build signed V66 APK
+      - name: Build signed V67 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V66 APK
+      - name: Verify V67 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v66.txt
-          grep -q "versionCode='66'" /tmp/v66.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v66-dex.txt
-          grep -q 'NUBO-Android/66' /tmp/v66-dex.txt
-          grep -q 'nubo-v66-hide-panels' /tmp/v66-dex.txt
-          grep -q 'CACHED_GRANTED' /tmp/v66-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v66-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v67.txt
+          grep -q "versionCode='67'" /tmp/v67.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v67-dex.txt
+          grep -q 'NUBO-Android/67' /tmp/v67-dex.txt
+          grep -q 'RENDERER_PRIORITY_IMPORTANT' /tmp/v67-dex.txt
+          grep -q 'CACHED_GRANTED' /tmp/v67-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v67-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v66-VOICE-STABILITY
+          name: AinuboX1-v67-GEO-YOUTUBE-HOME-STABLE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
