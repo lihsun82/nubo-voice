@@ -52,7 +52,6 @@ s = s.replace(
     'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v24";',
     'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v45&bundle=v45";',
 )
-# apply-v28 may already have rewritten the URL marker before we run.
 s = s.replace(
     'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v44";',
     'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v45&bundle=v45";',
@@ -60,12 +59,34 @@ s = s.replace(
 
 # On the first trusted page load, purge CacheStorage + unregister any Service Worker,
 # then reload once. sessionStorage prevents a reload loop and does not persist across app restarts.
-old = '''            if (isTrustedNuboUri(Uri.parse(url))) {\n                view.evaluateJavascript(\n                    "document.documentElement.dataset.nuboNative='android-v44';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v44',sense:'v1'}}));",\n                    null\n                );\n            }\n'''
-new = '''            if (isTrustedNuboUri(Uri.parse(url))) {\n                view.evaluateJavascript(\n                    "(async()=>{"\n                    + "try{"\n                    + "if(!sessionStorage.getItem('nubo_v45_bundle_flushed')){"\n                    + "sessionStorage.setItem('nubo_v45_bundle_flushed','1');"\n                    + "if(window.caches&&caches.keys){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}"\n                    + "if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}"\n                    + "location.replace('/?native=android-v45&bundle=v45&fresh=1');return;"\n                    + "}"\n                    + "}catch(e){}"\n                    + "document.documentElement.dataset.nuboNative='android-v45';"\n                    + "window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v45',sense:'v1',freshBundle:true}}));"\n                    + "})();",\n                    null\n                );\n            }\n'''
+old = '''            if (isTrustedNuboUri(Uri.parse(url))) {
+                view.evaluateJavascript(
+                    "document.documentElement.dataset.nuboNative='android-v44';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v44',sense:'v1'}}));",
+                    null
+                );
+            }
+'''
+new = '''            if (isTrustedNuboUri(Uri.parse(url))) {
+                view.evaluateJavascript(
+                    "(async()=>{"
+                    + "try{"
+                    + "if(!sessionStorage.getItem('nubo_v45_bundle_flushed')){"
+                    + "sessionStorage.setItem('nubo_v45_bundle_flushed','1');"
+                    + "if(window.caches&&caches.keys){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}"
+                    + "if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){const rs=await navigator.serviceWorker.getRegistrations();await Promise.all(rs.map(r=>r.unregister()));}"
+                    + "location.replace('/?native=android-v45&bundle=v45&fresh=1');return;"
+                    + "}"
+                    + "}catch(e){}"
+                    + "document.documentElement.dataset.nuboNative='android-v45';"
+                    + "window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v45',sense:'v1',freshBundle:true}}));"
+                    + "})();",
+                    null
+                );
+            }
+'''
 if old in s:
     s = replace_once(s, old, new, "V45 service-worker purge")
 else:
-    # Build-chain source may still expose the baseline v28 marker at this stage.
     old28 = old.replace("android-v44", "android-v28")
     s = replace_once(s, old28, new, "V45 service-worker purge baseline")
 
@@ -88,7 +109,6 @@ for token in [
     if token not in final_source:
         raise SystemExit(f"missing V45 fresh-bundle marker: {token}")
 
-# Preserve the proven direct YouTube bridge: no accessibility/PiP/delay layers.
 start = final_source.index("        public boolean playYouTubeNoSetup(")
 end = final_source.index("        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive()", start)
 youtube_bridge = final_source[start:end]
