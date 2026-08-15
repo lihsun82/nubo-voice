@@ -1,10 +1,12 @@
-name: Android V63 Voice Intent YouTube Guard APK
+name: Android V64 Conversation Sensitive APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v64-conversation-sensitive.py"
+      - "scripts/apply-web-v64-conversation-sensitive.cjs"
       - "scripts/apply-v63-voice-intent-guard.py"
       - "scripts/apply-web-v63-voice-intent-guard.cjs"
       - "scripts/apply-v62-hotel-monitor-bridge.py"
@@ -12,6 +14,7 @@ on:
       - "scripts/apply-ui-v60-hide-capabilities.py"
       - "scripts/apply-web-v61-smart-assistant.mjs"
       - "package.json"
+      - "lib/browser-audio.ts"
       - "components/GeminiVoiceConsole.tsx"
       - "lib/browser-nubo-tools-line.ts"
       - ".github/workflows/android-v54-youtube-embedded.yml"
@@ -20,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v63:
+  build-v64:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,18 +59,18 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v63-voice-intent-guard.py
+      - run: python3 scripts/apply-v64-conversation-sensitive.py
 
-      - name: Verify V63 scope
+      - name: Verify V64 scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 63' android-nubo/app/build.gradle
-          grep -q '0.63.0-voice-intent-youtube-guard' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/63' "$MAIN"
-          grep -q 'bundle=v63' "$MAIN"
-          grep -q 'nubo-v63-hide-panels' "$MAIN"
+          grep -q 'versionCode 64' android-nubo/app/build.gradle
+          grep -q '0.64.0-conversation-sensitive' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/64' "$MAIN"
+          grep -q 'bundle=v64' "$MAIN"
+          grep -q 'nubo-v64-hide-panels' "$MAIN"
           grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
@@ -76,24 +79,24 @@ jobs:
           grep -q 'putBoolean("granted", true)' "$HOME"
           grep -q 'sdk", "1.10.0"' "$HOME"
 
-      - name: Build signed V63 APK
+      - name: Build signed V64 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V63 APK
+      - name: Verify V64 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v63.txt
-          grep -q "versionCode='63'" /tmp/v63.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v63-dex.txt
-          grep -q 'NUBO-Android/63' /tmp/v63-dex.txt
-          grep -q 'nubo-v63-hide-panels' /tmp/v63-dex.txt
-          grep -q 'CACHED_GRANTED' /tmp/v63-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v63-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v64.txt
+          grep -q "versionCode='64'" /tmp/v64.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v64-dex.txt
+          grep -q 'NUBO-Android/64' /tmp/v64-dex.txt
+          grep -q 'nubo-v64-hide-panels' /tmp/v64-dex.txt
+          grep -q 'CACHED_GRANTED' /tmp/v64-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v64-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v63-VOICE-INTENT-YOUTUBE-GUARD
+          name: AinuboX1-v64-CONVERSATION-SENSITIVE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
