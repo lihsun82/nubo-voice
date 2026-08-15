@@ -25,11 +25,7 @@ function normalize(value: string) {
 function apiKeys() {
   return Array.from(
     new Set(
-      [
-        process.env.YOUTUBE_API_KEY,
-        process.env.YOUTUBE_DATA_API_KEY,
-        process.env.GOOGLE_API_KEY,
-      ]
+      [process.env.YOUTUBE_API_KEY, process.env.YOUTUBE_DATA_API_KEY, process.env.GOOGLE_API_KEY]
         .map((value) => value?.trim() ?? "")
         .filter(Boolean),
     ),
@@ -54,9 +50,7 @@ function score(query: string, item: SearchItem, index: number) {
   }
 
   if (/official|官方|vevo|topic/i.test(`${title} ${channel}`)) value += 70;
-  if (/cover|翻唱|伴奏|karaoke|ktv|reaction|教學|tutorial|remix|shorts/i.test(`${title} ${channel}`)) {
-    value -= 55;
-  }
+  if (/cover|翻唱|伴奏|karaoke|ktv|reaction|教學|tutorial|remix|shorts/i.test(`${title} ${channel}`)) value -= 55;
   return value;
 }
 
@@ -64,8 +58,6 @@ async function searchWithKey(query: string, key: string): Promise<YouTubeSearchR
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 7000);
   try {
-    // External YouTube App playback does NOT need embeddable/syndicated filters.
-    // Those V38 room-player constraints incorrectly rejected otherwise playable videos.
     const params = new URLSearchParams({
       part: "snippet",
       q: cleanQuery(query) || query,
@@ -106,7 +98,7 @@ async function searchWithKey(query: string, key: string): Promise<YouTubeSearchR
 
     return {
       videoId,
-      title: selected.snippet?.title ?? cleanQuery(query) || query,
+      title: selected.snippet?.title ?? (cleanQuery(query) || query),
       channelTitle: selected.snippet?.channelTitle ?? "",
       query,
       watchUrl: `https://www.youtube.com/watch?v=${videoId}`,
