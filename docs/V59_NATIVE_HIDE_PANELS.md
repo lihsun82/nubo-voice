@@ -1,0 +1,1 @@
+V59 forces `.question-history` and `.task-center` hidden from the Android WebView after every NUBO page load. It preserves data and underlying logic, keeps language mode visible, and leaves YouTube/voice/Google Home unchanged.
