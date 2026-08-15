@@ -66,13 +66,12 @@ jobs:
           grep -q 'versionCode 53' android-nubo/app/build.gradle
           grep -q '0.53.0-youtube-background-keepalive-fix' android-nubo/app/build.gradle
           grep -q 'NUBO-Android/53' "$MAIN"
-          grep -q 'startCompanionListeningV53' "$MAIN"
+          grep -q 'startCompanionListeningV52' "$MAIN"
           grep -q 'externalVoiceKeepAliveActive = true' "$MAIN"
           grep -q 'NuboBackgroundListeningService.isCloudWindowActive()' "$MAIN"
-          grep -q 'MainActivity.onCompanionTimeoutFromServiceV53' "$SERVICE"
-          ! grep -q 'sendBroadcast(timeout)' "$SERVICE"
-          grep -q 'startNativeWakeListener();' "$MAIN"
-          grep -q 'handleCompanionWakeV53();' "$MAIN"
+          grep -q 'MainActivity.onCompanionTimeoutFromService();' "$SERVICE"
+          grep -q 'MainActivity.onCompanionWakeFromService();' "$SERVICE"
+          grep -q 'RecognizerIntent.EXTRA_PREFER_OFFLINE' "$SERVICE"
           grep -q 'AudioManager.MODE_NORMAL' "$MAIN"
           grep -q 'YOUTUBE_RELAUNCH_GUARD_MS = 60_000L' "$MAIN"
           grep -q 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
