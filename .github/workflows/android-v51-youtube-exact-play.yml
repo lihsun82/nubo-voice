@@ -1,4 +1,4 @@
-name: Android V52 YouTube Background Listening APK
+name: Android V53 YouTube Background KeepAlive APK
 
 on:
   workflow_dispatch:
@@ -6,20 +6,20 @@ on:
     branches: [main]
     paths:
       - "android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundListeningService.java"
-      - "scripts/apply-youtube-v52-background-listening.py"
+      - "scripts/apply-youtube-v53-background-keepalive-fix.py"
       - ".github/workflows/android-v51-youtube-exact-play.yml"
   push:
     branches: [main]
     paths:
       - "android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundListeningService.java"
-      - "scripts/apply-youtube-v52-background-listening.py"
+      - "scripts/apply-youtube-v53-background-keepalive-fix.py"
       - ".github/workflows/android-v51-youtube-exact-play.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v52:
+  build-v53:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,48 +55,49 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-youtube-v52-background-listening.py
+      - run: python3 scripts/apply-youtube-v53-background-keepalive-fix.py
 
-      - name: Verify V52 YouTube-only background-listening scope
+      - name: Verify V53 background keepalive fix
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
           SERVICE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundListeningService.java
-          grep -q 'versionCode 52' android-nubo/app/build.gradle
-          grep -q '0.52.0-youtube-background-listening' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/52' "$MAIN"
-          grep -q 'startCompanionListeningV52' "$MAIN"
+          grep -q 'versionCode 53' android-nubo/app/build.gradle
+          grep -q '0.53.0-youtube-background-keepalive-fix' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/53' "$MAIN"
+          grep -q 'startCompanionListeningV53' "$MAIN"
+          grep -q 'externalVoiceKeepAliveActive = true' "$MAIN"
           grep -q 'NuboBackgroundListeningService.isCloudWindowActive()' "$MAIN"
-          grep -q 'onCompanionTimeoutFromService' "$MAIN"
-          grep -q 'onCompanionWakeFromService' "$MAIN"
+          grep -q 'MainActivity.onCompanionTimeoutFromServiceV53' "$SERVICE"
+          ! grep -q 'sendBroadcast(timeout)' "$SERVICE"
+          grep -q 'startNativeWakeListener();' "$MAIN"
+          grep -q 'handleCompanionWakeV53();' "$MAIN"
           grep -q 'AudioManager.MODE_NORMAL' "$MAIN"
           grep -q 'YOUTUBE_RELAUNCH_GUARD_MS = 60_000L' "$MAIN"
           grep -q 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
           grep -q 'foregroundServiceType="microphone"' "$MANIFEST"
           grep -q 'ACTIVE_WINDOW_MS = 30_000L' "$SERVICE"
-          grep -q 'EXTRA_PREFER_OFFLINE' "$SERVICE"
-          grep -q 'NUBO 待命喚醒中' "$SERVICE"
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
 
-      - name: Build signed V52 APK
+      - name: Build signed V53 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V52 APK
+      - name: Verify V53 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v52.txt
-          grep -q "versionCode='52'" /tmp/v52.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v52-dex.txt
-          grep -q 'NUBO-Android/52' /tmp/v52-dex.txt
-          grep -q 'NuboBackgroundListeningService' /tmp/v52-dex.txt
-          grep -q 'android-v52' /tmp/v52-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v52-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v53.txt
+          grep -q "versionCode='53'" /tmp/v53.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v53-dex.txt
+          grep -q 'NUBO-Android/53' /tmp/v53-dex.txt
+          grep -q 'NuboBackgroundListeningService' /tmp/v53-dex.txt
+          grep -q 'android-v53' /tmp/v53-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v53-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v52-YOUTUBE-BACKGROUND-LISTENING
+          name: AinuboX1-v53-YOUTUBE-BACKGROUND-KEEPALIVE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
