@@ -78,6 +78,27 @@ new_request = '''    override fun requestPermissions(callback: GoogleHomeGateway
                     return@launch
                 }
 
+                // V61 migration path: existing V60/older Google Home permission is owned by
+                // the platform Home SDK, not by this new preference key. Probe the existing
+                // session first; if structures are readable, adopt it without reopening setup.
+                try {
+                    withTimeout(3_500L) {
+                        client.structures().list()
+                    }
+                    permissionPrefs.edit().putBoolean("granted", true).apply()
+                    callback.onResult(
+                        JSONObject()
+                            .put("ok", true)
+                            .put("status", "REUSED_EXISTING")
+                            .put("message", "已沿用原本 Google Home 設定")
+                            .put("reused", true)
+                            .toString(),
+                    )
+                    return@launch
+                } catch (_: Exception) {
+                    // Existing authorization is not usable; fall through to explicit setup.
+                }
+
                 val result = client.requestPermissions(
                     ForcePermissionFlow.FORCE_LAUNCH,
                 )
@@ -141,6 +162,7 @@ home_final = gh.read_text()
 for token in [
     "nubo_google_home_permission_v61",
     "CACHED_GRANTED",
+    "REUSED_EXISTING",
     'putBoolean("granted", true)',
     'remove("granted")',
     'sdk", "1.10.0"',
@@ -148,4 +170,4 @@ for token in [
     if token not in home_final:
         raise SystemExit(f"missing V61 Google Home marker: {token}")
 
-print("Applied V61 Android: V60 baseline + persistent Google Home permission")
+print("Applied V61 Android: V60 baseline + persistent/reused Google Home permission")
