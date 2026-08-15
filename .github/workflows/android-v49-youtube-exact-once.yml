@@ -1,0 +1,106 @@
+name: Android V49 YouTube Exact Once APK
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/api/youtube/open/route.ts"
+      - "lib/youtube-stable-launch-v48.ts"
+      - "scripts/apply-youtube-v49-exact-once.py"
+      - ".github/workflows/android-v49-youtube-exact-once.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/api/youtube/open/route.ts"
+      - "lib/youtube-stable-launch-v48.ts"
+      - "scripts/apply-youtube-v49-exact-once.py"
+      - ".github/workflows/android-v49-youtube-exact-once.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-v49:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Typecheck V49 web route
+        run: npx tsc --noEmit
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - run: python3 scripts/apply-nubo-v28-build.py
+      - run: python3 scripts/apply-google-home-v29.py
+      - run: python3 scripts/apply-youtube-v49-exact-once.py
+
+      - name: Verify V49 YouTube-only scope
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'versionCode 49' android-nubo/app/build.gradle
+          grep -q '0.49.0-youtube-exact-once' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/49' "$MAIN"
+          grep -q 'android-v49' "$MAIN"
+          grep -q 'nubo_v49_bundle_flushed' "$MAIN"
+          grep -q 'resolveYouTubeAppVideoV46' app/api/youtube/open/route.ts
+          grep -q 'playbackMode: "exact-video-v49"' app/api/youtube/open/route.ts
+          grep -q 'YOUTUBE_LAST_LAUNCH_KEY' lib/youtube-stable-launch-v48.ts
+          grep -q 'LAUNCH_DEDUP_MS = 30_000' lib/youtube-stable-launch-v48.ts
+          grep -q 'removeItem(EXTERNAL_RETURN_KEY)' lib/youtube-stable-launch-v48.ts
+          grep -q 'window.location.assign(launchUrl)' lib/youtube-stable-launch-v48.ts
+          grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+
+      - name: Build signed V49 APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify V49 APK
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v49.txt
+          grep -q "versionCode='49'" /tmp/v49.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v49-dex.txt
+          grep -q 'NUBO-Android/49' /tmp/v49-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/v49-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v49-dex.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AinuboX1-v49-YOUTUBE-EXACT-ONCE
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
