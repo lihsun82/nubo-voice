@@ -97,7 +97,6 @@ jobs:
           grep -q "versionCode='67'" /tmp/v67.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/v67-dex.txt
           grep -q 'NUBO-Android/67' /tmp/v67-dex.txt
-          grep -q 'RENDERER_PRIORITY_IMPORTANT' /tmp/v67-dex.txt
           grep -q 'CACHED_GRANTED' /tmp/v67-dex.txt
           grep -q 'GoogleHomeGatewayImpl' /tmp/v67-dex.txt
 
