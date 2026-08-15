@@ -1,10 +1,12 @@
-name: Android V69 V33 Maps Restore Only APK
+name: Android V70 No 30s Eco APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v70-remove-30s-eco.py"
+      - "scripts/apply-web-v70-remove-30s-eco.cjs"
       - "scripts/apply-v69-restore-v33-maps.py"
       - "scripts/apply-web-v69-restore-v33-maps.cjs"
       - "scripts/apply-v68-maps-list-geolock.py"
@@ -12,6 +14,7 @@ on:
       - "scripts/apply-v67-location-youtube-home.py"
       - "scripts/apply-web-v67-location-performance-home.cjs"
       - "package.json"
+      - "components/GeminiVoiceConsole.tsx"
       - "lib/browser-nubo-tools.ts"
       - "lib/browser-nubo-tools-line.ts"
       - ".github/workflows/android-v54-youtube-embedded.yml"
@@ -20,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v69:
+  build-v70:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,19 +59,21 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v69-restore-v33-maps.py
+      - run: python3 scripts/apply-v70-remove-30s-eco.py
 
-      - name: Verify V69 isolated scope
+      - name: Verify V70 isolated scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 69' android-nubo/app/build.gradle
-          grep -q '0.69.0-v33-maps-restore-only' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/69' "$MAIN"
-          grep -q 'bundle=v69' "$MAIN"
+          grep -q 'versionCode 70' android-nubo/app/build.gradle
+          grep -q '0.70.0-no-30s-eco' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/70' "$MAIN"
+          grep -q 'bundle=v70' "$MAIN"
           grep -q 'RENDERER_PRIORITY_IMPORTANT' "$MAIN"
           grep -q 'setOffscreenPreRaster(true)' "$MAIN"
+          grep -q 'p.setVolume(72)' "$MAIN"
+          grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'nubo_google_home_permission_v61' "$HOME"
           grep -q 'CACHED_GRANTED' "$HOME"
           grep -q 'putBoolean("granted", true).commit()' "$HOME"
@@ -83,7 +88,10 @@ jobs:
           node scripts/apply-web-v67-location-performance-home.cjs
           node scripts/apply-web-v68-maps-list-geolock.cjs
           node scripts/apply-web-v69-restore-v33-maps.cjs
+          node scripts/apply-web-v70-remove-30s-eco.cjs
 
+          grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx
+          if grep -q 'Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS' components/GeminiVoiceConsole.tsx; then exit 1; fi
           grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
           grep -q 'provider: "Google Maps"' lib/browser-nubo-tools.ts
           grep -q 'location || "目前位置"' lib/browser-nubo-tools.ts
@@ -91,23 +99,23 @@ jobs:
           if grep -q 'NUBO_MAPS_LIST_V68' lib/browser-nubo-tools.ts; then exit 1; fi
           if grep -q 'mapsListOpened: true' lib/browser-nubo-tools.ts; then exit 1; fi
 
-      - name: Build signed V69 APK
+      - name: Build signed V70 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V69 APK
+      - name: Verify V70 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v69.txt
-          grep -q "versionCode='69'" /tmp/v69.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v69-dex.txt
-          grep -q 'NUBO-Android/69' /tmp/v69-dex.txt
-          grep -q 'CACHED_GRANTED' /tmp/v69-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v69-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v70.txt
+          grep -q "versionCode='70'" /tmp/v70.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v70-dex.txt
+          grep -q 'NUBO-Android/70' /tmp/v70-dex.txt
+          grep -q 'CACHED_GRANTED' /tmp/v70-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v70-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v69-V33-MAPS-RESTORE-ONLY
+          name: AinuboX1-v70-NO-30S-ECO
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
