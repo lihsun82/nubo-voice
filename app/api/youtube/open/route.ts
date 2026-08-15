@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  YouTubeApiError,
-  youtubeErrorSuggestion,
-} from "@/lib/youtube";
+import { YouTubeApiError } from "@/lib/youtube";
+import { resolveYouTubeAppVideoV46 } from "@/lib/youtube-app-resolver-v46";
 import { searchHighQualityYouTubeVideo } from "@/lib/youtube-quality-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NUBO_RELEASE = "V15.6.26-room-player-v38";
+const NUBO_RELEASE = "V46-youtube-canonical-external-app";
 
 const schema = z.object({
   query: z.string().min(1).max(300),
   service: z.enum(["youtube", "youtube_music"]).default("youtube"),
 });
+
+function searchUrl(query: string) {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query.trim())}`;
+}
 
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
@@ -23,14 +25,17 @@ export async function POST(request: Request) {
   }
 
   const { query } = parsed.data;
+  let lastReason = "unknown";
 
+  // V46 first resolver is designed for EXTERNAL YouTube App playback.
+  // It intentionally does not require embeddable/syndicated/oEmbed eligibility.
   try {
-    const result = await searchHighQualityYouTubeVideo(query);
+    const result = await resolveYouTubeAppVideoV46(query);
     const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(result.videoId)}&autoplay=1`;
-
     return NextResponse.json({
       ok: true,
       fallback: false,
+      playbackMode: "exact-video",
       ...result,
       url: watchUrl,
       mobileUrl: watchUrl,
@@ -38,24 +43,55 @@ export async function POST(request: Request) {
       mobileLabel: "YouTube",
       autoOpen: true,
       release: NUBO_RELEASE,
-      build: "youtube-exact-room-player-v38",
-      message: `已找到並準備自動播放：${result.title}`,
+      build: "youtube-canonical-external-app-v46",
+      message: `準備由YouTube App播放：${result.title}`,
     });
   } catch (error) {
-    const reason = error instanceof YouTubeApiError ? error.reason : "unknown";
-
-    // Room playback must never dump the guest onto a manual YouTube search page.
-    // If all exact resolvers fail, keep NUBO in control and report a real failure.
-    return NextResponse.json({
-      ok: false,
-      fallback: false,
-      query,
-      autoOpen: false,
-      reason,
-      suggestion: youtubeErrorSuggestion(reason),
-      release: NUBO_RELEASE,
-      build: "youtube-exact-room-player-v38",
-      message: "這首目前無法取得可自動播放的精確影片，請再說一次歌手與歌名。",
-    });
+    lastReason = error instanceof YouTubeApiError ? error.reason : "unknown";
   }
+
+  // Keep the previous multi-resolver as a secondary chance, but it is no longer
+  // allowed to block opening YouTube when it cannot validate an exact video.
+  try {
+    const result = await searchHighQualityYouTubeVideo(query);
+    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(result.videoId)}&autoplay=1`;
+    return NextResponse.json({
+      ok: true,
+      fallback: false,
+      playbackMode: "legacy-exact-video",
+      ...result,
+      url: watchUrl,
+      mobileUrl: watchUrl,
+      playerUrl: watchUrl,
+      mobileLabel: "YouTube",
+      autoOpen: true,
+      release: NUBO_RELEASE,
+      build: "youtube-canonical-external-app-v46",
+      message: `準備由YouTube App播放：${result.title}`,
+    });
+  } catch (error) {
+    lastReason = error instanceof YouTubeApiError ? error.reason : lastReason;
+  }
+
+  // Critical V46 behavior: exact-video lookup failure is NOT playback failure.
+  // Always hand the query to the installed YouTube App instead of returning the
+  // old V38 red error and preventing Android startActivity() from ever running.
+  const fallbackUrl = searchUrl(query);
+  return NextResponse.json({
+    ok: true,
+    fallback: true,
+    playbackMode: "youtube-app-search",
+    query,
+    title: query,
+    videoId: "",
+    url: fallbackUrl,
+    mobileUrl: fallbackUrl,
+    playerUrl: fallbackUrl,
+    mobileLabel: "YouTube",
+    autoOpen: true,
+    reason: lastReason,
+    release: NUBO_RELEASE,
+    build: "youtube-canonical-external-app-v46",
+    message: `精確影片解析未完成，改由YouTube App搜尋並播放：${query}`,
+  });
 }
