@@ -1,10 +1,11 @@
-name: Android V61 Smart Assistant Persistent Home APK
+name: Android V62 Hotel Monitor Live Bridge APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v62-hotel-monitor-bridge.py"
       - "scripts/apply-v61-smart-assistant.py"
       - "scripts/apply-ui-v60-hide-capabilities.py"
       - "scripts/apply-web-v61-smart-assistant.mjs"
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v61:
+  build-v62:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,17 +54,18 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v61-smart-assistant.py
+      - run: python3 scripts/apply-v62-hotel-monitor-bridge.py
 
-      - name: Verify V61 scope
+      - name: Verify V62 scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 61' android-nubo/app/build.gradle
-          grep -q '0.61.0-smart-assistant-persistent-home' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/61' "$MAIN"
-          grep -q 'nubo-v61-hide-panels' "$MAIN"
+          grep -q 'versionCode 62' android-nubo/app/build.gradle
+          grep -q '0.62.0-hotel-monitor-live-bridge' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/62' "$MAIN"
+          grep -q 'bundle=v62' "$MAIN"
+          grep -q 'nubo-v62-hide-panels' "$MAIN"
           grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
@@ -72,24 +74,24 @@ jobs:
           grep -q 'putBoolean("granted", true)' "$HOME"
           grep -q 'sdk", "1.10.0"' "$HOME"
 
-      - name: Build signed V61 APK
+      - name: Build signed V62 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V61 APK
+      - name: Verify V62 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v61.txt
-          grep -q "versionCode='61'" /tmp/v61.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v61-dex.txt
-          grep -q 'NUBO-Android/61' /tmp/v61-dex.txt
-          grep -q 'nubo-v61-hide-panels' /tmp/v61-dex.txt
-          grep -q 'CACHED_GRANTED' /tmp/v61-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v61-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v62.txt
+          grep -q "versionCode='62'" /tmp/v62.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v62-dex.txt
+          grep -q 'NUBO-Android/62' /tmp/v62-dex.txt
+          grep -q 'nubo-v62-hide-panels' /tmp/v62-dex.txt
+          grep -q 'CACHED_GRANTED' /tmp/v62-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v62-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v61-SMART-ASSISTANT-PERSISTENT-HOME
+          name: AinuboX1-v62-HOTEL-MONITOR-LIVE-BRIDGE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
