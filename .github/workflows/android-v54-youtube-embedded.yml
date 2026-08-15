@@ -1,23 +1,23 @@
-name: Android V59 Native UI Hide APK
+name: Android V60 Native UI Hide APK
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/apply-ui-v59-force-hide-panels.py"
+      - "scripts/apply-ui-v60-hide-capabilities.py"
       - ".github/workflows/android-v54-youtube-embedded.yml"
   push:
     branches: [main]
     paths:
-      - "scripts/apply-ui-v59-force-hide-panels.py"
+      - "scripts/apply-ui-v60-hide-capabilities.py"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v59:
+  build-v60:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
-
       - name: Materialize signing key and launcher icon
         run: |
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
@@ -38,7 +37,6 @@ jobs:
           mkdir -p android-nubo/app/src/main/res/drawable-nodpi
           rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
           base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
-
       - name: Download official Google Home SDK 1.10.0
         shell: bash
         run: |
@@ -50,41 +48,36 @@ jobs:
           unzip -q "$ZIP" -d "$REPO"
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
-
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-ui-v59-force-hide-panels.py
-
-      - name: Verify V59 native UI hide scope
+      - run: python3 scripts/apply-ui-v60-hide-capabilities.py
+      - name: Verify V60 native UI hide scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'versionCode 59' android-nubo/app/build.gradle
-          grep -q '0.59.0-native-hide-question-task-panels' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/59' "$MAIN"
-          grep -q 'nubo-v59-hide-panels' "$MAIN"
-          grep -q '.question-history,.task-center{display:none!important}' "$MAIN"
+          grep -q 'versionCode 60' android-nubo/app/build.gradle
+          grep -q '0.60.0-native-hide-panels-capabilities' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/60' "$MAIN"
+          grep -q 'nubo-v60-hide-panels' "$MAIN"
+          grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-
-      - name: Build signed V59 APK
+      - name: Build signed V60 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
-
-      - name: Verify V59 APK
+      - name: Verify V60 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v59.txt
-          grep -q "versionCode='59'" /tmp/v59.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v59-dex.txt
-          grep -q 'NUBO-Android/59' /tmp/v59-dex.txt
-          grep -q 'nubo-v59-hide-panels' /tmp/v59-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v59-dex.txt
-
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v60.txt
+          grep -q "versionCode='60'" /tmp/v60.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v60-dex.txt
+          grep -q 'NUBO-Android/60' /tmp/v60-dex.txt
+          grep -q 'nubo-v60-hide-panels' /tmp/v60-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v60-dex.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v59-NATIVE-HIDE-PANELS
+          name: AinuboX1-v60-NATIVE-HIDE-CAPABILITIES
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
