@@ -1,0 +1,126 @@
+name: Android V43 V9 YouTube Restore
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/apply-youtube-v9-restore-v43.py"
+      - ".github/workflows/android-v43-v9-restore.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/apply-youtube-v9-restore-v43.py"
+      - ".github/workflows/android-v43-v9-restore.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-v43:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - name: Apply unchanged V28 voice/UI baseline
+        run: python3 scripts/apply-nubo-v28-build.py
+
+      - name: Restore unchanged Google Home SDK 1.10.0
+        run: python3 scripts/apply-google-home-v29.py
+
+      - name: Restore V9 YouTube launch only
+        run: python3 scripts/apply-youtube-v9-restore-v43.py
+
+      - name: Verify YouTube-only V9 restoration
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'versionCode 43' android-nubo/app/build.gradle
+          grep -q '0.43.0-youtube-v9-restore' android-nubo/app/build.gradle
+          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
+          grep -q 'activity.launchExternalTarget(safeTarget, safeLabel)' "$MAIN"
+          grep -q 'NUBO-Android/43' "$MAIN"
+          grep -q 'android-v43' "$MAIN"
+          grep -q 'public boolean googleHomeControl' "$MAIN"
+          grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          grep -q 'homeArtifact", "17.1.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
+          a = s.index('        public boolean playYouTubeNoSetup(')
+          b = s.index('        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive()', a)
+          block = s[a:b]
+          assert 'launchExternalTarget(safeTarget, safeLabel)' in block
+          for forbidden in ['beginExternalVoiceKeepAlive', 'enterPictureInPictureMode', 'postDelayed', 'queryIntentActivities', 'vnd.youtube:', 'NuboYouTubeAccessibilityService']:
+              assert forbidden not in block, forbidden
+          print('V43 dedicated YouTube bridge matches V9 direct-launch architecture')
+          PY
+
+      - name: Build signed V43 release APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify V43 APK payload
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v43-badging.txt
+          grep -q "versionCode='43'" /tmp/v43-badging.txt
+          grep -q "application-label:'AinuboX1'" /tmp/v43-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v43-dex.txt
+          grep -q 'NUBO-Android/43' /tmp/v43-dex.txt
+          grep -q 'android-v43' /tmp/v43-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/v43-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v43-dex.txt
+          grep -q '17.1.0' /tmp/v43-dex.txt
+
+      - name: Publish V43 APK
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p public/downloads
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v43-YOUTUBE-V9-RESTORE.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/downloads/AinuboX1-v43-YOUTUBE-V9-RESTORE.apk public/downloads/AinuboX1-latest.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "build(android): publish AinuboX1 V43 V9 YouTube restore APK"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AinuboX1-v43-YOUTUBE-V9-RESTORE
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
