@@ -1,23 +1,27 @@
-name: Android V57 YouTube Audio Mix Native Wake APK
+name: Android V58 YouTube Stable Audio Native Wake APK
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/apply-youtube-v57-audio-mix-wake.py"
+      - "scripts/apply-youtube-v58-fixed-volume-native-wake-order.py"
+      - "scripts/apply-youtube-v58-native-idle-wake-fallback.py"
+      - "components/GeminiVoiceConsole.tsx"
       - ".github/workflows/android-v54-youtube-embedded.yml"
   push:
     branches: [main]
     paths:
-      - "scripts/apply-youtube-v57-audio-mix-wake.py"
+      - "scripts/apply-youtube-v58-fixed-volume-native-wake-order.py"
+      - "scripts/apply-youtube-v58-native-idle-wake-fallback.py"
+      - "components/GeminiVoiceConsole.tsx"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v57:
+  build-v58:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,46 +57,52 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-youtube-v57-audio-mix-wake.py
+      - run: python3 scripts/apply-youtube-v58-native-idle-wake-fallback.py
 
-      - name: Verify V57 audio mix and native wake scope
+      - name: Verify V58 stable audio and native wake order
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'versionCode 57' android-nubo/app/build.gradle
-          grep -q '0.57.0-youtube-audio-mix-native-wake' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/57' "$MAIN"
-          grep -q 'embeddedYouTubeOverlayV57' "$MAIN"
-          grep -q 'applyYouTubeVoiceMixV57' "$MAIN"
-          grep -q 'p.setVolume' "$MAIN"
-          grep -q 'LAYER_TYPE_HARDWARE' "$MAIN"
+          CONSOLE=components/GeminiVoiceConsole.tsx
+          grep -q 'versionCode 58' android-nubo/app/build.gradle
+          grep -q '0.58.0-youtube-stable-audio-native-wake-order' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/58' "$MAIN"
+          grep -q 'embeddedYouTubeOverlayV58' "$MAIN"
+          grep -q 'p.setVolume(72)' "$MAIN"
+          ! grep -q 'volume = 24' "$MAIN"
+          ! grep -q 'volume = 55' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
-          grep -q 'isOnDeviceRecognitionAvailable' "$MAIN"
-          grep -q 'recreateWakeRecognizerV57' "$MAIN"
-          grep -q 'wakeGenerationV57' "$MAIN"
-          grep -q '1250L' "$MAIN"
-          grep -q 'YOUTUBE_RELAUNCH_GUARD_MS = 60_000L' "$MAIN"
-          grep -q 'AudioManager.MODE_NORMAL' "$MAIN"
+          grep -q 'recreateWakeRecognizerV58' "$MAIN"
+          grep -q 'wakeGenerationV58' "$MAIN"
+          grep -q '1500L' "$MAIN"
+          grep -q 'embeddedYouTubeOverlayV58.getParent() != null' "$MAIN"
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('components/GeminiVoiceConsole.tsx').read_text()
+          n=s.find('nativeBridge?.startWakeListener?.()')
+          m=s.find('if (isMobileBrowser) return;', n)
+          assert n >= 0 and m > n, (n,m)
+          PY
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
 
-      - name: Build signed V57 APK
+      - name: Build signed V58 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V57 APK
+      - name: Verify V58 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v57.txt
-          grep -q "versionCode='57'" /tmp/v57.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v57-dex.txt
-          grep -q 'NUBO-Android/57' /tmp/v57-dex.txt
-          grep -q 'embeddedYouTubeOverlayV57' /tmp/v57-dex.txt
-          grep -q 'createOnDeviceSpeechRecognizer' /tmp/v57-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v57-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v58.txt
+          grep -q "versionCode='58'" /tmp/v58.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v58-dex.txt
+          grep -q 'NUBO-Android/58' /tmp/v58-dex.txt
+          grep -q 'embeddedYouTubeOverlayV58' /tmp/v58-dex.txt
+          grep -q 'createOnDeviceSpeechRecognizer' /tmp/v58-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v58-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v57-YOUTUBE-AUDIO-MIX-NATIVE-WAKE
+          name: AinuboX1-v58-YOUTUBE-STABLE-AUDIO-NATIVE-WAKE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
