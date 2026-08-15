@@ -1,23 +1,23 @@
-name: Android V56 YouTube Nonmodal Wake Recovery APK
+name: Android V57 YouTube Audio Mix Native Wake APK
 
 on:
   workflow_dispatch:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/apply-youtube-v56-nonmodal-wake-recovery.py"
+      - "scripts/apply-youtube-v57-audio-mix-wake.py"
       - ".github/workflows/android-v54-youtube-embedded.yml"
   push:
     branches: [main]
     paths:
-      - "scripts/apply-youtube-v56-nonmodal-wake-recovery.py"
+      - "scripts/apply-youtube-v57-audio-mix-wake.py"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v56:
+  build-v57:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,42 +53,46 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-youtube-v56-nonmodal-wake-recovery.py
+      - run: python3 scripts/apply-youtube-v57-audio-mix-wake.py
 
-      - name: Verify V56 non-modal wake recovery scope
+      - name: Verify V57 audio mix and native wake scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          grep -q 'versionCode 56' android-nubo/app/build.gradle
-          grep -q '0.56.0-youtube-nonmodal-wake-recovery' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/56' "$MAIN"
-          grep -q 'embeddedYouTubeOverlayV56' "$MAIN"
-          grep -q 'root.addView(overlay, overlayParams)' "$MAIN"
-          ! grep -q 'private Dialog embeddedYouTubeDialogV56' "$MAIN"
-          grep -q 'webView.resumeTimers();' "$MAIN"
-          grep -q 'onStateChange:function(e)' "$MAIN"
-          grep -q 'getPlayerState()===3' "$MAIN"
-          grep -q 'loadDataWithBaseURL("https://nubo.ainubo.com/' "$MAIN"
+          grep -q 'versionCode 57' android-nubo/app/build.gradle
+          grep -q '0.57.0-youtube-audio-mix-native-wake' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/57' "$MAIN"
+          grep -q 'embeddedYouTubeOverlayV57' "$MAIN"
+          grep -q 'applyYouTubeVoiceMixV57' "$MAIN"
+          grep -q 'p.setVolume' "$MAIN"
+          grep -q 'LAYER_TYPE_HARDWARE' "$MAIN"
+          grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
+          grep -q 'isOnDeviceRecognitionAvailable' "$MAIN"
+          grep -q 'recreateWakeRecognizerV57' "$MAIN"
+          grep -q 'wakeGenerationV57' "$MAIN"
+          grep -q '1250L' "$MAIN"
           grep -q 'YOUTUBE_RELAUNCH_GUARD_MS = 60_000L' "$MAIN"
+          grep -q 'AudioManager.MODE_NORMAL' "$MAIN"
           grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
 
-      - name: Build signed V56 APK
+      - name: Build signed V57 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V56 APK
+      - name: Verify V57 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v56.txt
-          grep -q "versionCode='56'" /tmp/v56.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v56-dex.txt
-          grep -q 'NUBO-Android/56' /tmp/v56-dex.txt
-          grep -q 'embeddedYouTubeOverlayV56' /tmp/v56-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v56-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v57.txt
+          grep -q "versionCode='57'" /tmp/v57.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v57-dex.txt
+          grep -q 'NUBO-Android/57' /tmp/v57-dex.txt
+          grep -q 'embeddedYouTubeOverlayV57' /tmp/v57-dex.txt
+          grep -q 'createOnDeviceSpeechRecognizer' /tmp/v57-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v57-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v56-YOUTUBE-NONMODAL-WAKE-RECOVERY
+          name: AinuboX1-v57-YOUTUBE-AUDIO-MIX-NATIVE-WAKE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
