@@ -6,6 +6,14 @@ import runpy
 # External YouTube V51 remains fallback for embed errors or search-only cases.
 runpy.run_path("scripts/apply-youtube-v51-exact-play.py", run_name="__main__")
 
+# V54 deliberately does not use the V52/V53 background-listening service. The
+# repository still contains that source file, whose callbacks only exist in the
+# V52/V53 MainActivity. Remove it from this generated CI workspace so the clean
+# V51-based V54 build cannot be broken by stale background-service references.
+stale_service = Path("android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundListeningService.java")
+if stale_service.exists():
+    stale_service.unlink()
+
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
     if old not in text:
@@ -92,7 +100,6 @@ helpers = r'''    private final class EmbeddedYouTubeBridgeV54 {
             embeddedYouTubeVideoIdV54 = videoId;
 
             Dialog dialog = new Dialog(this, android.R.style.Theme_DeviceDefault_NoActionBar);
-            dialog.getWindow();
             LinearLayout shell = new LinearLayout(this);
             shell.setOrientation(LinearLayout.VERTICAL);
             shell.setBackgroundColor(Color.BLACK);
