@@ -11,6 +11,16 @@ let lastVoiceChunkAt = 0;
 let lastHandledSignature = "";
 let lastHandledAt = 0;
 
+type NuboNativeBridge = {
+  isNativeApp?: () => boolean;
+  getNativeVersion?: () => string;
+  openExternalApp?: (targetUrl: string, label: string) => boolean;
+};
+
+type NuboNativeWindow = Window & {
+  NuboNative?: NuboNativeBridge;
+};
+
 function readNumber(text: string, fallback = 10) {
   const match = text.match(/(\d{1,3})/);
   if (!match) return fallback;
@@ -90,10 +100,8 @@ function mergeVoiceCommandChunk(text: string) {
   if (!voiceCommandBuffer) {
     voiceCommandBuffer = text;
   } else if (text.includes(voiceCommandBuffer)) {
-    // Some realtime engines resend the full cumulative transcript.
     voiceCommandBuffer = text;
   } else if (!voiceCommandBuffer.includes(text)) {
-    // Other realtime engines emit transcript fragments such as 「開」→「燈」.
     voiceCommandBuffer += text;
   }
 
@@ -118,8 +126,118 @@ function isDuplicateCommand(signature: string) {
   return false;
 }
 
+function extractYouTubeQuery(text: string) {
+  const original = text.trim();
+  if (!original) return "";
+
+  const compact = original.replace(/\s+/g, "");
+  if (/(暫停|停止|關閉|關掉|不要播|不要播放)/.test(compact)) return "";
+
+  const hasYouTubeIntent =
+    /(youtube|yt|油管)/i.test(original) ||
+    /(播放|播一下|放一下|放首|放一首|我要聽|我想聽|想聽|聽一下|換成|換歌|下一首)/.test(
+      compact,
+    );
+  if (!hasYouTubeIntent) return "";
+
+  let query = original
+    .replace(/\b(?:youtube|yt)\b/gi, " ")
+    .replace(/油管/g, " ")
+    .replace(/(?:請|麻煩|幫我|幫忙|可以|可不可以|我要|我想|想要)?\s*(?:播放|播一下|播|放一下|放首|放一首|放|聽一下|聽|換成|換歌|下一首)/g, " ")
+    .replace(/(?:的歌|這首歌|歌曲|音樂|mv|music video)/gi, " ")
+    .replace(/[，。！？!?、：:；;"'「」『』（）()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  query = query.replace(/^(?:nubo|努寶|嘿nubo|嗨nubo)\s*/i, "").trim();
+  return query.length >= 1 ? query : "";
+}
+
+function getNativeBridge() {
+  if (typeof window === "undefined") return null;
+  const bridge = (window as NuboNativeWindow).NuboNative;
+  if (!bridge?.openExternalApp) return null;
+  try {
+    if (bridge.isNativeApp && bridge.isNativeApp() !== true) return null;
+  } catch {
+    return null;
+  }
+  return bridge;
+}
+
+async function runLocalYouTubeCommand(query: string) {
+  const signature = `youtube:${query.toLowerCase()}`;
+  if (isDuplicateCommand(signature)) {
+    return { handled: true, type: "youtube", duplicate: true, query };
+  }
+
+  const bridge = getNativeBridge();
+  if (!bridge) {
+    return { handled: false, type: "youtube", reason: "native-bridge-unavailable" };
+  }
+
+  const response = await fetch("/api/youtube/open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, service: "youtube" }),
+    cache: "no-store",
+  });
+  const result = (await response.json()) as {
+    ok?: boolean;
+    title?: string;
+    videoId?: string;
+    mobileUrl?: string;
+    url?: string;
+    message?: string;
+  };
+
+  if (!response.ok || result.ok !== true) {
+    throw new Error(result.message || "YouTube 找不到可播放影片");
+  }
+
+  const targetUrl = String(result.mobileUrl || result.url || "").trim();
+  if (!targetUrl) throw new Error("YouTube 播放網址不存在");
+
+  let accepted = false;
+  try {
+    accepted = bridge.openExternalApp?.(targetUrl, "YouTube") === true;
+  } catch {
+    accepted = false;
+  }
+
+  if (!accepted) {
+    throw new Error("Android 沒有接受 YouTube App 啟動指令");
+  }
+
+  voiceCommandBuffer = "";
+
+  let nativeVersion = "";
+  try {
+    nativeVersion = bridge.getNativeVersion?.() ?? "";
+  } catch {
+    nativeVersion = "";
+  }
+
+  return {
+    handled: true,
+    type: "youtube",
+    query,
+    title: result.title ?? query,
+    videoId: result.videoId ?? "",
+    targetUrl,
+    nativeVersion,
+    route: "v44-local-transcript-direct-native",
+  };
+}
+
 export async function runLocalVoiceCommand(text: string) {
-  const normalizedChunk = text.replace(/\s+/g, "").toLowerCase();
+  const rawText = text.trim();
+  const youtubeQuery = extractYouTubeQuery(rawText);
+  if (youtubeQuery) {
+    return runLocalYouTubeCommand(youtubeQuery);
+  }
+
+  const normalizedChunk = rawText.replace(/\s+/g, "").toLowerCase();
   const normalized = mergeVoiceCommandChunk(normalizedChunk);
 
   if (isWakePhrase(normalizedChunk)) {
@@ -144,7 +262,6 @@ export async function runLocalVoiceCommand(text: string) {
       room,
     });
 
-    // A completed command should not leak into the next spoken turn.
     voiceCommandBuffer = "";
 
     return {
