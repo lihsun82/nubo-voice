@@ -11,14 +11,6 @@ const IntegrationCenter = dynamic(
   { ssr: false },
 );
 
-const TaskCenter = dynamic(
-  () =>
-    import("@/components/TaskCenter").then(
-      (module) => module.TaskCenter,
-    ),
-  { ssr: false },
-);
-
 export function DeferredDashboardCenters() {
   const markerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
@@ -72,10 +64,5 @@ export function DeferredDashboardCenters() {
     );
   }
 
-  return (
-    <>
-      <IntegrationCenter />
-      <TaskCenter />
-    </>
-  );
+  return <IntegrationCenter />;
 }
