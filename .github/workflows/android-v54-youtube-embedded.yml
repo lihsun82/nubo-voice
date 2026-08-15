@@ -6,12 +6,14 @@ on:
     branches: [main]
     paths:
       - "scripts/apply-youtube-v58-fixed-volume-native-wake-order.py"
+      - "scripts/apply-youtube-v58-native-idle-wake-fallback.py"
       - "components/GeminiVoiceConsole.tsx"
       - ".github/workflows/android-v54-youtube-embedded.yml"
   push:
     branches: [main]
     paths:
       - "scripts/apply-youtube-v58-fixed-volume-native-wake-order.py"
+      - "scripts/apply-youtube-v58-native-idle-wake-fallback.py"
       - "components/GeminiVoiceConsole.tsx"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
@@ -55,7 +57,7 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-youtube-v58-fixed-volume-native-wake-order.py
+      - run: python3 scripts/apply-youtube-v58-native-idle-wake-fallback.py
 
       - name: Verify V58 stable audio and native wake order
         run: |
@@ -72,6 +74,8 @@ jobs:
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'recreateWakeRecognizerV58' "$MAIN"
           grep -q 'wakeGenerationV58' "$MAIN"
+          grep -q '1500L' "$MAIN"
+          grep -q 'embeddedYouTubeOverlayV58.getParent() != null' "$MAIN"
           python3 - <<'PY'
           from pathlib import Path
           s=Path('components/GeminiVoiceConsole.tsx').read_text()
