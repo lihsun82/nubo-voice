@@ -1,10 +1,12 @@
-name: Android V65 Response SLA APK
+name: Android V66 Voice Stability APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v66-voice-stability.py"
+      - "scripts/apply-web-v66-voice-stability.cjs"
       - "scripts/apply-v65-response-sla.py"
       - "scripts/apply-web-v65-response-sla.cjs"
       - "scripts/apply-v64-conversation-sensitive.py"
@@ -26,7 +28,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v65:
+  build-v66:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,18 +64,18 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v65-response-sla.py
+      - run: python3 scripts/apply-v66-voice-stability.py
 
-      - name: Verify V65 scope
+      - name: Verify V66 scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 65' android-nubo/app/build.gradle
-          grep -q '0.65.0-response-sla' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/65' "$MAIN"
-          grep -q 'bundle=v65' "$MAIN"
-          grep -q 'nubo-v65-hide-panels' "$MAIN"
+          grep -q 'versionCode 66' android-nubo/app/build.gradle
+          grep -q '0.66.0-voice-stability' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/66' "$MAIN"
+          grep -q 'bundle=v66' "$MAIN"
+          grep -q 'nubo-v66-hide-panels' "$MAIN"
           grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
@@ -82,24 +84,24 @@ jobs:
           grep -q 'putBoolean("granted", true)' "$HOME"
           grep -q 'sdk", "1.10.0"' "$HOME"
 
-      - name: Build signed V65 APK
+      - name: Build signed V66 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V65 APK
+      - name: Verify V66 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v65.txt
-          grep -q "versionCode='65'" /tmp/v65.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v65-dex.txt
-          grep -q 'NUBO-Android/65' /tmp/v65-dex.txt
-          grep -q 'nubo-v65-hide-panels' /tmp/v65-dex.txt
-          grep -q 'CACHED_GRANTED' /tmp/v65-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v65-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v66.txt
+          grep -q "versionCode='66'" /tmp/v66.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v66-dex.txt
+          grep -q 'NUBO-Android/66' /tmp/v66-dex.txt
+          grep -q 'nubo-v66-hide-panels' /tmp/v66-dex.txt
+          grep -q 'CACHED_GRANTED' /tmp/v66-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v66-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v65-RESPONSE-SLA
+          name: AinuboX1-v66-VOICE-STABILITY
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
