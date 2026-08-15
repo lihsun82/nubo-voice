@@ -1,0 +1,134 @@
+name: Android V44 Local YouTube Bypass
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "lib/local-voice-commands.ts"
+      - "scripts/apply-youtube-local-bypass-v44.py"
+      - ".github/workflows/android-v44-local-bypass.yml"
+  push:
+    branches: [main]
+    paths:
+      - "lib/local-voice-commands.ts"
+      - "scripts/apply-youtube-local-bypass-v44.py"
+      - ".github/workflows/android-v44-local-bypass.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-v44:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Install web dependencies and verify local YouTube bypass
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          grep -q 'v44-local-transcript-direct-native' lib/local-voice-commands.ts
+          grep -q 'bridge.openExternalApp' lib/local-voice-commands.ts
+          grep -q '/api/youtube/open' lib/local-voice-commands.ts
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - name: Apply unchanged V28 voice/UI baseline
+        run: python3 scripts/apply-nubo-v28-build.py
+
+      - name: Restore unchanged Google Home SDK 1.10.0
+        run: python3 scripts/apply-google-home-v29.py
+
+      - name: Apply V44 marker over V9 YouTube launch
+        run: python3 scripts/apply-youtube-local-bypass-v44.py
+
+      - name: Verify V44 native scope
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'versionCode 44' android-nubo/app/build.gradle
+          grep -q '0.44.0-youtube-local-transcript-bypass' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/44' "$MAIN"
+          grep -q 'android-v44' "$MAIN"
+          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
+          grep -q 'activity.launchExternalTarget(safeTarget, safeLabel)' "$MAIN"
+          grep -q 'public boolean googleHomeControl' "$MAIN"
+          grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
+          a = s.index('        public boolean playYouTubeNoSetup(')
+          b = s.index('        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive()', a)
+          block = s[a:b]
+          for forbidden in ['beginExternalVoiceKeepAlive', 'enterPictureInPictureMode', 'postDelayed', 'queryIntentActivities', 'vnd.youtube:', 'NuboYouTubeAccessibilityService']:
+              assert forbidden not in block, forbidden
+          print('V44 keeps the V9 direct YouTube bridge unchanged')
+          PY
+
+      - name: Build signed V44 release APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify V44 APK payload
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v44-badging.txt
+          grep -q "versionCode='44'" /tmp/v44-badging.txt
+          grep -q "application-label:'AinuboX1'" /tmp/v44-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v44-dex.txt
+          grep -q 'NUBO-Android/44' /tmp/v44-dex.txt
+          grep -q 'android-v44' /tmp/v44-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/v44-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v44-dex.txt
+          grep -q '17.1.0' /tmp/v44-dex.txt
+
+      - name: Publish V44 APK
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p public/downloads
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-v44-YOUTUBE-LOCAL-BYPASS.apk
+          cp android-nubo/app/build/outputs/apk/release/app-release.apk public/downloads/AinuboX1-latest.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/downloads/AinuboX1-v44-YOUTUBE-LOCAL-BYPASS.apk public/downloads/AinuboX1-latest.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "build(android): publish AinuboX1 V44 local YouTube bypass APK"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: AinuboX1-v44-YOUTUBE-LOCAL-BYPASS
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
