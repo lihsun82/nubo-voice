@@ -1,0 +1,99 @@
+name: Android V45 Fresh WebView Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/apply-webview-fresh-bundle-v45.py"
+      - ".github/workflows/android-v45-fresh-bundle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-v45:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - name: Apply unchanged V28 voice/UI baseline
+        run: python3 scripts/apply-nubo-v28-build.py
+
+      - name: Restore unchanged Google Home SDK 1.10.0
+        run: python3 scripts/apply-google-home-v29.py
+
+      - name: Apply V45 fresh WebView bundle layer
+        run: python3 scripts/apply-webview-fresh-bundle-v45.py
+
+      - name: Verify V45 scope and cache purge
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'versionCode 45' android-nubo/app/build.gradle
+          grep -q '0.45.0-webview-fresh-bundle' android-nubo/app/build.gradle
+          grep -q 'WebSettings.LOAD_NO_CACHE' "$MAIN"
+          grep -q 'webView.clearCache(true)' "$MAIN"
+          grep -q 'nubo_v45_bundle_flushed' "$MAIN"
+          grep -q 'caches.delete' "$MAIN"
+          grep -q 'getRegistrations' "$MAIN"
+          grep -q 'android-v45' "$MAIN"
+          grep -q 'NUBO-Android/45' "$MAIN"
+          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
+          grep -q 'public boolean googleHomeControl' "$MAIN"
+          grep -q 'sdk", "1.10.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          grep -q 'homeArtifact", "17.1.0"' android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+
+      - name: Build signed V45 release APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify V45 APK payload
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v45-badging.txt
+          grep -q "versionCode='45'" /tmp/v45-badging.txt
+          grep -q "application-label:'AinuboX1'" /tmp/v45-badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v45-dex.txt
+          grep -q 'NUBO-Android/45' /tmp/v45-dex.txt
+          grep -q 'android-v45' /tmp/v45-dex.txt
+          grep -q 'nubo_v45_bundle_flushed' /tmp/v45-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/v45-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v45-dex.txt
+          grep -q '17.1.0' /tmp/v45-dex.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AinuboX1-v45-FRESH-WEBVIEW-BUNDLE
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
