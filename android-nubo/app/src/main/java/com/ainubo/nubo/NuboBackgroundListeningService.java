@@ -5,17 +5,24 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+
+import java.util.ArrayList;
+import java.util.Locale;
 
 public final class NuboBackgroundListeningService extends Service {
     public static final String ACTION_START = "com.ainubo.nubo.action.COMPANION_START";
     public static final String ACTION_TOUCH = "com.ainubo.nubo.action.COMPANION_TOUCH";
     public static final String ACTION_STOP = "com.ainubo.nubo.action.COMPANION_STOP";
-    public static final String ACTION_TIMEOUT = "com.ainubo.nubo.action.COMPANION_TIMEOUT";
 
     private static final String CHANNEL_ID = "nubo_background_listening_v52";
     private static final int NOTIFICATION_ID = 5201;
@@ -26,6 +33,8 @@ public final class NuboBackgroundListeningService extends Service {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable timeoutRunnable = this::enterWakeMode;
+    private SpeechRecognizer wakeRecognizer;
+    private boolean wakeListening = false;
 
     public static boolean isRunning() {
         return running;
@@ -50,17 +59,10 @@ public final class NuboBackgroundListeningService extends Service {
             return START_NOT_STICKY;
         }
 
-        if (ACTION_START.equals(action)) {
+        if (ACTION_START.equals(action) || ACTION_TOUCH.equals(action)) {
+            stopWakeRecognizer();
             cloudWindowActive = true;
             startForegroundCompat(buildNotification("NUBO 背景聆聽中 · 30 秒"));
-            resetTimeout();
-            return START_NOT_STICKY;
-        }
-
-        if (ACTION_TOUCH.equals(action)) {
-            if (!running) return START_NOT_STICKY;
-            cloudWindowActive = true;
-            startForegroundCompat(buildNotification("NUBO 背景聆聽中 · 已延長 30 秒"));
             resetTimeout();
             return START_NOT_STICKY;
         }
@@ -92,14 +94,111 @@ public final class NuboBackgroundListeningService extends Service {
         if (manager != null) {
             manager.notify(NOTIFICATION_ID, buildNotification("NUBO 待命喚醒中"));
         }
-        Intent timeout = new Intent(ACTION_TIMEOUT);
-        timeout.setPackage(getPackageName());
-        sendBroadcast(timeout);
+        MainActivity.onCompanionTimeoutFromService();
+        startWakeRecognizer();
+    }
+
+    private boolean isWakeWord(String text) {
+        if (text == null) return false;
+        String normalized = text.toLowerCase(Locale.ROOT)
+            .replace(" ", "")
+            .replace("　", "");
+        return normalized.contains("nubo")
+            || normalized.contains("努寶")
+            || normalized.contains("努波")
+            || normalized.contains("奴波");
+    }
+
+    private void startWakeRecognizer() {
+        if (!running || cloudWindowActive || wakeListening) return;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) return;
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) return;
+
+        if (wakeRecognizer == null) {
+            wakeRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
+            wakeRecognizer.setRecognitionListener(new RecognitionListener() {
+                @Override public void onReadyForSpeech(Bundle params) {}
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onEvent(int eventType, Bundle params) {}
+
+                @Override
+                public void onError(int error) {
+                    wakeListening = false;
+                    scheduleWakeRestart();
+                }
+
+                @Override
+                public void onResults(Bundle results) {
+                    wakeListening = false;
+                    handleWakeResults(results);
+                    scheduleWakeRestart();
+                }
+
+                @Override
+                public void onPartialResults(Bundle partialResults) {
+                    handleWakeResults(partialResults);
+                }
+            });
+        }
+        beginWakeRecognition();
+    }
+
+    private void beginWakeRecognition() {
+        if (!running || cloudWindowActive || wakeRecognizer == null || wakeListening) return;
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-TW");
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true);
+        try {
+            wakeListening = true;
+            wakeRecognizer.startListening(intent);
+        } catch (RuntimeException ignored) {
+            wakeListening = false;
+            scheduleWakeRestart();
+        }
+    }
+
+    private void handleWakeResults(Bundle results) {
+        if (results == null || cloudWindowActive) return;
+        ArrayList<String> matches = results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (matches == null) return;
+        for (String text : matches) {
+            if (!isWakeWord(text)) continue;
+            stopWakeRecognizer();
+            cloudWindowActive = true;
+            startForegroundCompat(buildNotification("NUBO 已喚醒 · 背景聆聽 30 秒"));
+            resetTimeout();
+            MainActivity.onCompanionWakeFromService();
+            return;
+        }
+    }
+
+    private void scheduleWakeRestart() {
+        if (!running || cloudWindowActive) return;
+        handler.postDelayed(this::beginWakeRecognition, 700L);
+    }
+
+    private void stopWakeRecognizer() {
+        wakeListening = false;
+        if (wakeRecognizer != null) {
+            try { wakeRecognizer.cancel(); } catch (RuntimeException ignored) {}
+        }
     }
 
     private void stopCompanion() {
         cloudWindowActive = false;
         handler.removeCallbacksAndMessages(null);
+        stopWakeRecognizer();
+        if (wakeRecognizer != null) {
+            wakeRecognizer.destroy();
+            wakeRecognizer = null;
+        }
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
     }
@@ -113,7 +212,7 @@ public final class NuboBackgroundListeningService extends Service {
             "NUBO 背景聆聽",
             NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription("播放 YouTube 時維持 NUBO 語音 30 秒，之後轉待命喚醒。");
+        channel.setDescription("播放 YouTube 時維持 NUBO 語音 30 秒，之後轉本機喚醒。");
         channel.setSound(null, null);
         manager.createNotificationChannel(channel);
     }
@@ -137,6 +236,11 @@ public final class NuboBackgroundListeningService extends Service {
         running = false;
         cloudWindowActive = false;
         handler.removeCallbacksAndMessages(null);
+        stopWakeRecognizer();
+        if (wakeRecognizer != null) {
+            wakeRecognizer.destroy();
+            wakeRecognizer = null;
+        }
         super.onDestroy();
     }
 
