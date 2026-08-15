@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DeferredDashboardCenters } from "@/components/DeferredDashboardCenters";
 import { NuboAudioPrimeGuard } from "@/components/NuboAudioPrimeGuard";
+import { NuboBuildFooter } from "@/components/NuboBuildFooter";
 import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboLanguageModeSelector } from "@/components/NuboLanguageModeSelector";
 import { NuboMultilingualRuntime } from "@/components/NuboMultilingualRuntime";
@@ -76,10 +77,7 @@ export default function HomePage() {
       </section>
 
       <DeferredDashboardCenters />
-      <footer>
-        <span>NUBO V22｜母語級國語＋快速多語切換版</span>
-        <span>臺灣標準國語 Accent Lock・阿拉伯語／芬蘭語即時切換・Server VAD 400ms・延遲診斷・Pixel 熱管理</span>
-      </footer>
+      <NuboBuildFooter />
     </main>
   );
 }
