@@ -47,26 +47,27 @@ s = replace_once(
     "V45 startup cache clear",
 )
 
-# V45 build-specific URL prevents intermediary/browser cache reuse.
-s = s.replace(
-    'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v24";',
+# Replace whatever native query marker the baseline currently has. This avoids
+# depending on a specific earlier version number.
+import re
+s, url_replacements = re.subn(
+    r'private static final String NUBO_URL = "https://nubo\.ainubo\.com/\?native=android-v[^"]+";',
     'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v45&bundle=v45";',
+    s,
+    count=1,
 )
-s = s.replace(
-    'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v44";',
-    'private static final String NUBO_URL = "https://nubo.ainubo.com/?native=android-v45&bundle=v45";',
-)
+if url_replacements != 1:
+    raise SystemExit("missing pattern: V45 NUBO_URL")
 
-# On the first trusted page load, purge CacheStorage + unregister any Service Worker,
-# then reload once. sessionStorage prevents a reload loop and does not persist across app restarts.
-old = '''            if (isTrustedNuboUri(Uri.parse(url))) {
-                view.evaluateJavascript(
-                    "document.documentElement.dataset.nuboNative='android-v44';window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v44',sense:'v1'}}));",
-                    null
-                );
-            }
+# Insert the cache/service-worker purge at the stable onPageFinished entry point,
+# rather than replacing the pre-existing native-ready block whose version marker
+# is changed by earlier build scripts.
+on_page_anchor = '''        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
 '''
-new = '''            if (isTrustedNuboUri(Uri.parse(url))) {
+purge_block = '''        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            if (isTrustedNuboUri(Uri.parse(url))) {
                 view.evaluateJavascript(
                     "(async()=>{"
                     + "try{"
@@ -77,19 +78,15 @@ new = '''            if (isTrustedNuboUri(Uri.parse(url))) {
                     + "location.replace('/?native=android-v45&bundle=v45&fresh=1');return;"
                     + "}"
                     + "}catch(e){}"
-                    + "document.documentElement.dataset.nuboNative='android-v45';"
-                    + "window.dispatchEvent(new CustomEvent('nubo-native-ready',{detail:{version:'android-v45',sense:'v1',freshBundle:true}}));"
                     + "})();",
                     null
                 );
             }
 '''
-if old in s:
-    s = replace_once(s, old, new, "V45 service-worker purge")
-else:
-    old28 = old.replace("android-v44", "android-v28")
-    s = replace_once(s, old28, new, "V45 service-worker purge baseline")
+s = replace_once(s, on_page_anchor, purge_block, "V45 onPageFinished purge insertion")
 
+# Normalize build markers after prior V44 transforms. The existing native-ready
+# dispatch remains intact and is simply relabeled V45.
 s = s.replace("android-v44", "android-v45")
 s = s.replace("NUBO-Android/44", "NUBO-Android/45")
 main.write_text(s)
@@ -101,6 +98,7 @@ for token in [
     "nubo_v45_bundle_flushed",
     "caches.delete",
     "getRegistrations",
+    "bundle=v45",
     "android-v45",
     "NUBO-Android/45",
     "public boolean playYouTubeNoSetup",
@@ -109,6 +107,7 @@ for token in [
     if token not in final_source:
         raise SystemExit(f"missing V45 fresh-bundle marker: {token}")
 
+# Preserve the proven direct YouTube bridge: no accessibility/PiP/delay layers.
 start = final_source.index("        public boolean playYouTubeNoSetup(")
 end = final_source.index("        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive()", start)
 youtube_bridge = final_source[start:end]
