@@ -5,7 +5,7 @@
   "description": "NUBO personal voice automation system",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
-    "build": "node scripts/apply-web-v61-smart-assistant.mjs && node scripts/apply-v62-real-hotel-monitor-bridge.cjs && node scripts/apply-web-v63-voice-intent-guard.cjs && node scripts/apply-web-v64-conversation-sensitive.cjs && node scripts/apply-web-v65-response-sla.cjs && node scripts/apply-web-v66-voice-stability.cjs && node scripts/apply-web-v67-location-performance-home.cjs && node scripts/apply-web-v68-maps-list-geolock.cjs && node scripts/apply-web-v69-restore-v33-maps.cjs && next build",
+    "build": "node scripts/apply-web-v61-smart-assistant.mjs && node scripts/apply-v62-real-hotel-monitor-bridge.cjs && node scripts/apply-web-v63-voice-intent-guard.cjs && node scripts/apply-web-v64-conversation-sensitive.cjs && node scripts/apply-web-v65-response-sla.cjs && node scripts/apply-web-v66-voice-stability.cjs && node scripts/apply-web-v67-location-performance-home.cjs && node scripts/apply-web-v68-maps-list-geolock.cjs && node scripts/apply-web-v69-restore-v33-maps.cjs && node scripts/apply-web-v70-remove-30s-eco.cjs && next build",
     "start": "node scripts/start-next.cjs",
     "typecheck": "tsc --noEmit"
   },
