@@ -1,20 +1,18 @@
-name: Android V71 YouTube66 Maps Background APK
+name: Android V72 YouTube V64 Banner APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v72-youtube-v64-banner.py"
+      - "scripts/apply-web-v72-youtube-v64-banner.cjs"
       - "scripts/apply-v71-youtube66-maps-background.py"
       - "scripts/apply-web-v71-youtube66-maps-background.cjs"
       - "scripts/apply-v70-remove-30s-eco.py"
       - "scripts/apply-web-v70-remove-30s-eco.cjs"
       - "scripts/apply-v69-restore-v33-maps.py"
       - "scripts/apply-web-v69-restore-v33-maps.cjs"
-      - "scripts/apply-v68-maps-list-geolock.py"
-      - "scripts/apply-web-v68-maps-list-geolock.cjs"
-      - "scripts/apply-v67-location-youtube-home.py"
-      - "scripts/apply-web-v67-location-performance-home.cjs"
       - "package.json"
       - "components/GeminiVoiceConsole.tsx"
       - "lib/browser-nubo-tools.ts"
@@ -25,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v71:
+  build-v72:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,32 +59,30 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v71-youtube66-maps-background.py
+      - run: python3 scripts/apply-v72-youtube-v64-banner.py
 
-      - name: Verify V71 isolated scope
+      - name: Verify V72 isolated YouTube scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 71' android-nubo/app/build.gradle
-          grep -q '0.71.0-youtube66-maps-background' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/71' "$MAIN"
-          grep -q 'bundle=v71' "$MAIN"
+          grep -q 'versionCode 72' android-nubo/app/build.gradle
+          grep -q '0.72.0-youtube-v64-banner' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/72' "$MAIN"
+          grep -q 'bundle=v72' "$MAIN"
 
-          # V66 embedded YouTube capabilities must still be present.
+          # V64 YouTube contract = V58 same-Activity bottom 16:9 embedded banner.
           grep -q 'embeddedYouTubeOverlayV58' "$MAIN"
           grep -q 'showEmbeddedYouTubeV58' "$MAIN"
           grep -q 'root.addView(overlay, overlayParams)' "$MAIN"
           grep -q 'Gravity.BOTTOM' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
+          grep -q 'loadVideoById' "$MAIN"
+          grep -q 'youtube.com/iframe_api' "$MAIN"
 
-          # Existing native external keep-alive/PiP path must stay intact.
+          # Preserve current Maps background voice and Google Home exactly.
           grep -q 'beginExternalVoiceKeepAlive' "$MAIN"
           grep -q 'enterPictureInPictureMode' "$MAIN"
-          grep -q 'openExternalApp' "$MAIN"
-
-          grep -q 'RENDERER_PRIORITY_IMPORTANT' "$MAIN"
-          grep -q 'setOffscreenPreRaster(true)' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'nubo_google_home_permission_v61' "$HOME"
           grep -q 'CACHED_GRANTED' "$HOME"
@@ -104,38 +100,34 @@ jobs:
           node scripts/apply-web-v69-restore-v33-maps.cjs
           node scripts/apply-web-v70-remove-30s-eco.cjs
           node scripts/apply-web-v71-youtube66-maps-background.cjs
+          node scripts/apply-web-v72-youtube-v64-banner.cjs
 
-          # Only the two requested web routes are changed.
-          grep -q 'NUBO_V71_YOUTUBE_V66_EMBED_ROUTE' components/GeminiVoiceConsole.tsx
+          grep -q 'NUBO_V72_YOUTUBE_V64_BANNER_ROUTE' components/GeminiVoiceConsole.tsx
           grep -q 'call.name === "open_youtube"' components/GeminiVoiceConsole.tsx
+          if grep -q 'NUBO_V71_YOUTUBE_V66_EMBED_ROUTE' components/GeminiVoiceConsole.tsx; then exit 1; fi
+
+          # Existing approved features must survive untouched.
           grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts
-          grep -q 'nativeBridge?.openExternalApp?.(url, "Google Maps")' lib/browser-nubo-tools.ts
           grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx
+          grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
           if grep -q 'Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS' components/GeminiVoiceConsole.tsx; then exit 1; fi
 
-          # V69 V33 Maps search semantics stay unchanged.
-          grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
-          grep -q 'provider: "Google Maps"' lib/browser-nubo-tools.ts
-          grep -q 'location || "目前位置"' lib/browser-nubo-tools.ts
-          if grep -q 'NUBO_NEARBY_GEOLOCK_V67' lib/browser-nubo-tools.ts; then exit 1; fi
-          if grep -q 'NUBO_MAPS_LIST_V68' lib/browser-nubo-tools.ts; then exit 1; fi
-
-      - name: Build signed V71 APK
+      - name: Build signed V72 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V71 APK
+      - name: Verify V72 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v71.txt
-          grep -q "versionCode='71'" /tmp/v71.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v71-dex.txt
-          grep -q 'NUBO-Android/71' /tmp/v71-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v71-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v72.txt
+          grep -q "versionCode='72'" /tmp/v72.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v72-dex.txt
+          grep -q 'NUBO-Android/72' /tmp/v72-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v72-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v71-YOUTUBE66-MAPS-BACKGROUND
+          name: AinuboX1-v72-YOUTUBE-V64-BANNER
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
