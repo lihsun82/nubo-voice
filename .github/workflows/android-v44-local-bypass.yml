@@ -122,6 +122,7 @@ jobs:
           git add public/downloads/AinuboX1-v44-YOUTUBE-LOCAL-BYPASS.apk public/downloads/AinuboX1-latest.apk
           if ! git diff --cached --quiet; then
             git commit -m "build(android): publish AinuboX1 V44 local YouTube bypass APK"
+            git reset --hard HEAD
             git pull --rebase origin main
             git push origin HEAD:main
           fi
