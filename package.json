@@ -5,7 +5,7 @@
   "description": "NUBO personal voice automation system",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
-    "build": "node scripts/apply-web-v60-2-maps-web-overlay.cjs && next build",
+    "build": "next build",
     "start": "node scripts/start-next.cjs",
     "typecheck": "tsc --noEmit"
   },
