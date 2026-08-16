@@ -7,7 +7,9 @@ on:
     paths:
       - "scripts/apply-nubo-stable-1.py"
       - "scripts/apply-nubo-stable-2-native-wake.py"
+      - "scripts/apply-nubo-stable-2-native-wake-v2.py"
       - "scripts/apply-web-stable-2-native-wake.mjs"
+      - "scripts/apply-web-stable-2-shutdown.mjs"
       - "scripts/apply-youtube-v9-restore-v43.py"
       - "components/GeminiVoiceConsole.tsx"
       - "lib/browser-nubo-tools.ts"
@@ -61,8 +63,9 @@ jobs:
           set -euo pipefail
           python3 scripts/apply-nubo-v28-build.py
           python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-nubo-stable-2-native-wake.py
+          python3 scripts/apply-nubo-stable-2-native-wake-v2.py
           node scripts/apply-web-stable-2-native-wake.mjs
+          node scripts/apply-web-stable-2-shutdown.mjs
 
       - name: Verify Stable 2 architecture
         run: |
@@ -76,10 +79,13 @@ jobs:
           grep -q 'versionCode 2000' android-nubo/app/build.gradle
           grep -q '2.0.0-native-offline-wake' android-nubo/app/build.gradle
           grep -q 'vosk-android:0.3.75' android-nubo/app/build.gradle
+          grep -q 'jna:5.18.1' android-nubo/app/build.gradle
           grep -q 'prepareNuboVoskModel' android-nubo/app/build.gradle
           grep -q 'NUBO-Stable/2.0' "$MAIN"
           grep -q 'armNativeWakeService' "$MAIN"
           grep -q 'enterNativeWakeMode' "$MAIN"
+          grep -q 'markCloudVoiceActive' "$MAIN"
+          grep -q 'stopNativeWakeService' "$MAIN"
           grep -q 'dispatchNativeWakeFromService' "$MAIN"
           grep -q 'NuboNativeWakeService.isRunning()' "$MAIN"
           grep -q 'org.vosk.android.SpeechService' "$SERVICE"
@@ -93,6 +99,8 @@ jobs:
           grep -q 'NUBO_STABLE_2_NATIVE_WAKE' "$WEB"
           grep -q 'enterNativeWakeMode' "$WEB"
           grep -q 'markCloudVoiceActive' "$WEB"
+          grep -q 'NUBO_STABLE_2_EXPLICIT_WAKE_SHUTDOWN' "$WEB"
+          grep -q 'stopNativeWakeService' "$WEB"
           grep -q '不消耗Token' "$WEB"
 
           # Prove the unstable SpeechRecognizer background loop is gone.
