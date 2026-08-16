@@ -1,33 +1,22 @@
-name: Android V74 DOM YouTube Banner APK
+name: Android V70 Restored Baseline APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "scripts/apply-v74-dom-youtube-banner.py"
-      - "scripts/apply-web-v74-dom-youtube-banner.cjs"
-      - "scripts/apply-v73-force-native-youtube-banner.py"
-      - "scripts/apply-web-v73-force-native-youtube-banner.cjs"
-      - "scripts/apply-v72-youtube-v64-banner.py"
-      - "scripts/apply-web-v72-youtube-v64-banner.cjs"
-      - "scripts/apply-v71-youtube66-maps-background.py"
-      - "scripts/apply-web-v71-youtube66-maps-background.cjs"
       - "scripts/apply-v70-remove-30s-eco.py"
       - "scripts/apply-web-v70-remove-30s-eco.cjs"
       - "scripts/apply-v69-restore-v33-maps.py"
       - "scripts/apply-web-v69-restore-v33-maps.cjs"
       - "package.json"
-      - "components/GeminiVoiceConsole.tsx"
-      - "lib/browser-nubo-tools.ts"
-      - "lib/browser-nubo-tools-line.ts"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-v74:
+  build-v70:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +30,12 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Install web dependencies
+        run: npm install --include=dev --no-audit --no-fund
+
       - name: Materialize signing key and launcher icon
         run: |
+          set -euo pipefail
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
           keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
           mkdir -p android-nubo/app/src/main/res/drawable-nodpi
@@ -61,30 +54,16 @@ jobs:
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
 
-      - run: python3 scripts/apply-nubo-v28-build.py
-      - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v74-dom-youtube-banner.py
-
-      - name: Verify V74 direct DOM YouTube banner
+      - name: Materialize exact V70 Android baseline
         run: |
           set -euo pipefail
-          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 74' android-nubo/app/build.gradle
-          grep -q '0.74.0-dom-youtube-banner' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/74' "$MAIN"
-          grep -q 'bundle=v74' "$MAIN"
+          python3 scripts/apply-nubo-v28-build.py
+          python3 scripts/apply-google-home-v29.py
+          python3 scripts/apply-v70-remove-30s-eco.py
 
-          # Preserve non-YouTube capabilities.
-          grep -q 'beginExternalVoiceKeepAlive' "$MAIN"
-          grep -q 'enterPictureInPictureMode' "$MAIN"
-          grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
-          grep -q 'nubo_google_home_permission_v61' "$HOME"
-          grep -q 'CACHED_GRANTED' "$HOME"
-          grep -q 'REUSED_EXISTING' "$HOME"
-          grep -q 'putBoolean("granted", true).commit()' "$HOME"
-          grep -q 'sdk", "1.10.0"' "$HOME"
-
+      - name: Materialize exact V70 web baseline
+        run: |
+          set -euo pipefail
           node scripts/apply-web-v61-smart-assistant.mjs
           node scripts/apply-v62-real-hotel-monitor-bridge.cjs
           node scripts/apply-web-v63-voice-intent-guard.cjs
@@ -95,50 +74,43 @@ jobs:
           node scripts/apply-web-v68-maps-list-geolock.cjs
           node scripts/apply-web-v69-restore-v33-maps.cjs
           node scripts/apply-web-v70-remove-30s-eco.cjs
-          node scripts/apply-web-v71-youtube66-maps-background.cjs
-          node scripts/apply-web-v72-youtube-v64-banner.cjs
-          node scripts/apply-web-v73-force-native-youtube-banner.cjs
-          node scripts/apply-web-v74-dom-youtube-banner.cjs
 
-          # Hard requirement: the authoritative player exists directly in React DOM.
-          grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx
-          grep -q 'NUBO_V74_FORCE_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx
-          grep -q 'nubo-youtube-banner-v74' components/GeminiVoiceConsole.tsx
-          grep -q 'https://www.youtube.com/embed/' components/GeminiVoiceConsole.tsx
-          grep -q 'aspectRatio: "16 / 9"' components/GeminiVoiceConsole.tsx
-          grep -q 'position: "fixed"' components/GeminiVoiceConsole.tsx
-          grep -q 'bottom: 0' components/GeminiVoiceConsole.tsx
-          grep -q 'showYoutubeInNubo(result' components/GeminiVoiceConsole.tsx
-          grep -q 'setEmbeddedYoutube({ videoId, title })' components/GeminiVoiceConsole.tsx
-          grep -q 'YouTube 已在 NUBO 下方播放' components/GeminiVoiceConsole.tsx
-
-          # V73 native route must no longer be authoritative after V74 web patch.
-          if grep -q 'NUBO_V73_FORCE_NATIVE_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
-
-          # Existing approved features must survive untouched.
-          grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts
+      - name: Verify V70 baseline only
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          grep -q 'versionCode 70' android-nubo/app/build.gradle
+          grep -q '0.70.0-no-30s-eco' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/70' "$MAIN"
+          grep -q 'bundle=v70' "$MAIN"
+          grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
+          grep -q 'p.setVolume(72)' "$MAIN"
+          grep -q 'nubo_google_home_permission_v61' "$HOME"
+          grep -q 'CACHED_GRANTED' "$HOME"
+          grep -q 'REUSED_EXISTING' "$HOME"
+          grep -q 'putBoolean("granted", true).commit()' "$HOME"
+          grep -q 'sdk", "1.10.0"' "$HOME"
           grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx
-          grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
-          if grep -q 'Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS' components/GeminiVoiceConsole.tsx; then exit 1; fi
-
+          if grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts; then exit 1; fi
+          if grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
+          if grep -q 'NUBO_V75_EXTERNAL_COMMAND_RELAY' components/GeminiVoiceConsole.tsx; then exit 1; fi
           npm run typecheck
 
-      - name: Build signed V74 APK
+      - name: Build signed V70 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V74 APK
+      - name: Verify signed V70 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v74.txt
-          grep -q "versionCode='74'" /tmp/v74.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v74-dex.txt
-          grep -q 'NUBO-Android/74' /tmp/v74-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v74-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v70.txt
+          grep -q "versionCode='70'" /tmp/v70.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v74-DOM-YOUTUBE-BANNER
+          name: AinuboX1-v70-RESTORED-BASELINE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
