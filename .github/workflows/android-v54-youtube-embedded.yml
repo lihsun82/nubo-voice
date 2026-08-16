@@ -1,10 +1,12 @@
-name: Android V73 Forced Native YouTube Banner APK
+name: Android V74 DOM YouTube Banner APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - "scripts/apply-v74-dom-youtube-banner.py"
+      - "scripts/apply-web-v74-dom-youtube-banner.cjs"
       - "scripts/apply-v73-force-native-youtube-banner.py"
       - "scripts/apply-web-v73-force-native-youtube-banner.cjs"
       - "scripts/apply-v72-youtube-v64-banner.py"
@@ -25,7 +27,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v73:
+  build-v74:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,34 +63,25 @@ jobs:
 
       - run: python3 scripts/apply-nubo-v28-build.py
       - run: python3 scripts/apply-google-home-v29.py
-      - run: python3 scripts/apply-v73-force-native-youtube-banner.py
+      - run: python3 scripts/apply-v74-dom-youtube-banner.py
 
-      - name: Verify V73 forced native YouTube scope
+      - name: Verify V74 direct DOM YouTube banner
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 73' android-nubo/app/build.gradle
-          grep -q '0.73.0-force-native-youtube-banner' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/73' "$MAIN"
-          grep -q 'bundle=v73' "$MAIN"
+          grep -q 'versionCode 74' android-nubo/app/build.gradle
+          grep -q '0.74.0-dom-youtube-banner' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/74' "$MAIN"
+          grep -q 'bundle=v74' "$MAIN"
 
-          # Direct native bridge must invoke the proven V64/V58 bottom banner itself.
-          grep -q 'public boolean playEmbeddedYouTube(String videoId)' "$MAIN"
-          grep -q 'showEmbeddedYouTubeV58(safeVideoId)' "$MAIN"
-          grep -q 'embeddedYouTubeOverlayV58' "$MAIN"
-          grep -q 'root.addView(overlay, overlayParams)' "$MAIN"
-          grep -q 'Gravity.BOTTOM' "$MAIN"
-          grep -q 'p.setVolume(72)' "$MAIN"
-          grep -q 'loadVideoById' "$MAIN"
-          grep -q 'youtube.com/iframe_api' "$MAIN"
-
-          # Preserve current Maps background voice and Google Home exactly.
+          # Preserve non-YouTube capabilities.
           grep -q 'beginExternalVoiceKeepAlive' "$MAIN"
           grep -q 'enterPictureInPictureMode' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'nubo_google_home_permission_v61' "$HOME"
           grep -q 'CACHED_GRANTED' "$HOME"
+          grep -q 'REUSED_EXISTING' "$HOME"
           grep -q 'putBoolean("granted", true).commit()' "$HOME"
           grep -q 'sdk", "1.10.0"' "$HOME"
 
@@ -105,10 +98,22 @@ jobs:
           node scripts/apply-web-v71-youtube66-maps-background.cjs
           node scripts/apply-web-v72-youtube-v64-banner.cjs
           node scripts/apply-web-v73-force-native-youtube-banner.cjs
+          node scripts/apply-web-v74-dom-youtube-banner.cjs
 
-          grep -q 'NUBO_V73_FORCE_NATIVE_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx
-          grep -q 'playEmbeddedYouTube?.(exactVideoId)' components/GeminiVoiceConsole.tsx
-          grep -q 'native-v64-bottom-banner' components/GeminiVoiceConsole.tsx
+          # Hard requirement: the authoritative player exists directly in React DOM.
+          grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx
+          grep -q 'NUBO_V74_FORCE_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx
+          grep -q 'nubo-youtube-banner-v74' components/GeminiVoiceConsole.tsx
+          grep -q 'https://www.youtube.com/embed/' components/GeminiVoiceConsole.tsx
+          grep -q 'aspectRatio: "16 / 9"' components/GeminiVoiceConsole.tsx
+          grep -q 'position: "fixed"' components/GeminiVoiceConsole.tsx
+          grep -q 'bottom: 0' components/GeminiVoiceConsole.tsx
+          grep -q 'showYoutubeInNubo(result' components/GeminiVoiceConsole.tsx
+          grep -q 'setEmbeddedYoutube({ videoId, title })' components/GeminiVoiceConsole.tsx
+          grep -q 'YouTube 已在 NUBO 下方播放' components/GeminiVoiceConsole.tsx
+
+          # V73 native route must no longer be authoritative after V74 web patch.
+          if grep -q 'NUBO_V73_FORCE_NATIVE_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
 
           # Existing approved features must survive untouched.
           grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts
@@ -116,23 +121,24 @@ jobs:
           grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
           if grep -q 'Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS' components/GeminiVoiceConsole.tsx; then exit 1; fi
 
-      - name: Build signed V73 APK
+          npm run typecheck
+
+      - name: Build signed V74 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify V73 APK
+      - name: Verify V74 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v73.txt
-          grep -q "versionCode='73'" /tmp/v73.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v73-dex.txt
-          grep -q 'NUBO-Android/73' /tmp/v73-dex.txt
-          grep -q 'playEmbeddedYouTube' /tmp/v73-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v73-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v74.txt
+          grep -q "versionCode='74'" /tmp/v74.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v74-dex.txt
+          grep -q 'NUBO-Android/74' /tmp/v74-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v74-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v73-FORCED-NATIVE-YOUTUBE-BANNER
+          name: AinuboX1-v74-DOM-YOUTUBE-BANNER
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
