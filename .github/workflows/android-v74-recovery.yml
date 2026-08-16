@@ -74,7 +74,21 @@ jobs:
           node scripts/apply-web-v74-dom-youtube-banner.cjs
 
       - name: Typecheck V74
-        run: npm run typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > /tmp/v74-typecheck.log 2>&1
+          STATUS=$?
+          cat /tmp/v74-typecheck.log
+          if [ "$STATUS" -ne 0 ]; then
+            while IFS= read -r line; do
+              safe=${line//'%'/'%25'}
+              safe=${safe//$'\r'/'%0D'}
+              safe=${safe//$'\n'/'%0A'}
+              echo "::error::$safe"
+            done < /tmp/v74-typecheck.log
+            exit "$STATUS"
+          fi
 
       - name: Build signed V74 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
