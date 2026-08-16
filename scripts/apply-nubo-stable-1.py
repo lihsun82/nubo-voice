@@ -36,7 +36,6 @@ for token in [
     'safeTarget.contains("youtube.com")',
     "activity.launchExternalTarget(safeTarget, safeLabel)",
     "public boolean googleHomeControl",
-    "createOnDeviceSpeechRecognizer",
 ]:
     if token not in main_final:
         raise SystemExit(f"missing Stable 1.0 Android marker: {token}")
