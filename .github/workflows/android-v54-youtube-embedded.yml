@@ -1,14 +1,13 @@
-name: Android V60.2 Maps Web Overlay Voice APK
+name: NUBO Stable 1.0 APK
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "scripts/apply-ui-v60-hide-capabilities.py"
-      - "scripts/apply-ui-v59-force-hide-panels.py"
-      - "scripts/apply-v60-2-maps-web-overlay.py"
-      - "scripts/apply-web-v60-2-maps-web-overlay.cjs"
+      - "scripts/apply-nubo-stable-1.py"
+      - "scripts/apply-youtube-v9-restore-v43.py"
+      - "lib/browser-nubo-tools.ts"
       - "package.json"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
@@ -16,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v60-2:
+  build-stable-1:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,61 +53,74 @@ jobs:
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
 
-      - name: Materialize V60.2 Android baseline
+      - name: Materialize clean Stable 1.0 Android baseline
         run: |
           set -euo pipefail
           python3 scripts/apply-nubo-v28-build.py
           python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-v60-2-maps-web-overlay.py
+          python3 scripts/apply-nubo-stable-1.py
 
-      - name: Materialize Maps web overlay patch only
-        run: node scripts/apply-web-v60-2-maps-web-overlay.cjs
-
-      - name: Verify V60.2 targeted scope
+      - name: Verify proven YouTube V9 and Maps V33 only
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 602' android-nubo/app/build.gradle
-          grep -q '0.60.2-maps-web-overlay-voice' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/60.2' "$MAIN"
-          grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' "$MAIN"
-          grep -q 'showMapsWeb(String targetUrl)' "$MAIN"
-          grep -q 'showMapsWebOverlay' "$MAIN"
-          grep -q 'mapsOverlayWebView.loadUrl(targetUrl)' "$MAIN"
-          grep -q 'webView.resumeTimers()' "$MAIN"
-          grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
-          grep -q 'p.setVolume(72)' "$MAIN"
-          grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
+
+          grep -q 'versionCode 1000' android-nubo/app/build.gradle
+          grep -q '1.0.0-stable-youtube-v9-maps-v33' android-nubo/app/build.gradle
+          grep -q 'NUBO-Stable/1.0' "$MAIN"
+          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
+          grep -q 'activity.launchExternalTarget(safeTarget, safeLabel)' "$MAIN"
+          grep -q 'com.google.android.youtube' "$MAIN"
           grep -q 'sdk", "1.10.0"' "$HOME"
-          grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' lib/browser-nubo-tools.ts
-          grep -q 'showMapsWeb?.(url)' lib/browser-nubo-tools.ts
-          grep -q 'mode: "native-maps-web-overlay"' lib/browser-nubo-tools.ts
-          grep -q 'mapsOverlay: true' lib/browser-nubo-tools.ts
-          if grep -q 'mode: "native-pip-keepalive"' lib/browser-nubo-tools.ts; then exit 1; fi
-          if grep -q 'NUBO_V61' components/GeminiVoiceConsole.tsx; then exit 1; fi
-          if grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx; then exit 1; fi
+          grep -q 'homeArtifact", "17.1.0"' "$HOME"
+
+          # V33 Maps contract already lives in source: direct Google Maps search,
+          # optional location, current-position fallback when location is empty.
+          grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
+          grep -q 'provider: "Google Maps"' lib/browser-nubo-tools.ts
+          grep -q 'location || "目前位置"' lib/browser-nubo-tools.ts
+          grep -q 'buildMapsSearchUrl' lib/browser-nubo-tools.ts
+
+          # Stable 1.0 must not contain later experimental Maps/YouTube layers.
+          if grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' lib/browser-nubo-tools.ts; then exit 1; fi
+          if grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts; then exit 1; fi
           if grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
           if grep -q 'NUBO_V75_EXTERNAL_COMMAND_RELAY' components/GeminiVoiceConsole.tsx; then exit 1; fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
+          a = s.index('        public boolean playYouTubeNoSetup(')
+          b = s.index('        @JavascriptInterface\n        public boolean isExternalVoiceKeepAliveActive()', a)
+          block = s[a:b]
+          assert 'launchExternalTarget(safeTarget, safeLabel)' in block
+          for forbidden in ['beginExternalVoiceKeepAlive', 'enterPictureInPictureMode', 'postDelayed', 'queryIntentActivities', 'vnd.youtube:', 'NuboYouTubeAccessibilityService']:
+              assert forbidden not in block, forbidden
+          print('Stable 1.0 YouTube bridge = proven V9 direct-launch architecture')
+          PY
+
           npm run typecheck
 
-      - name: Build signed V60.2 APK
+      - name: Build signed NUBO Stable 1.0 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify signed V60.2 APK
+      - name: Verify signed Stable 1.0 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v60-2.txt
-          grep -q "versionCode='602'" /tmp/v60-2.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v60-2-dex.txt
-          grep -q 'NUBO-Android/60.2' /tmp/v60-2-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v60-2-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/stable-1.txt
+          grep -q "versionCode='1000'" /tmp/stable-1.txt
+          grep -q "application-label:'AinuboX1'" /tmp/stable-1.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/stable-1-dex.txt
+          grep -q 'NUBO-Stable/1.0' /tmp/stable-1-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/stable-1-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/stable-1-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v60.2-MAPS-WEB-OVERLAY-VOICE
+          name: AinuboX1-NUBO-STABLE-1.0
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
