@@ -1,0 +1,116 @@
+name: Android V75 External Command Relay APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-v75-external-command-relay.yml"
+      - "scripts/apply-v75-external-command-relay.py"
+      - "scripts/apply-web-v75-external-command-relay.cjs"
+      - "package.json"
+
+permissions:
+  contents: read
+
+jobs:
+  build-v75:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Install web dependencies
+        run: npm install --include=dev --no-audit --no-fund
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          set -euo pipefail
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - name: Materialize V75 Android
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-nubo-v28-build.py
+          python3 scripts/apply-google-home-v29.py
+          python3 scripts/apply-v75-external-command-relay.py
+
+      - name: Materialize V75 web bundle
+        run: |
+          set -euo pipefail
+          node scripts/apply-web-v61-smart-assistant.mjs
+          node scripts/apply-v62-real-hotel-monitor-bridge.cjs
+          node scripts/apply-web-v63-voice-intent-guard.cjs
+          node scripts/apply-web-v64-conversation-sensitive.cjs
+          node scripts/apply-web-v65-response-sla.cjs
+          node scripts/apply-web-v66-voice-stability.cjs
+          node scripts/apply-web-v67-location-performance-home.cjs
+          node scripts/apply-web-v68-maps-list-geolock.cjs
+          node scripts/apply-web-v69-restore-v33-maps.cjs
+          node scripts/apply-web-v70-remove-30s-eco.cjs
+          node scripts/apply-web-v71-youtube66-maps-background.cjs
+          node scripts/apply-web-v72-youtube-v64-banner.cjs
+          node scripts/apply-web-v73-force-native-youtube-banner.cjs
+          node scripts/apply-web-v74-dom-youtube-banner.cjs
+          node scripts/apply-web-v75-external-command-relay.cjs
+
+      - name: Verify V75 relay contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionCode 75' android-nubo/app/build.gradle
+          grep -q '0.75.0-external-command-relay' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/75' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'NUBO_V75_EXTERNAL_COMMAND_RELAY' components/GeminiVoiceConsole.tsx
+          grep -q 'NUBO_V75_EXTERNAL_APP_COMMAND_RELAY' lib/browser-nubo-tools-line.ts
+          grep -q 'call.name === "search_nearby"' lib/browser-nubo-tools-line.ts
+          grep -q 'playYouTubeNoSetup' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          grep -q 'openExternalApp' android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          if grep -q 'nubo-youtube-banner-v74' components/GeminiVoiceConsole.tsx; then exit 1; fi
+          if grep -q 'showYoutubeInNubo(' components/GeminiVoiceConsole.tsx; then exit 1; fi
+          grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx
+          grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts
+
+      - name: Typecheck V75
+        run: npm run typecheck
+
+      - name: Build signed V75 APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify signed V75 APK
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v75.txt
+          grep -q "versionCode='75'" /tmp/v75.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AinuboX1-v75-EXTERNAL-COMMAND-RELAY
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
