@@ -43,6 +43,7 @@ public final class NuboBackgroundVoiceService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_START : intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            running = false;
             stopForeground(STOP_FOREGROUND_REMOVE);
             stopSelf();
             return START_NOT_STICKY;
@@ -108,14 +109,44 @@ public final class NuboBackgroundVoiceService extends Service {
 
 manifest = Path("android-nubo/app/src/main/AndroidManifest.xml")
 ms = manifest.read_text()
+
+# Add foreground-service permissions independently. A later historical patch may
+# already have the generic FGS permission without the microphone-specific one.
 if "android.permission.FOREGROUND_SERVICE" not in ms:
     ms = ms.replace(
         '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
         '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
-        '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+        '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+        1,
+    )
+
+if "android.permission.FOREGROUND_SERVICE_MICROPHONE" not in ms:
+    anchor_permission = '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />'
+    if anchor_permission not in ms:
+        raise SystemExit("Stable 1.1: generic foreground-service permission anchor missing")
+    ms = ms.replace(
+        anchor_permission,
+        anchor_permission + '\n'
         '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />',
         1,
     )
+
+# Materialized V28 may already contain an older same-name service declaration.
+# Remove any self-closing or full-block copy and then write one canonical Stable
+# 1.1 microphone foreground-service declaration.
+ms = re.sub(
+    r'\n\s*<service\b(?=[^>]*android:name="\.NuboBackgroundVoiceService")[^>]*/>\s*',
+    "\n",
+    ms,
+    flags=re.S,
+)
+ms = re.sub(
+    r'\n\s*<service\b(?=[^>]*android:name="\.NuboBackgroundVoiceService")[^>]*>.*?</service>\s*',
+    "\n",
+    ms,
+    flags=re.S,
+)
+
 service_decl = '''
         <service
             android:name=".NuboBackgroundVoiceService"
@@ -123,8 +154,9 @@ service_decl = '''
             android:foregroundServiceType="microphone"
             android:stopWithTask="false" />
 '''
-if "NuboBackgroundVoiceService" not in ms:
-    ms = ms.replace("    </application>", service_decl + "    </application>", 1)
+if "    </application>" not in ms:
+    raise SystemExit("Stable 1.1: application close tag missing")
+ms = ms.replace("    </application>", service_decl + "    </application>", 1)
 manifest.write_text(ms)
 
 app = Path("android-nubo/app/build.gradle")
@@ -164,12 +196,10 @@ methods = '''    private void startBackgroundVoiceMode() {
     }
 
     private void stopBackgroundVoiceMode() {
-        Intent intent = new Intent(this, NuboBackgroundVoiceService.class);
-        intent.setAction(NuboBackgroundVoiceService.ACTION_STOP);
         try {
-            startService(intent);
-        } catch (RuntimeException ignored) {
             stopService(new Intent(this, NuboBackgroundVoiceService.class));
+        } catch (RuntimeException ignored) {
+            // Activity teardown must never crash because a service is already gone.
         }
     }
 
@@ -227,9 +257,9 @@ pause_new = '''    @Override
             || isNuboInPictureInPicture();
 
         if (keepVoiceAlive) {
-            // Stable 1.1: do NOT pause Chromium, Gemini timers, or send the
-            // native-background event while the microphone foreground service is active.
-            // Local Sense is stopped so it never competes with Gemini for the microphone.
+            // Stable 1.1: do NOT pause Chromium/Gemini timers or emit the
+            // native-background event while the microphone FGS is active.
+            // Local Sense is stopped so it never competes with Gemini for mic access.
             activityForeground = false;
             stopSenseAmbientCapture();
             webView.resumeTimers();
@@ -296,6 +326,9 @@ for token in [
 ]:
     if token not in manifest_final:
         raise SystemExit(f"missing Stable 1.1 manifest marker: {token}")
+
+if manifest_final.count('android:name=".NuboBackgroundVoiceService"') != 1:
+    raise SystemExit("Stable 1.1 must contain exactly one background voice service declaration")
 
 for token in [
     "FOREGROUND_SERVICE_TYPE_MICROPHONE",
