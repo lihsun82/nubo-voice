@@ -1,11 +1,33 @@
 from pathlib import Path
+import re
 import runpy
 
 # NUBO Stable 1.0
 # Android baseline = V28 voice/UI + V29 Google Home + proven V9 YouTube direct launch.
 # Google Maps stays on the proven V33 browser-tool behavior already present in source.
-# Do not import V60-V75 experimental playback/maps/background layers.
+# Do not import V35+ accessibility, V52+ background companion, or V60-V75 experiments.
 runpy.run_path("scripts/apply-youtube-v9-restore-v43.py", run_name="__main__")
+
+# The repository now contains Java/services added much later than the proven V9 baseline.
+# They must not be compiled or registered in Stable 1.0.
+java_dir = Path("android-nubo/app/src/main/java/com/ainubo/nubo")
+for late_file in [
+    "NuboBackgroundListeningService.java",  # introduced at V52
+    "NuboYouTubeAccessibilityService.java", # introduced after the proven V9 path
+]:
+    p = java_dir / late_file
+    if p.exists():
+        p.unlink()
+
+manifest = Path("android-nubo/app/src/main/AndroidManifest.xml")
+manifest_text = manifest.read_text()
+manifest_text = re.sub(
+    r'\n\s*<service\s+android:name="\.NuboYouTubeAccessibilityService".*?</service>\s*',
+    "\n",
+    manifest_text,
+    flags=re.S,
+)
+manifest.write_text(manifest_text)
 
 app = Path("android-nubo/app/build.gradle")
 s = app.read_text()
@@ -56,9 +78,16 @@ for forbidden in [
     if forbidden in bridge:
         raise SystemExit(f"forbidden experimental YouTube layer in Stable 1.0: {forbidden}")
 
+if "NuboYouTubeAccessibilityService" in manifest.read_text():
+    raise SystemExit("late YouTube accessibility service still registered")
+if (java_dir / "NuboBackgroundListeningService.java").exists():
+    raise SystemExit("late V52 background service still present")
+if (java_dir / "NuboYouTubeAccessibilityService.java").exists():
+    raise SystemExit("late accessibility source still present")
+
 home = Path("android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt").read_text()
 for token in ['sdk", "1.10.0"', 'homeArtifact", "17.1.0"']:
     if token not in home:
         raise SystemExit(f"missing preserved Google Home marker: {token}")
 
-print("Applied NUBO Stable 1.0: proven YouTube V9 Android path; Maps remains proven V33 web path")
+print("Applied NUBO Stable 1.0: proven V9 YouTube + V33 Maps; late background/accessibility layers excluded")
