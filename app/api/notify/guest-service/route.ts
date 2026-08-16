@@ -7,7 +7,11 @@ import {
 
 export const runtime = "nodejs";
 
-const DEFAULT_ALERT_EMAIL = "lihsun82@gmail.com";
+const DEFAULT_ALERT_EMAILS = [
+  "lihsun82@gmail.com",
+  "wangjasam@gmail.com",
+  "ginatu83@gmail.com",
+];
 const DUPLICATE_WINDOW_MS = 180_000;
 const recentAlerts = new Map<string, number>();
 
@@ -21,6 +25,15 @@ function normalize(value: string) {
     .toLowerCase()
     .replace(/[\s　]+/g, "")
     .replace(/[，。！？、,.!?]/g, "");
+}
+
+function getAlertRecipients() {
+  const configured = (process.env.NUBO_GUEST_ALERT_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  return Array.from(new Set([...DEFAULT_ALERT_EMAILS, ...configured]));
 }
 
 function getTaipeiTime() {
@@ -93,17 +106,18 @@ export async function POST(req: NextRequest) {
       .map(normalize)
       .join(":");
     const now = Date.now();
+    const recipients = getAlertRecipients();
+    const recipientHeader = recipients.join(", ");
+
     if (isDuplicate(fingerprint, now)) {
       return NextResponse.json({
         ok: true,
         sent: false,
         duplicate: true,
-        recipient: process.env.NUBO_GUEST_ALERT_EMAIL?.trim() || DEFAULT_ALERT_EMAIL,
+        recipients,
       });
     }
 
-    const recipient =
-      process.env.NUBO_GUEST_ALERT_EMAIL?.trim() || DEFAULT_ALERT_EMAIL;
     const subject =
       classification.urgency === "critical"
         ? `【NUBO緊急客務】${roomNumber}房｜${surname}姓｜${categoryLabel}`
@@ -125,12 +139,12 @@ export async function POST(req: NextRequest) {
       "此信由 AinuboX1 / NUBO 客務升級機制自動寄送。",
     ].join("\n");
 
-    await sendGmailMessage(recipient, subject, emailBody);
+    await sendGmailMessage(recipientHeader, subject, emailBody);
 
     return NextResponse.json({
       ok: true,
       sent: true,
-      recipient,
+      recipients,
       surname,
       roomNumber,
       contact,
