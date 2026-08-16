@@ -1,0 +1,110 @@
+name: NUBO Stable 3.0 AudioRecord Native Wake APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/apply-nubo-stable-3-audiorecord-wake.py"
+      - ".github/workflows/android-stable3-native-wake.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-stable-3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Install web dependencies
+        run: npm install --include=dev --no-audit --no-fund
+
+      - name: Materialize signing key and launcher icon
+        run: |
+          set -euo pipefail
+          base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
+          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
+          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
+          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+
+      - name: Download official Google Home SDK 1.10.0
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
+          REPO="$RUNNER_TEMP/home-sdk-repo"
+          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
+          mkdir -p "$REPO"
+          unzip -q "$ZIP" -d "$REPO"
+          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
+          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
+
+      - name: Materialize Stable 3 native wake
+        run: |
+          set -euo pipefail
+          python3 scripts/apply-nubo-v28-build.py
+          python3 scripts/apply-google-home-v29.py
+          python3 scripts/apply-nubo-stable-3-audiorecord-wake.py
+          node scripts/apply-web-stable-2-native-wake.mjs
+          node scripts/apply-web-stable-2-shutdown.mjs
+
+      - name: Verify Stable 3 architecture
+        run: |
+          set -euo pipefail
+          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          SERVICE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboNativeWakeService.java
+          MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
+          HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
+          grep -q 'versionCode 3000' android-nubo/app/build.gradle
+          grep -q '3.0.0-audiorecord-native-wake' android-nubo/app/build.gradle
+          grep -q 'NUBO-Stable/3.0' "$MAIN"
+          grep -q 'nativeWakeDiagnostics' "$MAIN"
+          grep -q 'AudioRecord' "$SERVICE"
+          grep -q 'VOICE_RECOGNITION' "$SERVICE"
+          grep -q 'acceptWaveForm' "$SERVICE"
+          grep -q 'scheduleRestart' "$SERVICE"
+          grep -q '我在' "$SERVICE"
+          if grep -q 'org.vosk.android.SpeechService' "$SERVICE"; then exit 1; fi
+          grep -q 'foregroundServiceType="microphone"' "$MANIFEST"
+          grep -q 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
+          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
+          grep -q 'com.google.android.youtube' "$MAIN"
+          grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
+          grep -q 'sdk", "1.10.0"' "$HOME"
+          npm run typecheck
+
+      - name: Build signed Stable 3 APK
+        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
+
+      - name: Verify signed Stable 3 APK
+        run: |
+          set -euo pipefail
+          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/stable3.txt
+          grep -q "versionCode='3000'" /tmp/stable3.txt
+          grep -q "versionName='3.0.0-audiorecord-native-wake'" /tmp/stable3.txt
+          unzip -l "$APK" | grep -q 'assets/model-cn-small/am/final.mdl'
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/stable3-dex.txt
+          grep -q 'NUBO-Stable/3.0' /tmp/stable3-dex.txt
+          grep -q 'NuboNativeWakeV3' /tmp/stable3-dex.txt
+          grep -q 'AudioRecord' /tmp/stable3-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/stable3-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/stable3-dex.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AinuboX1-NUBO-STABLE-3.0-AUDIORECORD-NATIVE-WAKE
+          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
