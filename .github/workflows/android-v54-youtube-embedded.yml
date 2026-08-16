@@ -1,4 +1,4 @@
-name: NUBO Stable 1.0 APK
+name: NUBO Stable 1.1 Background Voice APK
 
 on:
   workflow_dispatch:
@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "scripts/apply-nubo-stable-1.py"
+      - "scripts/apply-nubo-stable-1-1-background.py"
       - "scripts/apply-youtube-v9-restore-v43.py"
       - "lib/browser-nubo-tools.ts"
       - "package.json"
@@ -15,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  build-stable-1:
+  build-stable-1-1:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,36 +54,51 @@ jobs:
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
 
-      - name: Materialize clean Stable 1.0 Android baseline
+      - name: Materialize Stable 1.1 background voice baseline
         run: |
           set -euo pipefail
           python3 scripts/apply-nubo-v28-build.py
           python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-nubo-stable-1.py
+          python3 scripts/apply-nubo-stable-1-1-background.py
 
-      - name: Verify proven YouTube V9 and Maps V33 only
+      - name: Verify Stable 1.1 background voice and preserved core
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
+          SERVICE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundVoiceService.java
+          MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
 
-          grep -q 'versionCode 1000' android-nubo/app/build.gradle
-          grep -q '1.0.0-stable-youtube-v9-maps-v33' android-nubo/app/build.gradle
-          grep -q 'NUBO-Stable/1.0' "$MAIN"
+          grep -q 'versionCode 1001' android-nubo/app/build.gradle
+          grep -q '1.1.0-stable-background-voice' android-nubo/app/build.gradle
+          grep -q 'NUBO-Stable/1.1' "$MAIN"
+          grep -q 'NuboBackgroundVoiceService.isRunning()' "$MAIN"
+          grep -q 'startBackgroundVoiceMode()' "$MAIN"
+          grep -q 'webView.resumeTimers()' "$MAIN"
+          grep -q 'FOREGROUND_SERVICE_TYPE_MICROPHONE' "$SERVICE"
+          grep -q 'START_STICKY' "$SERVICE"
+          grep -q 'android.permission.FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
+          grep -q 'android:foregroundServiceType="microphone"' "$MANIFEST"
+
+          # YouTube remains the proven V9 direct-launch bridge.
           grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
           grep -q 'activity.launchExternalTarget(safeTarget, safeLabel)' "$MAIN"
           grep -q 'com.google.android.youtube' "$MAIN"
-          grep -q 'sdk", "1.10.0"' "$HOME"
-          grep -q 'homeArtifact", "17.1.0"' "$HOME"
 
-          # V33 Maps contract already lives in source: direct Google Maps search,
-          # optional location, current-position fallback when location is empty.
+          # Maps remains the proven V33 direct Google Maps contract.
           grep -q 'NUBO_MOBILE_PLACES_V1' lib/browser-nubo-tools.ts
           grep -q 'provider: "Google Maps"' lib/browser-nubo-tools.ts
           grep -q 'location || "目前位置"' lib/browser-nubo-tools.ts
           grep -q 'buildMapsSearchUrl' lib/browser-nubo-tools.ts
 
-          # Stable 1.0 must not contain later experimental Maps/YouTube layers.
+          # Google Home remains on the verified SDK baseline.
+          grep -q 'sdk", "1.10.0"' "$HOME"
+          grep -q 'homeArtifact", "17.1.0"' "$HOME"
+
+          # Do not reintroduce timed V52 wake or accessibility experiments.
+          test ! -f android-nubo/app/src/main/java/com/ainubo/nubo/NuboBackgroundListeningService.java
+          test ! -f android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
+          if grep -q 'NuboYouTubeAccessibilityService' "$MANIFEST"; then exit 1; fi
           if grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' lib/browser-nubo-tools.ts; then exit 1; fi
           if grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts; then exit 1; fi
           if grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
@@ -97,30 +113,37 @@ jobs:
           assert 'launchExternalTarget(safeTarget, safeLabel)' in block
           for forbidden in ['beginExternalVoiceKeepAlive', 'enterPictureInPictureMode', 'postDelayed', 'queryIntentActivities', 'vnd.youtube:', 'NuboYouTubeAccessibilityService']:
               assert forbidden not in block, forbidden
-          print('Stable 1.0 YouTube bridge = proven V9 direct-launch architecture')
+          p = s.index('    protected void onPause()')
+          q = s.index('    protected void onDestroy()', p)
+          pause = s[p:q]
+          assert 'NuboBackgroundVoiceService.isRunning()' in pause
+          assert 'webView.resumeTimers()' in pause
+          print('Stable 1.1 = V9 YouTube + V33 Maps + continuous microphone FGS background keep-alive')
           PY
 
           npm run typecheck
 
-      - name: Build signed NUBO Stable 1.0 APK
+      - name: Build signed NUBO Stable 1.1 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify signed Stable 1.0 APK
+      - name: Verify signed Stable 1.1 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/stable-1.txt
-          grep -q "versionCode='1000'" /tmp/stable-1.txt
-          grep -q "application-label:'AinuboX1'" /tmp/stable-1.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/stable-1-dex.txt
-          grep -q 'NUBO-Stable/1.0' /tmp/stable-1-dex.txt
-          grep -q 'com.google.android.youtube' /tmp/stable-1-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/stable-1-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/stable-1-1.txt
+          grep -q "versionCode='1001'" /tmp/stable-1-1.txt
+          grep -q "versionName='1.1.0-stable-background-voice'" /tmp/stable-1-1.txt
+          grep -q "application-label:'AinuboX1'" /tmp/stable-1-1.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/stable-1-1-dex.txt
+          grep -q 'NUBO-Stable/1.1' /tmp/stable-1-1-dex.txt
+          grep -q 'NuboBackgroundVoiceService' /tmp/stable-1-1-dex.txt
+          grep -q 'com.google.android.youtube' /tmp/stable-1-1-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/stable-1-1-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-NUBO-STABLE-1.0
+          name: AinuboX1-NUBO-STABLE-1.1-BACKGROUND-VOICE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
