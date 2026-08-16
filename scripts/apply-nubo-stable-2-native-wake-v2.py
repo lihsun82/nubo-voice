@@ -1,10 +1,6 @@
 from pathlib import Path
 
-# Execute Stable 2 with two build-materialization corrections without widening
-# the runtime change surface:
-# 1) inject Vosk/JNA after the known MediaPipe dependency line instead of
-#    matching an entire dependencies block;
-# 2) fully qualify Gradle RelativePath so model unpack is runner-independent.
+# Execute Stable 2 with narrowly-scoped materialization corrections.
 source_path = Path("scripts/apply-nubo-stable-2-native-wake.py")
 source = source_path.read_text()
 
@@ -39,9 +35,22 @@ source = source.replace(
 
 exec(compile(source, str(source_path), "exec"), {"__name__": "__main__"})
 
-# Explicit user stop must tear down the native wake service and wakelock.
 main = Path("android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java")
 s = main.read_text()
+
+# Stable 2's original historical field anchor may be absent in Stable 1.0.
+# Declare the active Activity reference directly after the class declaration.
+if "private static volatile MainActivity stable2Activity;" not in s:
+    class_anchor = "public final class MainActivity extends GoogleHomeActivity {\n"
+    if class_anchor not in s:
+        raise SystemExit("Stable 2 v2: MainActivity class anchor missing")
+    s = s.replace(
+        class_anchor,
+        class_anchor + "    private static volatile MainActivity stable2Activity;\n",
+        1,
+    )
+
+# Explicit user stop must tear down the native wake service and wakelock.
 bridge_anchor = '''        @JavascriptInterface
         public boolean isExternalVoiceKeepAliveActive()'''
 stop_bridge = '''        @JavascriptInterface
@@ -57,6 +66,9 @@ if "stopNativeWakeService()" not in s:
     if bridge_anchor not in s:
         raise SystemExit("Stable 2 v2: stop bridge anchor missing")
     s = s.replace(bridge_anchor, stop_bridge + bridge_anchor, 1)
+
+if "private static volatile MainActivity stable2Activity;" not in s:
+    raise SystemExit("Stable 2 v2: Activity bridge field missing")
 main.write_text(s)
 
-print("Applied Stable 2 v2 build hardening + explicit native wake shutdown bridge")
+print("Applied Stable 2 v2 build hardening + Activity bridge + explicit native wake shutdown")
