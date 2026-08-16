@@ -1,4 +1,4 @@
-name: Android V60.1 Maps Background Voice APK
+name: Android V60.2 Maps Web Overlay Voice APK
 
 on:
   workflow_dispatch:
@@ -7,8 +7,8 @@ on:
     paths:
       - "scripts/apply-ui-v60-hide-capabilities.py"
       - "scripts/apply-ui-v59-force-hide-panels.py"
-      - "scripts/apply-v60-1-maps-background-voice.py"
-      - "scripts/apply-web-v60-maps-background-voice.cjs"
+      - "scripts/apply-v60-2-maps-web-overlay.py"
+      - "scripts/apply-web-v60-2-maps-web-overlay.cjs"
       - "package.json"
       - ".github/workflows/android-v54-youtube-embedded.yml"
 
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 jobs:
-  build-v60-1:
+  build-v60-2:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,60 +54,61 @@ jobs:
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
 
-      - name: Materialize V60.1 Android baseline
+      - name: Materialize V60.2 Android baseline
         run: |
           set -euo pipefail
           python3 scripts/apply-nubo-v28-build.py
           python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-v60-1-maps-background-voice.py
+          python3 scripts/apply-v60-2-maps-web-overlay.py
 
-      - name: Materialize Maps background voice web patch only
-        run: |
-          set -euo pipefail
-          node scripts/apply-web-v60-maps-background-voice.cjs
+      - name: Materialize Maps web overlay patch only
+        run: node scripts/apply-web-v60-2-maps-web-overlay.cjs
 
-      - name: Verify V60.1 targeted scope
+      - name: Verify V60.2 targeted scope
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 601' android-nubo/app/build.gradle
-          grep -q '0.60.1-maps-background-voice' android-nubo/app/build.gradle
-          grep -q 'NUBO-Android/60.1' "$MAIN"
-          grep -q 'beginExternalVoiceKeepAlive' "$MAIN"
-          grep -q 'enterPictureInPictureMode' "$MAIN"
-          grep -q 'openExternalApp' "$MAIN"
+          grep -q 'versionCode 602' android-nubo/app/build.gradle
+          grep -q '0.60.2-maps-web-overlay-voice' android-nubo/app/build.gradle
+          grep -q 'NUBO-Android/60.2' "$MAIN"
+          grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' "$MAIN"
+          grep -q 'showMapsWeb(String targetUrl)' "$MAIN"
+          grep -q 'showMapsWebOverlay' "$MAIN"
+          grep -q 'mapsOverlayWebView.loadUrl(targetUrl)' "$MAIN"
+          grep -q 'webView.resumeTimers()' "$MAIN"
           grep -q 'createOnDeviceSpeechRecognizer' "$MAIN"
           grep -q 'p.setVolume(72)' "$MAIN"
           grep -q '.question-history,.task-center,.capabilities{display:none!important}' "$MAIN"
           grep -q 'sdk", "1.10.0"' "$HOME"
-          grep -q 'NUBO_V60_MAPS_BACKGROUND_VOICE' lib/browser-nubo-tools.ts
-          grep -q 'openExternalApp?.(url, "Google Maps")' lib/browser-nubo-tools.ts
-          grep -q 'mode: "native-pip-keepalive"' lib/browser-nubo-tools.ts
-          grep -q 'nuboVoiceKeepAlive: true' lib/browser-nubo-tools.ts
+          grep -q 'NUBO_V60_2_MAPS_WEB_OVERLAY' lib/browser-nubo-tools.ts
+          grep -q 'showMapsWeb?.(url)' lib/browser-nubo-tools.ts
+          grep -q 'mode: "native-maps-web-overlay"' lib/browser-nubo-tools.ts
+          grep -q 'mapsOverlay: true' lib/browser-nubo-tools.ts
+          if grep -q 'mode: "native-pip-keepalive"' lib/browser-nubo-tools.ts; then exit 1; fi
           if grep -q 'NUBO_V61' components/GeminiVoiceConsole.tsx; then exit 1; fi
           if grep -q 'NUBO_V70_NO_30S_ECO' components/GeminiVoiceConsole.tsx; then exit 1; fi
           if grep -q 'NUBO_V74_DOM_YOUTUBE_BANNER' components/GeminiVoiceConsole.tsx; then exit 1; fi
           if grep -q 'NUBO_V75_EXTERNAL_COMMAND_RELAY' components/GeminiVoiceConsole.tsx; then exit 1; fi
           npm run typecheck
 
-      - name: Build signed V60.1 APK
+      - name: Build signed V60.2 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify signed V60.1 APK
+      - name: Verify signed V60.2 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v60-1.txt
-          grep -q "versionCode='601'" /tmp/v60-1.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v60-1-dex.txt
-          grep -q 'NUBO-Android/60.1' /tmp/v60-1-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/v60-1-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/v60-2.txt
+          grep -q "versionCode='602'" /tmp/v60-2.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v60-2-dex.txt
+          grep -q 'NUBO-Android/60.2' /tmp/v60-2-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v60-2-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-v60.1-MAPS-BACKGROUND-VOICE
+          name: AinuboX1-v60.2-MAPS-WEB-OVERLAY-VOICE
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
