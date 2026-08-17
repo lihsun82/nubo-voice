@@ -1,4 +1,4 @@
-name: NUBO 3.1 Native Background Cloud Mic APK
+name: NUBO 3.2 Background Voice + YouTube Switch APK
 
 on:
   workflow_dispatch:
@@ -7,6 +7,7 @@ on:
     paths:
       - "scripts/apply-nubo-stable-3-audiorecord-wake.py"
       - "scripts/apply-nubo-youtube-background-cloud-mic-v31.py"
+      - "scripts/apply-nubo-youtube-background-switch-v32.py"
       - ".github/workflows/android-stable3-native-wake.yml"
 
 permissions:
@@ -50,7 +51,7 @@ jobs:
           test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
           echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
 
-      - name: Materialize Stable 3 + Google Home + native background cloud mic
+      - name: Materialize Stable 3 + Google Home + background Gemini + YouTube switch
         run: |
           set -euo pipefail
           python3 scripts/apply-nubo-v28-build.py
@@ -59,57 +60,60 @@ jobs:
           node scripts/apply-web-stable-2-native-wake.mjs
           node scripts/apply-web-stable-2-shutdown.mjs
           python3 scripts/apply-nubo-youtube-background-cloud-mic-v31.py
+          python3 scripts/apply-nubo-youtube-background-switch-v32.py
 
-      - name: Verify 3.1 architecture
+      - name: Verify 3.2 architecture
         run: |
           set -euo pipefail
           MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          SERVICE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboNativeWakeService.java
+          NATIVE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboNativeWakeService.java
+          YT=android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
           MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           WEB=components/GeminiVoiceConsole.tsx
-          grep -q 'versionCode 3100' android-nubo/app/build.gradle
-          grep -q '3.1.0-youtube-background-cloud-mic' android-nubo/app/build.gradle
-          grep -q 'NUBO-Stable/3.0' "$MAIN"
+          grep -q 'versionCode 3200' android-nubo/app/build.gradle
+          grep -q '3.2.0-youtube-background-voice-switch' android-nubo/app/build.gradle
+          grep -q 'prepareYouTubeBackgroundCloud' "$MAIN"
+          grep -q 'isBackgroundCloudMode' "$MAIN"
+          grep -q 'requestSongSwitch' "$MAIN"
+          grep -q 'openYouTubeControlSettings' "$MAIN"
           grep -q 'dispatchBackgroundPcmFromService' "$MAIN"
-          grep -q 'nubo:native-background-audio-start' "$MAIN"
-          grep -q 'ACTION_BACKGROUND_CLOUD' "$SERVICE"
-          grep -q 'backgroundCloudCaptureLoop' "$SERVICE"
-          grep -q 'AudioRecord' "$SERVICE"
-          grep -q 'VOICE_RECOGNITION' "$SERVICE"
+          grep -q 'backgroundCloudCaptureLoop' "$NATIVE"
+          grep -q 'AudioRecord' "$NATIVE"
+          grep -q 'ACTION_SET_TEXT' "$YT"
+          grep -q 'dispatchGesture' "$YT"
+          grep -q 'NuboYouTubeAccessibilityService' "$MANIFEST"
+          grep -q 'BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           grep -q 'foregroundServiceType="microphone"' "$MANIFEST"
-          grep -q 'FOREGROUND_SERVICE_MICROPHONE' "$MANIFEST"
           grep -q 'NUBO_NATIVE_BACKGROUND_PCM_V31' "$WEB"
           grep -q 'nubo:native-background-pcm' "$WEB"
-          grep -q 'realtimeInput' "$WEB"
-          grep -q 'public boolean playYouTubeNoSetup' "$MAIN"
-          grep -q 'com.google.android.youtube' "$MAIN"
           grep -q 'sdk", "1.10.0"' "$HOME"
           npm run typecheck
 
-      - name: Build signed NUBO 3.1 APK
+      - name: Build signed NUBO 3.2 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
 
-      - name: Verify signed NUBO 3.1 APK
+      - name: Verify signed NUBO 3.2 APK
         run: |
           set -euo pipefail
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           test -f "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/nubo31.txt
-          grep -q "versionCode='3100'" /tmp/nubo31.txt
-          grep -q "versionName='3.1.0-youtube-background-cloud-mic'" /tmp/nubo31.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/nubo32.txt
+          grep -q "versionCode='3200'" /tmp/nubo32.txt
+          grep -q "versionName='3.2.0-youtube-background-voice-switch'" /tmp/nubo32.txt
           unzip -l "$APK" | grep -q 'assets/model-cn-small/am/final.mdl'
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/nubo31-dex.txt
-          grep -q 'NUBO-Stable/3.0' /tmp/nubo31-dex.txt
-          grep -q 'NuboNativeWakeV3' /tmp/nubo31-dex.txt
-          grep -q 'ACTION_BACKGROUND_CLOUD' /tmp/nubo31-dex.txt
-          grep -q 'AudioRecord' /tmp/nubo31-dex.txt
-          grep -q 'com.google.android.youtube' /tmp/nubo31-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/nubo31-dex.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/nubo32-manifest.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/nubo32-manifest.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/nubo32-dex.txt
+          grep -q 'NuboNativeWakeV3' /tmp/nubo32-dex.txt
+          grep -q 'ACTION_BACKGROUND_CLOUD' /tmp/nubo32-dex.txt
+          grep -q 'NuboYouTubeAccessibilityService' /tmp/nubo32-dex.txt
+          grep -q 'requestSongSwitch' /tmp/nubo32-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/nubo32-dex.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: AinuboX1-NUBO-3.1-YOUTUBE-BACKGROUND-CLOUD-MIC
+          name: AinuboX1-NUBO-3.2-BACKGROUND-VOICE-YOUTUBE-SWITCH
           path: android-nubo/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
