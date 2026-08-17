@@ -16,6 +16,7 @@ permissions:
 jobs:
   build-stable-3:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -70,11 +71,8 @@ jobs:
           MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           WEB=components/GeminiVoiceConsole.tsx
-
           grep -q 'versionCode 3300' android-nubo/app/build.gradle
           grep -q '3.3.0-youtube-background-nosetup' android-nubo/app/build.gradle
-
-          # Background microphone must be real native PCM -> Gemini Live.
           grep -q 'dispatchBackgroundPcmFromService' "$MAIN"
           grep -q 'beginExternalVoiceKeepAlive();' "$MAIN"
           grep -q 'ACTION_BACKGROUND_CLOUD' "$NATIVE"
@@ -85,21 +83,16 @@ jobs:
           grep -q 'NUBO_NATIVE_BACKGROUND_PCM_V31' "$WEB"
           grep -q 'nubo:native-background-pcm' "$WEB"
           grep -q 'realtimeInput' "$WEB"
-
-          # No accessibility / notification-listener / overlay setup is permitted.
           ! grep -q 'NuboYouTubeAccessibilityService' "$MANIFEST"
           ! grep -q 'BIND_ACCESSIBILITY_SERVICE' "$MANIFEST"
           ! grep -q 'NotificationListenerService' "$MANIFEST"
           ! grep -q 'SYSTEM_ALERT_WINDOW' "$MANIFEST"
           test ! -e android-nubo/app/src/main/java/com/ainubo/nubo/NuboYouTubeAccessibilityService.java
-
-          # YouTube handoff: background mic first, then fresh-task exact/video-search intents.
           grep -q 'launchYouTubeNoSetupV33' "$MAIN"
           grep -q 'FLAG_ACTIVITY_MULTIPLE_TASK' "$MAIN"
           grep -q 'INTENT_ACTION_VIDEO_PLAY_FROM_SEARCH' "$MAIN"
           grep -q 'INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH' "$MAIN"
           grep -q '650L' "$MAIN"
-
           python3 - <<'PY'
           from pathlib import Path
           s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
@@ -110,12 +103,9 @@ jobs:
           assert '650L' in block, 'handoff delay missing'
           print('V3.3 bridge ordering contract: PASS')
           PY
-
-          # Google Home known-good integration remains intact.
           grep -q 'public boolean googleHomeControl' "$MAIN"
           grep -q 'sdk", "1.10.0"' "$HOME"
           grep -q 'homeArtifact", "17.1.0"' "$HOME"
-
           npm run typecheck
 
       - name: Build signed NUBO 3.3 APK
@@ -143,30 +133,49 @@ jobs:
           grep -q 'GoogleHomeGatewayImpl' /tmp/nubo33-dex.txt
 
       - name: Android 15 emulator install and foreground-service smoke test
+        timeout-minutes: 12
         run: |
           set -euo pipefail
-          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
+          dump_debug() {
+            echo '===== emulator.log ====='
+            tail -n 200 /tmp/emulator.log 2>/dev/null || true
+            echo '===== adb devices ====='
+            adb devices -l || true
+            echo '===== service state ====='
+            cat /tmp/nubo-services.txt 2>/dev/null || true
+            echo '===== NUBO logcat ====='
+            adb logcat -d -t 500 2>/dev/null | grep -E 'com\.ainubo\.nubo|NuboNativeWakeService|ForegroundServiceStartNotAllowedException|SecurityException|FATAL EXCEPTION' || true
+          }
+          trap 'rc=$?; if [ $rc -ne 0 ]; then dump_debug; fi; exit $rc' EXIT
+          timeout 360s sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
           printf 'no\n' | avdmanager create avd -n nuboApi35 -k "system-images;android-35;google_apis;x86_64" --force >/dev/null
-          nohup emulator -avd nuboApi35 -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
-          adb wait-for-device
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
+          nohup emulator -avd nuboApi35 -no-window -no-audio -no-metrics -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
+          EMU_PID=$!
+          timeout 180s adb wait-for-device
+          BOOTED=0
           for i in $(seq 1 90); do
-            if adb shell getprop sys.boot_completed | tr -d '\r' | grep -q '^1$'; then break; fi
+            if adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -q '^1$'; then BOOTED=1; break; fi
+            if ! kill -0 "$EMU_PID" 2>/dev/null; then echo 'Emulator exited before boot'; exit 1; fi
             sleep 2
           done
-          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+          test "$BOOTED" = "1"
           APK=android-nubo/app/build/outputs/apk/release/app-release.apk
           adb install -r "$APK"
           adb shell pm grant com.ainubo.nubo android.permission.RECORD_AUDIO || true
+          adb logcat -c
           adb shell am start -W -n com.ainubo.nubo/.MainActivity
           sleep 3
-          adb shell am start-foreground-service \
-            -n com.ainubo.nubo/.NuboNativeWakeService \
-            -a com.ainubo.nubo.action.NATIVE_WAKE_ARM
-          sleep 2
+          adb shell am start-foreground-service -n com.ainubo.nubo/.NuboNativeWakeService -a com.ainubo.nubo.action.NATIVE_WAKE_ARM
+          sleep 3
           adb shell dumpsys activity services com.ainubo.nubo > /tmp/nubo-services.txt
           grep -q 'NuboNativeWakeService' /tmp/nubo-services.txt
-          ! adb logcat -d | grep -E 'FATAL EXCEPTION.*com\.ainubo\.nubo|ForegroundServiceStartNotAllowedException|SecurityException:.*NuboNativeWakeService'
+          if adb logcat -d | grep -E 'FATAL EXCEPTION.*com\.ainubo\.nubo|ForegroundServiceStartNotAllowedException|SecurityException:.*NuboNativeWakeService'; then
+            echo 'NUBO foreground-service smoke test found a runtime failure'
+            exit 1
+          fi
           echo 'Android 15 install + native foreground-service smoke: PASS'
+          trap - EXIT
 
       - uses: actions/upload-artifact@v4
         with:
