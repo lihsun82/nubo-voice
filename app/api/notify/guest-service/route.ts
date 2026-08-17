@@ -55,12 +55,10 @@ function cleanupRecentAlerts(now: number) {
   }
 }
 
-function isDuplicate(key: string, now: number) {
+function wasRecentlyDelivered(key: string, now: number) {
   cleanupRecentAlerts(now);
   const previous = recentAlerts.get(key) ?? 0;
-  if (now - previous < DUPLICATE_WINDOW_MS) return true;
-  recentAlerts.set(key, now);
-  return false;
+  return now - previous < DUPLICATE_WINDOW_MS;
 }
 
 export async function POST(req: NextRequest) {
@@ -70,6 +68,7 @@ export async function POST(req: NextRequest) {
     const roomNumber = clean(body.roomNumber ?? body.room);
     const contact = clean(body.contact);
     const issue = clean(body.issue ?? body.transcript ?? body.text);
+    const source = clean(body.source) || "guest_service_alert";
 
     const missing = [
       !surname ? "surname" : "",
@@ -109,12 +108,13 @@ export async function POST(req: NextRequest) {
     const recipients = getAlertRecipients();
     const recipientHeader = recipients.join(", ");
 
-    if (isDuplicate(fingerprint, now)) {
+    if (wasRecentlyDelivered(fingerprint, now)) {
       return NextResponse.json({
         ok: true,
         sent: false,
         duplicate: true,
         recipients,
+        source,
       });
     }
 
@@ -139,7 +139,11 @@ export async function POST(req: NextRequest) {
       "此信由 AinuboX1 / NUBO 客務升級機制自動寄送。",
     ].join("\n");
 
-    await sendGmailMessage(recipientHeader, subject, emailBody);
+    const gmailResult = await sendGmailMessage(recipientHeader, subject, emailBody);
+
+    // Only mark the fingerprint as delivered after Gmail accepted the message.
+    // A failed OAuth/token/API request must remain retryable immediately.
+    recentAlerts.set(fingerprint, Date.now());
 
     return NextResponse.json({
       ok: true,
@@ -151,6 +155,11 @@ export async function POST(req: NextRequest) {
       issue,
       category: classification.matched ? classification.category : "guest_request",
       urgency: classification.urgency,
+      source,
+      messageId:
+        gmailResult && typeof gmailResult === "object" && "id" in gmailResult
+          ? String(gmailResult.id ?? "") || null
+          : null,
     });
   } catch (error) {
     console.error("[notify/guest-service] failed", error);
