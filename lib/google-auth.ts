@@ -4,13 +4,8 @@ import { readJson, writeJson } from "@/lib/json-store";
 const tokenFile = path.join(process.cwd(), "data", "google-auth.json");
 const stateFile = path.join(process.cwd(), "data", "google-oauth-state.json");
 
-const GOOGLE_SCOPES = [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose",
-  "https://www.googleapis.com/auth/gmail.send",
-];
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+const GOOGLE_SCOPES = [GMAIL_SCOPE];
 
 type GoogleTokenStore = {
   accessToken?: string;
@@ -53,7 +48,6 @@ export async function createGoogleAuthUrl(): Promise<string> {
     response_type: "code",
     access_type: "offline",
     prompt: "consent",
-    include_granted_scopes: "true",
     scope: GOOGLE_SCOPES.join(" "),
     state,
   });
@@ -69,14 +63,19 @@ async function validateState(state: string): Promise<void> {
   await writeJson(stateFile, { state: "used", expiresAt: new Date(0).toISOString() });
 }
 
+function hasRequiredGmailScope(scope: unknown): boolean {
+  if (typeof scope !== "string") return false;
+  return scope.split(/\s+/).filter(Boolean).includes(GMAIL_SCOPE);
+}
+
 async function fetchGoogleEmail(accessToken: string): Promise<string | undefined> {
-  const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
   if (!response.ok) return undefined;
   const payload = await response.json();
-  return typeof payload?.email === "string" ? payload.email : undefined;
+  return typeof payload?.emailAddress === "string" ? payload.emailAddress : undefined;
 }
 
 export async function exchangeGoogleCode(code: string, state: string) {
@@ -99,6 +98,9 @@ export async function exchangeGoogleCode(code: string, state: string) {
   const payload = await response.json();
   if (!response.ok || typeof payload?.access_token !== "string") {
     throw new Error(payload?.error_description ?? payload?.error ?? "Google OAuth交換失敗");
+  }
+  if (!hasRequiredGmailScope(payload.scope)) {
+    throw new Error("Google未授予NUBO所需的Gmail權限，請重新連接Gmail");
   }
 
   const email = await fetchGoogleEmail(payload.access_token);
