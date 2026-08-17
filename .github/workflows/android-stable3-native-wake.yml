@@ -8,6 +8,7 @@ on:
       - "scripts/apply-nubo-stable-3-audiorecord-wake.py"
       - "scripts/apply-nubo-youtube-background-cloud-mic-v31.py"
       - "scripts/apply-nubo-youtube-background-nosetup-v33.py"
+      - "scripts/nubo-android15-smoke.sh"
       - ".github/workflows/android-stable3-native-wake.yml"
 
 permissions:
@@ -19,12 +20,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
+
       - uses: android-actions/setup-android@v3
+
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
@@ -71,6 +76,7 @@ jobs:
           MANIFEST=android-nubo/app/src/main/AndroidManifest.xml
           HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
           WEB=components/GeminiVoiceConsole.tsx
+
           grep -q 'versionCode 3300' android-nubo/app/build.gradle
           grep -q '3.3.0-youtube-background-nosetup' android-nubo/app/build.gradle
           grep -q 'dispatchBackgroundPcmFromService' "$MAIN"
@@ -93,6 +99,7 @@ jobs:
           grep -q 'INTENT_ACTION_VIDEO_PLAY_FROM_SEARCH' "$MAIN"
           grep -q 'INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH' "$MAIN"
           grep -q '650L' "$MAIN"
+
           python3 - <<'PY'
           from pathlib import Path
           s = Path('android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java').read_text()
@@ -103,6 +110,7 @@ jobs:
           assert '650L' in block, 'handoff delay missing'
           print('V3.3 bridge ordering contract: PASS')
           PY
+
           grep -q 'public boolean googleHomeControl' "$MAIN"
           grep -q 'sdk", "1.10.0"' "$HOME"
           grep -q 'homeArtifact", "17.1.0"' "$HOME"
@@ -146,23 +154,7 @@ jobs:
           arch: x86_64
           profile: pixel_7_pro
           disable-animations: true
-          script: |
-            set -eu
-            APK=android-nubo/app/build/outputs/apk/release/app-release.apk
-            adb install -r "$APK"
-            adb shell pm grant com.ainubo.nubo android.permission.RECORD_AUDIO || true
-            adb logcat -c
-            adb shell am start -W -n com.ainubo.nubo/.MainActivity
-            sleep 3
-            adb shell am start-foreground-service -n com.ainubo.nubo/.NuboNativeWakeService -a com.ainubo.nubo.action.NATIVE_WAKE_ARM
-            sleep 3
-            adb shell dumpsys activity services com.ainubo.nubo > /tmp/nubo-services.txt
-            grep -q 'NuboNativeWakeService' /tmp/nubo-services.txt
-            if adb logcat -d | grep -E 'FATAL EXCEPTION.*com\.ainubo\.nubo|ForegroundServiceStartNotAllowedException|SecurityException:.*NuboNativeWakeService'; then
-              echo 'NUBO foreground-service smoke test found a runtime failure'
-              exit 1
-            fi
-            echo 'Android 15 managed emulator + native foreground-service smoke: PASS'
+          script: bash scripts/nubo-android15-smoke.sh
 
       - uses: actions/upload-artifact@v4
         with:
