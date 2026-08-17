@@ -145,8 +145,8 @@ jobs:
       - name: Android 15 emulator install and foreground-service smoke test
         run: |
           set -euo pipefail
-          yes | sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
-          echo no | avdmanager create avd -n nuboApi35 -k "system-images;android-35;google_apis;x86_64" --force >/dev/null
+          sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
+          printf 'no\n' | avdmanager create avd -n nuboApi35 -k "system-images;android-35;google_apis;x86_64" --force >/dev/null
           nohup emulator -avd nuboApi35 -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
           adb wait-for-device
           for i in $(seq 1 90); do
