@@ -5,7 +5,7 @@
   "description": "NUBO personal voice automation system",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
-    "build": "node scripts/apply-web-stable-2-native-wake.mjs && next build",
+    "build": "node scripts/apply-web-stable-2-native-wake.mjs && node scripts/apply-web-guest-service-reliable.mjs && next build",
     "start": "node scripts/start-next.cjs",
     "typecheck": "tsc --noEmit"
   },
