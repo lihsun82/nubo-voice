@@ -132,52 +132,37 @@ jobs:
           grep -q 'android.media.action.MEDIA_PLAY_FROM_SEARCH' /tmp/nubo33-dex.txt
           grep -q 'GoogleHomeGatewayImpl' /tmp/nubo33-dex.txt
 
-      - name: Android 15 emulator install and foreground-service smoke test
-        timeout-minutes: 12
+      - name: Enable KVM for managed Android emulator
         run: |
-          set -euo pipefail
-          dump_debug() {
-            echo '===== emulator.log ====='
-            tail -n 200 /tmp/emulator.log 2>/dev/null || true
-            echo '===== adb devices ====='
-            adb devices -l || true
-            echo '===== service state ====='
-            cat /tmp/nubo-services.txt 2>/dev/null || true
-            echo '===== NUBO logcat ====='
-            adb logcat -d -t 500 2>/dev/null | grep -E 'com\.ainubo\.nubo|NuboNativeWakeService|ForegroundServiceStartNotAllowedException|SecurityException|FATAL EXCEPTION' || true
-          }
-          trap 'rc=$?; if [ $rc -ne 0 ]; then dump_debug; fi; exit $rc' EXIT
-          timeout 360s sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
-          EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
-          test -x "$EMULATOR_BIN"
-          printf 'no\n' | avdmanager create avd -n nuboApi35 -k "system-images;android-35;google_apis;x86_64" --force >/dev/null
-          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
-          nohup "$EMULATOR_BIN" -avd nuboApi35 -no-window -no-audio -no-metrics -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
-          EMU_PID=$!
-          timeout 180s adb wait-for-device
-          BOOTED=0
-          for i in $(seq 1 90); do
-            if adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' | grep -q '^1$'; then BOOTED=1; break; fi
-            if ! kill -0 "$EMU_PID" 2>/dev/null; then echo 'Emulator exited before boot'; exit 1; fi
-            sleep 2
-          done
-          test "$BOOTED" = "1"
-          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
-          adb install -r "$APK"
-          adb shell pm grant com.ainubo.nubo android.permission.RECORD_AUDIO || true
-          adb logcat -c
-          adb shell am start -W -n com.ainubo.nubo/.MainActivity
-          sleep 3
-          adb shell am start-foreground-service -n com.ainubo.nubo/.NuboNativeWakeService -a com.ainubo.nubo.action.NATIVE_WAKE_ARM
-          sleep 3
-          adb shell dumpsys activity services com.ainubo.nubo > /tmp/nubo-services.txt
-          grep -q 'NuboNativeWakeService' /tmp/nubo-services.txt
-          if adb logcat -d | grep -E 'FATAL EXCEPTION.*com\.ainubo\.nubo|ForegroundServiceStartNotAllowedException|SecurityException:.*NuboNativeWakeService'; then
-            echo 'NUBO foreground-service smoke test found a runtime failure'
-            exit 1
-          fi
-          echo 'Android 15 install + native foreground-service smoke: PASS'
-          trap - EXIT
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Android 15 managed-emulator foreground-service smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK=android-nubo/app/build/outputs/apk/release/app-release.apk
+            adb install -r "$APK"
+            adb shell pm grant com.ainubo.nubo android.permission.RECORD_AUDIO || true
+            adb logcat -c
+            adb shell am start -W -n com.ainubo.nubo/.MainActivity
+            sleep 3
+            adb shell am start-foreground-service -n com.ainubo.nubo/.NuboNativeWakeService -a com.ainubo.nubo.action.NATIVE_WAKE_ARM
+            sleep 3
+            adb shell dumpsys activity services com.ainubo.nubo > /tmp/nubo-services.txt
+            grep -q 'NuboNativeWakeService' /tmp/nubo-services.txt
+            if adb logcat -d | grep -E 'FATAL EXCEPTION.*com\.ainubo\.nubo|ForegroundServiceStartNotAllowedException|SecurityException:.*NuboNativeWakeService'; then
+              echo 'NUBO foreground-service smoke test found a runtime failure'
+              exit 1
+            fi
+            echo 'Android 15 managed emulator + native foreground-service smoke: PASS'
 
       - uses: actions/upload-artifact@v4
         with:
