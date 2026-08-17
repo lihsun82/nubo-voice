@@ -147,7 +147,7 @@ jobs:
           profile: pixel_7_pro
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
             APK=android-nubo/app/build/outputs/apk/release/app-release.apk
             adb install -r "$APK"
             adb shell pm grant com.ainubo.nubo android.permission.RECORD_AUDIO || true
