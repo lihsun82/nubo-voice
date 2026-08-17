@@ -162,7 +162,8 @@ helpers = r'''    private boolean startYouTubeIntentV33(Intent intent) {
     }
 
 '''
-if "launchYouTubeNoSetupV33" not in s:
+# Do not mistake the bridge call for the helper implementation itself.
+if "private boolean launchYouTubeNoSetupV33(" not in s:
     s = s.replace(launch_anchor, helpers + launch_anchor, 1)
 
 # Remove any accidental accessibility controller from this materialized build.
@@ -195,7 +196,7 @@ for token in ["versionCode 3300", "3.3.0-youtube-background-nosetup"]:
     if token not in final_app: raise SystemExit("3.3 app marker missing: " + token)
 for token in [
     "beginExternalVoiceKeepAlive();",
-    "launchYouTubeNoSetupV33",
+    "private boolean launchYouTubeNoSetupV33(",
     "FLAG_ACTIVITY_MULTIPLE_TASK",
     "INTENT_ACTION_VIDEO_PLAY_FROM_SEARCH",
     "INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH",
