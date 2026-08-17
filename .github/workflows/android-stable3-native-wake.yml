@@ -148,9 +148,11 @@ jobs:
           }
           trap 'rc=$?; if [ $rc -ne 0 ]; then dump_debug; fi; exit $rc' EXIT
           timeout 360s sdkmanager "emulator" "system-images;android-35;google_apis;x86_64" >/dev/null
+          EMULATOR_BIN="$ANDROID_HOME/emulator/emulator"
+          test -x "$EMULATOR_BIN"
           printf 'no\n' | avdmanager create avd -n nuboApi35 -k "system-images;android-35;google_apis;x86_64" --force >/dev/null
           if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm || true; fi
-          nohup emulator -avd nuboApi35 -no-window -no-audio -no-metrics -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
+          nohup "$EMULATOR_BIN" -avd nuboApi35 -no-window -no-audio -no-metrics -gpu swiftshader_indirect -no-snapshot -no-boot-anim > /tmp/emulator.log 2>&1 &
           EMU_PID=$!
           timeout 180s adb wait-for-device
           BOOTED=0
