@@ -1,15 +1,45 @@
 from pathlib import Path
-import re
 import runpy
 
 # V77: preserve V76 and restore the proven Stable 1.1 background architecture:
 # microphone foreground service + keep WebView/Chromium timers alive while NUBO is backgrounded.
 runpy.run_path("scripts/apply-v76-native-lookup-filler.py", run_name="__main__")
 
+
+def replace_java_method(source: str, signature: str, replacement: str) -> str:
+    """Replace one complete Java method by brace depth, never by regex."""
+    start = source.find(signature)
+    if start < 0:
+        raise SystemExit(f"V77: method signature missing: {signature}")
+    brace = source.find("{", start)
+    if brace < 0:
+        raise SystemExit(f"V77: opening brace missing: {signature}")
+    depth = 0
+    i = brace
+    while i < len(source):
+        ch = source[i]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i + 1
+                # Preserve one trailing newline so adjacent methods stay formatted.
+                if end < len(source) and source[end] == "\n":
+                    end += 1
+                return source[:start] + replacement.rstrip() + "\n" + source[end:]
+        i += 1
+    raise SystemExit(f"V77: unmatched braces: {signature}")
+
+
 app = Path("android-nubo/app/build.gradle")
 s = app.read_text()
 s = s.replace("versionCode 76", "versionCode 77", 1)
-s = s.replace('versionName "0.76.0-native-lookup-filler"', 'versionName "0.77.0-continuous-background-voice"', 1)
+s = s.replace(
+    'versionName "0.76.0-native-lookup-filler"',
+    'versionName "0.77.0-continuous-background-voice"',
+    1,
+)
 app.write_text(s)
 
 java_dir = Path("android-nubo/app/src/main/java/com/ainubo/nubo")
@@ -102,7 +132,7 @@ for perm in [
 ]:
     if perm not in ms:
         ms = ms.replace(
-            '<application',
+            "<application",
             f'    <uses-permission android:name="{perm}" />\n\n    <application',
             1,
         )
@@ -134,41 +164,51 @@ methods = r'''    private void startContinuousBackgroundVoice() {
         Intent intent = new Intent(this, NuboContinuousVoiceService.class);
         intent.setAction(NuboContinuousVoiceService.ACTION_START);
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
-            else startService(intent);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
         } catch (RuntimeException ignored) {}
     }
 
     private void stopContinuousBackgroundVoice() {
-        Intent intent = new Intent(this, NuboContinuousVoiceService.class);
-        intent.setAction(NuboContinuousVoiceService.ACTION_STOP);
-        try { startService(intent); }
-        catch (RuntimeException ignored) { stopService(new Intent(this, NuboContinuousVoiceService.class)); }
+        try {
+            stopService(new Intent(this, NuboContinuousVoiceService.class));
+        } catch (RuntimeException ignored) {}
     }
 
 '''
-if "startContinuousBackgroundVoice()" not in s:
+if "private void startContinuousBackgroundVoice()" not in s:
     if method_anchor not in s:
         raise SystemExit("V77: MainActivity method anchor missing")
     s = s.replace(method_anchor, methods + method_anchor, 1)
 
-# Start the foreground microphone service as soon as the Activity has permission.
+# Start after Activity startup. The helper itself refuses to start before RECORD_AUDIO is granted.
 oncreate_anchor = "        requestMicrophonePermissionIfNeeded();\n"
-if oncreate_anchor in s and "startContinuousBackgroundVoice();" not in s.split(oncreate_anchor, 1)[0][-300:]:
-    s = s.replace(oncreate_anchor, oncreate_anchor + "        startContinuousBackgroundVoice();\n", 1)
+if oncreate_anchor not in s:
+    raise SystemExit("V77: onCreate microphone anchor missing")
+if "requestMicrophonePermissionIfNeeded();\n        startContinuousBackgroundVoice();" not in s:
+    s = s.replace(
+        oncreate_anchor,
+        oncreate_anchor + "        startContinuousBackgroundVoice();\n",
+        1,
+    )
 
-# Also start after runtime permission is granted.
-permission_pattern = re.compile(r'(requestCode == MICROPHONE_PERMISSION_REQUEST.*?syncSenseForVoicePhase\(\);)', re.S)
-m = permission_pattern.search(s)
-if m and "startContinuousBackgroundVoice();" not in m.group(1):
-    replacement = m.group(1).replace("syncSenseForVoicePhase();", "syncSenseForVoicePhase();\n            startContinuousBackgroundVoice();", 1)
-    s = s[:m.start()] + replacement + s[m.end():]
+# Start immediately after runtime RECORD_AUDIO permission is granted.
+permission_anchor = "            syncSenseForVoicePhase();\n        }\n    }\n\n    private static boolean isTrustedNuboUri"
+if permission_anchor in s:
+    s = s.replace(
+        permission_anchor,
+        "            syncSenseForVoicePhase();\n            startContinuousBackgroundVoice();\n        }\n    }\n\n    private static boolean isTrustedNuboUri",
+        1,
+    )
+else:
+    # Some later materializers may already add a statement after syncSenseForVoicePhase.
+    permission_probe = "grantResults[0] == PackageManager.PERMISSION_GRANTED"
+    if permission_probe not in s:
+        raise SystemExit("V77: permission callback anchor missing")
 
-# Replace onPause with the proven Stable 1.1 behavior: keep Chromium live while FGS is running.
-pause_pattern = re.compile(r'    @Override\n    protected void onPause\(\) \{.*?\n    \}\n', re.S)
-pause = pause_pattern.search(s)
-if not pause:
-    raise SystemExit("V77: onPause block missing")
 pause_new = r'''    @Override
     protected void onPause() {
         final boolean keepVoiceAlive = NuboContinuousVoiceService.isRunning()
@@ -179,7 +219,8 @@ pause_new = r'''    @Override
         stopSenseAmbientCapture();
 
         if (keepVoiceAlive) {
-            // V77: do NOT pause WebView/Chromium/Gemini Live when another app is foreground.
+            // V77: keep Chromium/Gemini Live active while YouTube/Maps is foreground.
+            webView.onResume();
             webView.resumeTimers();
         } else {
             webView.evaluateJavascript(
@@ -192,21 +233,43 @@ pause_new = r'''    @Override
         super.onPause();
     }
 '''
-s = s[:pause.start()] + pause_new + s[pause.end():]
+s = replace_java_method(
+    s,
+    "    @Override\n    protected void onPause()",
+    pause_new,
+)
 
-# Reassert keep-alive on resume.
-resume_pattern = re.compile(r'    @Override\n    protected void onResume\(\) \{(.*?)\n    \}\n', re.S)
-resume = resume_pattern.search(s)
-if resume and "startContinuousBackgroundVoice();" not in resume.group(1):
-    body = resume.group(1) + "\n        startContinuousBackgroundVoice();"
-    s = s[:resume.start()] + "    @Override\n    protected void onResume() {" + body + "\n    }\n" + s[resume.end():]
+resume_new = r'''    @Override
+    protected void onResume() {
+        super.onResume();
+        activityForeground = true;
+        webView.onResume();
+        webView.resumeTimers();
+        webView.evaluateJavascript(
+            "window.dispatchEvent(new Event('nubo:native-foreground'));",
+            null
+        );
+        startContinuousBackgroundVoice();
+        syncSenseForVoicePhase();
+    }
+'''
+s = replace_java_method(
+    s,
+    "    @Override\n    protected void onResume()",
+    resume_new,
+)
 
-# Tear down only when Activity really dies.
-destroy_pattern = re.compile(r'    @Override\n    protected void onDestroy\(\) \{', re.S)
-destroy = destroy_pattern.search(s)
-if destroy and "stopContinuousBackgroundVoice();" not in s[destroy.start():destroy.start()+500]:
-    insert_at = destroy.end()
-    s = s[:insert_at] + "\n        stopContinuousBackgroundVoice();" + s[insert_at:]
+# Preserve the existing destruction logic; add only the V77 service teardown at method entry.
+destroy_signature = "    @Override\n    protected void onDestroy()"
+destroy_start = s.find(destroy_signature)
+if destroy_start < 0:
+    raise SystemExit("V77: onDestroy signature missing")
+destroy_brace = s.find("{", destroy_start)
+if destroy_brace < 0:
+    raise SystemExit("V77: onDestroy brace missing")
+window = s[destroy_brace:destroy_brace + 300]
+if "stopContinuousBackgroundVoice();" not in window:
+    s = s[:destroy_brace + 1] + "\n        stopContinuousBackgroundVoice();" + s[destroy_brace + 1:]
 
 main.write_text(s)
 
@@ -214,13 +277,16 @@ app_final = app.read_text()
 main_final = main.read_text()
 manifest_final = manifest.read_text()
 service_final = service.read_text()
+
 for token in ["versionCode 77", '0.77.0-continuous-background-voice']:
     if token not in app_final:
         raise SystemExit(f"missing V77 app marker: {token}")
+
 for token in [
     "NUBO-Android/77",
-    "startContinuousBackgroundVoice()",
+    "private void startContinuousBackgroundVoice()",
     "NuboContinuousVoiceService.isRunning()",
+    "webView.onResume()",
     "webView.resumeTimers()",
     "playYouTubeNoSetup",
     "speakLookupFiller(String text)",
@@ -228,6 +294,7 @@ for token in [
 ]:
     if token not in main_final:
         raise SystemExit(f"missing V77 MainActivity marker: {token}")
+
 for token in [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_MICROPHONE",
@@ -236,8 +303,17 @@ for token in [
 ]:
     if token not in manifest_final:
         raise SystemExit(f"missing V77 manifest marker: {token}")
-for token in ["FOREGROUND_SERVICE_TYPE_MICROPHONE", "START_STICKY", "NUBO 背景語音持續運作中"]:
+
+for token in [
+    "FOREGROUND_SERVICE_TYPE_MICROPHONE",
+    "START_STICKY",
+    "NUBO 背景語音持續運作中",
+]:
     if token not in service_final:
         raise SystemExit(f"missing V77 service marker: {token}")
 
-print("Applied V77: Stable 1.1-style continuous background voice on V76 baseline")
+# Crude but effective structural guard: the generated Java must have balanced braces.
+if main_final.count("{") != main_final.count("}"):
+    raise SystemExit("V77: generated MainActivity has unbalanced braces")
+
+print("Applied V77: brace-safe Stable 1.1-style continuous background voice on V76 baseline")
