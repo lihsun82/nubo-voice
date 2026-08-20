@@ -8,6 +8,8 @@ type PlaceResult = {
   lng: number;
   distanceMeters: number;
   mapsUrl: string;
+  imageUrl: string;
+  website?: string;
 };
 
 type OverpassElement = {
@@ -17,7 +19,21 @@ type OverpassElement = {
   tags?: Record<string, string>;
 };
 
+type PlaceResponse = {
+  ok: true;
+  query: string;
+  requestedLocation: string;
+  resolvedLocation: string;
+  anchor: { lat: number; lng: number };
+  radiusMeters: number;
+  resultCount: number;
+  results: PlaceResult[];
+  cached?: boolean;
+};
+
 const UA = "AINUBO-NUBO/1.0 (maps result list)";
+const CACHE_TTL_MS = 120_000;
+const responseCache = new Map<string, { at: number; value: PlaceResponse }>();
 
 function haversineMeters(
   aLat: number,
@@ -92,6 +108,42 @@ function queryMatches(
   return hay.includes(q) || name.toLowerCase().includes(q);
 }
 
+function safeWebsite(tags: Record<string, string>) {
+  const raw = String(tags.website || tags["contact:website"] || "").trim();
+  if (!raw) return undefined;
+  try {
+    const value = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const parsed = new URL(value);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function placeImageUrl(tags: Record<string, string>, lat: number, lng: number) {
+  const direct = String(tags.image || "").trim();
+  if (/^https?:\/\//i.test(direct)) return direct;
+
+  const commons = String(tags.wikimedia_commons || "").trim();
+  if (/^File:/i.test(commons)) {
+    const filename = commons.replace(/^File:/i, "").trim();
+    return `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(filename)}?width=360`;
+  }
+
+  // Every result still gets a useful visual thumbnail even when the place has no
+  // public merchant photo in OSM/Wikimedia. The image is loaded lazily by the UI.
+  const center = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  return (
+    "https://staticmap.openstreetmap.de/staticmap.php?" +
+    new URLSearchParams({
+      center,
+      zoom: "16",
+      size: "360x200",
+      markers: `${center},red-pushpin`,
+    }).toString()
+  );
+}
+
 async function geocode(location: string) {
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", location);
@@ -99,56 +151,78 @@ async function geocode(location: string) {
   url.searchParams.set("limit", "1");
   url.searchParams.set("accept-language", "zh-TW");
 
-  const response = await fetch(url, {
-    headers: { "User-Agent": UA },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`geocode ${response.status}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": UA },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`geocode ${response.status}`);
 
-  const rows = (await response.json()) as Array<{
-    lat: string;
-    lon: string;
-    display_name?: string;
-  }>;
-  if (!rows[0]) throw new Error("找不到指定地點");
+    const rows = (await response.json()) as Array<{
+      lat: string;
+      lon: string;
+      display_name?: string;
+    }>;
+    if (!rows[0]) throw new Error("找不到指定地點");
 
-  return {
-    lat: Number(rows[0].lat),
-    lng: Number(rows[0].lon),
-    label: rows[0].display_name || location,
-  };
+    return {
+      lat: Number(rows[0].lat),
+      lng: Number(rows[0].lon),
+      label: rows[0].display_name || location,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchOverpass(endpoint: string, data: string) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6500);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": UA,
+      },
+      body: new URLSearchParams({ data }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`places ${response.status}`);
+    return (await response.json()) as { elements?: OverpassElement[] };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function overpass(lat: number, lng: number, radius: number) {
-  const data = `[out:json][timeout:18];(nwr(around:${radius},${lat},${lng})["name"]["amenity"];nwr(around:${radius},${lat},${lng})["name"]["shop"];nwr(around:${radius},${lat},${lng})["name"]["tourism"];nwr(around:${radius},${lat},${lng})["name"]["leisure"];nwr(around:${radius},${lat},${lng})["name"]["public_transport"];nwr(around:${radius},${lat},${lng})["name"]["railway"];);out center tags 140;`;
+  const data = `[out:json][timeout:8];(nwr(around:${radius},${lat},${lng})["name"]["amenity"];nwr(around:${radius},${lat},${lng})["name"]["shop"];nwr(around:${radius},${lat},${lng})["name"]["tourism"];nwr(around:${radius},${lat},${lng})["name"]["leisure"];nwr(around:${radius},${lat},${lng})["name"]["public_transport"];nwr(around:${radius},${lat},${lng})["name"]["railway"];);out center tags 90;`;
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
   ];
 
-  let lastError = "places unavailable";
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": UA,
-        },
-        body: new URLSearchParams({ data }),
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        lastError = `places ${response.status}`;
-        continue;
-      }
-      return (await response.json()) as { elements?: OverpassElement[] };
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : lastError;
-    }
+  // Race two public mirrors; take the first healthy response instead of waiting
+  // for a slow primary endpoint before trying the fallback.
+  try {
+    return await Promise.any(endpoints.map((endpoint) => fetchOverpass(endpoint, data)));
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "places unavailable");
   }
+}
 
-  throw new Error(lastError);
+function readCache(key: string) {
+  const cached = responseCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.at > CACHE_TTL_MS) {
+    responseCache.delete(key);
+    return null;
+  }
+  return { ...cached.value, cached: true };
 }
 
 export async function POST(request: NextRequest) {
@@ -158,10 +232,10 @@ export async function POST(request: NextRequest) {
     const location = String(body?.location ?? "").trim();
     const inputLat = Number(body?.latitude);
     const inputLng = Number(body?.longitude);
-    const limit = Math.min(12, Math.max(5, Number(body?.limit ?? 10) || 10));
+    const limit = Math.min(10, Math.max(5, Number(body?.limit ?? 8) || 8));
     const radius = Math.min(
-      3500,
-      Math.max(800, Number(body?.radiusMeters ?? 2500) || 2500),
+      2500,
+      Math.max(700, Number(body?.radiusMeters ?? 1800) || 1800),
     );
 
     if (!query) {
@@ -190,6 +264,17 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    const cacheKey = [
+      query.toLowerCase(),
+      location.toLowerCase(),
+      anchor.lat.toFixed(3),
+      anchor.lng.toFixed(3),
+      radius,
+      limit,
+    ].join("|");
+    const cached = readCache(cacheKey);
+    if (cached) return NextResponse.json(cached);
 
     const raw = await overpass(anchor.lat, anchor.lng, radius);
     const seen = new Set<string>();
@@ -235,13 +320,14 @@ export async function POST(request: NextRequest) {
         mapsUrl:
           "https://www.google.com/maps/search/?api=1&query=" +
           encodeURIComponent(`${name} ${lat},${lng}`),
+        imageUrl: placeImageUrl(tags, lat, lng),
+        website: safeWebsite(tags),
       });
     }
 
     results.sort((a, b) => a.distanceMeters - b.distanceMeters);
     const selected = results.slice(0, limit);
-
-    return NextResponse.json({
+    const value: PlaceResponse = {
       ok: true,
       query,
       requestedLocation: location || "目前位置",
@@ -250,7 +336,10 @@ export async function POST(request: NextRequest) {
       radiusMeters: radius,
       resultCount: selected.length,
       results: selected,
-    });
+    };
+
+    responseCache.set(cacheKey, { at: Date.now(), value });
+    return NextResponse.json(value);
   } catch (error) {
     return NextResponse.json(
       {
