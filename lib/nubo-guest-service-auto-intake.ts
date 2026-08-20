@@ -16,6 +16,9 @@ const STORAGE_KEY = "nubo_guest_service_intake_v2";
 const LAST_SENT_KEY = "nubo_guest_service_last_sent_v2";
 const INTAKE_TTL_MS = 20 * 60_000;
 const LOCAL_DUPLICATE_MS = 3 * 60_000;
+const COMPLETE_UTTERANCE_QUIET_MS = 2_200;
+
+let pendingSendTimer: number | null = null;
 
 function emptyState(): GuestIntakeState {
   const now = Date.now();
@@ -106,9 +109,22 @@ function isMostlyIntakeMetadata(text: string) {
   return /^(?:我姓|姓氏|姓|房號|房間|住在|住|電話|手機|聯絡方式|line|LINE|賴)/u.test(text.trim());
 }
 
+function isSubstantiveIssue(text: string) {
+  const normalized = compact(text);
+  if (!normalized) return false;
+  if (
+    /^(?:尚未提供(?:客訴|抱怨|需求|內容)?|尚未提供客訴內容|尚未提供需求內容|未提供(?:客訴|抱怨|需求|內容)?|沒有提供(?:客訴|抱怨|需求|內容)?|待補(?:充)?|待確認|不知道|沒有|無|n\/?a)$/iu.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  return normalized.length >= 2;
+}
+
 function addIssuePart(state: GuestIntakeState, text: string) {
   const cleaned = text.trim();
-  if (!cleaned || isMostlyIntakeMetadata(cleaned)) return;
+  if (!cleaned || isMostlyIntakeMetadata(cleaned) || !isSubstantiveIssue(cleaned)) return;
   const key = compact(cleaned);
   if (!key) return;
   if (state.issueParts.some((item) => compact(item) === key)) return;
@@ -135,6 +151,73 @@ function rememberSent(fp: string) {
   window.localStorage.setItem(LAST_SENT_KEY, JSON.stringify({ fingerprint: fp, at: Date.now() }));
 }
 
+function cancelPendingSend() {
+  if (pendingSendTimer === null || typeof window === "undefined") return;
+  window.clearTimeout(pendingSendTimer);
+  pendingSendTimer = null;
+}
+
+function scheduleCompletedIntakeSend() {
+  if (typeof window === "undefined") return;
+  cancelPendingSend();
+
+  pendingSendTimer = window.setTimeout(() => {
+    pendingSendTimer = null;
+    const latest = loadState();
+    const issue = latest.issueParts.join("；").trim();
+
+    if (
+      !latest.active ||
+      !latest.surname ||
+      !latest.roomNumber ||
+      !latest.contact ||
+      !isSubstantiveIssue(issue)
+    ) {
+      return;
+    }
+
+    // 若剛剛又收到新的語音片段，重新等待完整句尾的安靜時間。
+    const quietFor = Date.now() - latest.updatedAt;
+    if (quietFor < COMPLETE_UTTERANCE_QUIET_MS) {
+      scheduleCompletedIntakeSend();
+      return;
+    }
+
+    const fp = fingerprint(latest);
+    if (!fp || recentlySent(fp)) {
+      clearState();
+      return;
+    }
+
+    void fetch("/api/notify/guest-service", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        surname: latest.surname,
+        roomNumber: latest.roomNumber,
+        contact: latest.contact,
+        issue,
+        source: "deterministic-transcript-fallback-v3-complete-utterance",
+      }),
+      keepalive: true,
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error ?? `客務通知寄送失敗：${response.status}`);
+        }
+
+        if (payload?.sent === true || payload?.duplicate === true) {
+          rememberSent(fp);
+          clearState();
+        }
+      })
+      .catch((error) => {
+        console.error("[guest-service-auto-intake] send failed", error);
+      });
+  }, COMPLETE_UTTERANCE_QUIET_MS);
+}
+
 export async function processNuboGuestServiceTranscript(transcript: string): Promise<void> {
   if (typeof window === "undefined") return;
   const text = transcript?.trim();
@@ -158,33 +241,12 @@ export async function processNuboGuestServiceTranscript(transcript: string): Pro
   saveState(state);
 
   const issue = state.issueParts.join("；").trim();
-  if (!state.surname || !state.roomNumber || !state.contact || !issue) return;
-
-  const fp = fingerprint(state);
-  if (!fp || recentlySent(fp)) {
-    clearState();
+  if (!state.surname || !state.roomNumber || !state.contact || !isSubstantiveIssue(issue)) {
+    cancelPendingSend();
     return;
   }
 
-  const response = await fetch("/api/notify/guest-service", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      surname: state.surname,
-      roomNumber: state.roomNumber,
-      contact: state.contact,
-      issue,
-      source: "deterministic-transcript-fallback-v2",
-    }),
-    keepalive: true,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload?.error ?? `客務通知寄送失敗：${response.status}`);
-  }
-
-  if (payload?.sent === true || payload?.duplicate === true) {
-    rememberSent(fp);
-    clearState();
-  }
+  // 不在第一個看似完整的轉錄片段立即寄信；等使用者完整說完，
+  // 並且連續安靜 2.2 秒後再做最後一次資料完整性檢查。
+  scheduleCompletedIntakeSend();
 }
