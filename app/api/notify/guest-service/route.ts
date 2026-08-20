@@ -15,6 +15,20 @@ const DEFAULT_ALERT_EMAILS = [
 const DUPLICATE_WINDOW_MS = 180_000;
 const recentAlerts = new Map<string, number>();
 
+const NON_SUBSTANTIVE_ISSUE_PATTERNS = [
+  /^尚未提供(?:客訴|抱怨|需求|內容)?$/u,
+  /^尚未提供客訴內容$/u,
+  /^尚未提供需求內容$/u,
+  /^未提供(?:客訴|抱怨|需求|內容)?$/u,
+  /^沒有提供(?:客訴|抱怨|需求|內容)?$/u,
+  /^待補(?:充)?$/u,
+  /^待確認$/u,
+  /^不知道$/u,
+  /^沒有$/u,
+  /^無$/u,
+  /^n\/?a$/iu,
+];
+
 function clean(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -25,6 +39,18 @@ function normalize(value: string) {
     .toLowerCase()
     .replace(/[\s　]+/g, "")
     .replace(/[，。！？、,.!?]/g, "");
+}
+
+function isSubstantiveIssue(value: string) {
+  const normalized = normalize(value);
+  if (!normalized) return false;
+  if (NON_SUBSTANTIVE_ISSUE_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return false;
+  }
+
+  // 短但明確的客訴（例如「沒熱水」「很吵」）仍應接受；
+  // 只擋掉幾乎沒有語意內容的佔位字串。
+  return normalized.length >= 2 && /[\p{L}\p{N}]/u.test(normalized);
 }
 
 function getAlertRecipients() {
@@ -74,7 +100,7 @@ export async function POST(req: NextRequest) {
       !surname ? "surname" : "",
       !roomNumber ? "roomNumber" : "",
       !contact ? "contact" : "",
-      !issue ? "issue" : "",
+      !isSubstantiveIssue(issue) ? "issue" : "",
     ].filter(Boolean);
 
     if (missing.length) {
@@ -84,7 +110,10 @@ export async function POST(req: NextRequest) {
           sent: false,
           requiresCompleteIntake: true,
           missing,
-          error: "客務資料未完整，必須先取得姓氏、房號、聯絡方式與客訴/需求內容。",
+          error:
+            missing.includes("issue")
+              ? "客訴/需求內容尚未完整。請先讓客人把內容說完，再寄送客務通知。"
+              : "客務資料未完整，必須先取得姓氏、房號、聯絡方式與完整客訴/需求內容。",
         },
         { status: 400 },
       );
