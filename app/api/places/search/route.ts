@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+type PlaceProvider = "google" | "osm";
+
 type PlaceResult = {
   name: string;
   category: string;
@@ -8,8 +10,12 @@ type PlaceResult = {
   lng: number;
   distanceMeters: number;
   mapsUrl: string;
-  imageUrl: string;
+  imageUrl?: string;
   website?: string;
+  rating?: number;
+  userRatingCount?: number;
+  provider: PlaceProvider;
+  photoAttribution?: string;
 };
 
 type OverpassElement = {
@@ -17,6 +23,23 @@ type OverpassElement = {
   lon?: number;
   center?: { lat?: number; lon?: number };
   tags?: Record<string, string>;
+};
+
+type GooglePlace = {
+  id?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  location?: { latitude?: number; longitude?: number };
+  googleMapsUri?: string;
+  websiteUri?: string;
+  photos?: Array<{
+    name?: string;
+    authorAttributions?: Array<{ displayName?: string }>;
+  }>;
+  primaryType?: string;
+  primaryTypeDisplayName?: { text?: string };
+  rating?: number;
+  userRatingCount?: number;
 };
 
 type PlaceResponse = {
@@ -27,6 +50,7 @@ type PlaceResponse = {
   anchor: { lat: number; lng: number };
   radiusMeters: number;
   resultCount: number;
+  provider: PlaceProvider;
   results: PlaceResult[];
   cached?: boolean;
 };
@@ -34,6 +58,23 @@ type PlaceResponse = {
 const UA = "AINUBO-NUBO/1.0 (maps result list)";
 const CACHE_TTL_MS = 120_000;
 const responseCache = new Map<string, { at: number; value: PlaceResponse }>();
+
+const VEGETARIAN_QUERY_RE =
+  /素食|蔬食|純素|全素|奶蛋素|蛋奶素|vegan|vegetarian|plant\s*-?\s*based/i;
+const VEGETARIAN_NAME_RE =
+  /素食|蔬食|純素|全素|奶蛋素|蛋奶素|vegan|vegetarian|plant\s*-?\s*based/i;
+
+function getGooglePlacesApiKey() {
+  return (
+    process.env.GOOGLE_PLACES_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    ""
+  );
+}
+
+function isVegetarianQuery(query: string) {
+  return VEGETARIAN_QUERY_RE.test(query);
+}
 
 function haversineMeters(
   aLat: number,
@@ -53,6 +94,15 @@ function haversineMeters(
 }
 
 function categoryFromTags(tags: Record<string, string> = {}) {
+  const cuisine = String(tags.cuisine || "").trim();
+  if (/vegetarian|vegan/i.test(cuisine)) return "素食／蔬食";
+  if (
+    /^(?:yes|only)$/i.test(String(tags["diet:vegetarian"] || "")) ||
+    /^(?:yes|only)$/i.test(String(tags["diet:vegan"] || ""))
+  ) {
+    return "素食／蔬食";
+  }
+
   return (
     tags.amenity ||
     tags.shop ||
@@ -64,6 +114,24 @@ function categoryFromTags(tags: Record<string, string> = {}) {
   );
 }
 
+function hasVegetarianSignal(tags: Record<string, string>, name: string) {
+  const vegetarianDiet = String(tags["diet:vegetarian"] || "").trim();
+  const veganDiet = String(tags["diet:vegan"] || "").trim();
+  const cuisine = String(tags.cuisine || "").trim();
+  const description = [
+    String(tags.description || ""),
+    String(tags["description:zh"] || ""),
+  ].join(" ");
+
+  return (
+    /^(?:yes|only)$/i.test(vegetarianDiet) ||
+    /^(?:yes|only)$/i.test(veganDiet) ||
+    /vegetarian|vegan|plant\s*-?\s*based/i.test(cuisine) ||
+    VEGETARIAN_NAME_RE.test(name) ||
+    VEGETARIAN_NAME_RE.test(description)
+  );
+}
+
 function queryMatches(
   query: string,
   tags: Record<string, string>,
@@ -71,6 +139,12 @@ function queryMatches(
 ) {
   const q = query.toLowerCase().trim();
   if (!q) return true;
+
+  // Precision first for vegetarian searches. Do not let generic restaurants,
+  // cafes or chains pass just because the query also contains the word 餐廳.
+  if (isVegetarianQuery(q)) {
+    return hasVegetarianSignal(tags, name);
+  }
 
   const hay = [
     name,
@@ -120,28 +194,18 @@ function safeWebsite(tags: Record<string, string>) {
   }
 }
 
-function placeImageUrl(tags: Record<string, string>, lat: number, lng: number) {
+function placeImageUrl(tags: Record<string, string>) {
   const direct = String(tags.image || "").trim();
   if (/^https?:\/\//i.test(direct)) return direct;
 
   const commons = String(tags.wikimedia_commons || "").trim();
   if (/^File:/i.test(commons)) {
     const filename = commons.replace(/^File:/i, "").trim();
-    return `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(filename)}?width=360`;
+    return `https://commons.wikimedia.org/wiki/Special:Redirect/file/${encodeURIComponent(filename)}?width=480`;
   }
 
-  // Every result still gets a useful visual thumbnail even when the place has no
-  // public merchant photo in OSM/Wikimedia. The image is loaded lazily by the UI.
-  const center = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-  return (
-    "https://staticmap.openstreetmap.de/staticmap.php?" +
-    new URLSearchParams({
-      center,
-      zoom: "16",
-      size: "360x200",
-      markers: `${center},red-pushpin`,
-    }).toString()
-  );
+  // Do not return a fuzzy static-map pin as a fake merchant photo.
+  return undefined;
 }
 
 async function geocode(location: string) {
@@ -178,9 +242,120 @@ async function geocode(location: string) {
   }
 }
 
+async function searchGooglePlaces(
+  query: string,
+  lat: number,
+  lng: number,
+  radius: number,
+  limit: number,
+): Promise<PlaceResult[] | null> {
+  const apiKey = getGooglePlacesApiKey();
+  if (!apiKey) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  try {
+    const response = await fetch(
+      "https://places.googleapis.com/v1/places:searchText",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": [
+            "places.id",
+            "places.displayName",
+            "places.formattedAddress",
+            "places.location",
+            "places.googleMapsUri",
+            "places.websiteUri",
+            "places.photos",
+            "places.primaryType",
+            "places.primaryTypeDisplayName",
+            "places.rating",
+            "places.userRatingCount",
+          ].join(","),
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          pageSize: limit,
+          languageCode: "zh-TW",
+          locationBias: {
+            circle: {
+              center: { latitude: lat, longitude: lng },
+              radius: Math.min(50000, Math.max(300, radius)),
+            },
+          },
+        }),
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
+
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { places?: GooglePlace[] };
+    const places = Array.isArray(payload.places) ? payload.places : [];
+
+    return places
+      .map((place): PlaceResult | null => {
+        const name = String(place.displayName?.text || "").trim();
+        const placeLat = Number(place.location?.latitude);
+        const placeLng = Number(place.location?.longitude);
+        if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) {
+          return null;
+        }
+
+        const photo = place.photos?.[0];
+        const photoName = String(photo?.name || "").trim();
+        const attribution = (photo?.authorAttributions || [])
+          .map((item) => String(item.displayName || "").trim())
+          .filter(Boolean)
+          .join("、");
+
+        return {
+          name,
+          category:
+            String(place.primaryTypeDisplayName?.text || "").trim() ||
+            String(place.primaryType || "").trim() ||
+            "店家",
+          address: String(place.formattedAddress || "").trim(),
+          lat: placeLat,
+          lng: placeLng,
+          distanceMeters: haversineMeters(lat, lng, placeLat, placeLng),
+          mapsUrl:
+            String(place.googleMapsUri || "").trim() ||
+            "https://www.google.com/maps/search/?api=1&query=" +
+              encodeURIComponent(`${name} ${placeLat},${placeLng}`),
+          imageUrl: photoName
+            ? `/api/places/photo?name=${encodeURIComponent(photoName)}`
+            : undefined,
+          website: String(place.websiteUri || "").trim() || undefined,
+          rating:
+            typeof place.rating === "number" && Number.isFinite(place.rating)
+              ? place.rating
+              : undefined,
+          userRatingCount:
+            typeof place.userRatingCount === "number" &&
+            Number.isFinite(place.userRatingCount)
+              ? place.userRatingCount
+              : undefined,
+          provider: "google",
+          photoAttribution: attribution || undefined,
+        };
+      })
+      .filter((place): place is PlaceResult => Boolean(place))
+      .filter((place) => place.distanceMeters <= Math.max(radius * 1.8, 3000))
+      .slice(0, limit);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchOverpass(endpoint: string, data: string) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6500);
+  const timer = setTimeout(() => controller.abort(), 5500);
   try {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -199,15 +374,22 @@ async function fetchOverpass(endpoint: string, data: string) {
   }
 }
 
-async function overpass(lat: number, lng: number, radius: number) {
-  const data = `[out:json][timeout:8];(nwr(around:${radius},${lat},${lng})["name"]["amenity"];nwr(around:${radius},${lat},${lng})["name"]["shop"];nwr(around:${radius},${lat},${lng})["name"]["tourism"];nwr(around:${radius},${lat},${lng})["name"]["leisure"];nwr(around:${radius},${lat},${lng})["name"]["public_transport"];nwr(around:${radius},${lat},${lng})["name"]["railway"];);out center tags 90;`;
+function buildOverpassData(query: string, lat: number, lng: number, radius: number) {
+  if (isVegetarianQuery(query)) {
+    // Tight vegetarian query: this intentionally favors precision over recall.
+    return `[out:json][timeout:7];(nwr(around:${radius},${lat},${lng})["name"]["diet:vegetarian"~"^(yes|only)$",i];nwr(around:${radius},${lat},${lng})["name"]["diet:vegan"~"^(yes|only)$",i];nwr(around:${radius},${lat},${lng})["name"]["cuisine"~"vegetarian|vegan|plant.?based",i];nwr(around:${radius},${lat},${lng})["name"~"素食|蔬食|純素|全素|奶蛋素|蛋奶素|vegan|vegetarian|plant.?based",i];);out center tags 70;`;
+  }
+
+  return `[out:json][timeout:8];(nwr(around:${radius},${lat},${lng})["name"]["amenity"];nwr(around:${radius},${lat},${lng})["name"]["shop"];nwr(around:${radius},${lat},${lng})["name"]["tourism"];nwr(around:${radius},${lat},${lng})["name"]["leisure"];nwr(around:${radius},${lat},${lng})["name"]["public_transport"];nwr(around:${radius},${lat},${lng})["name"]["railway"];);out center tags 90;`;
+}
+
+async function overpass(query: string, lat: number, lng: number, radius: number) {
+  const data = buildOverpassData(query, lat, lng, radius);
   const endpoints = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
   ];
 
-  // Race two public mirrors; take the first healthy response instead of waiting
-  // for a slow primary endpoint before trying the fallback.
   try {
     return await Promise.any(endpoints.map((endpoint) => fetchOverpass(endpoint, data)));
   } catch (error) {
@@ -265,7 +447,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Prefer Google Places when a dedicated server-side key exists. Text Search
+    // handles intent such as 素食餐廳 much more accurately than generic OSM tags.
+    const googleResults = await searchGooglePlaces(
+      query,
+      anchor.lat,
+      anchor.lng,
+      radius,
+      limit,
+    );
+
+    if (googleResults && googleResults.length > 0) {
+      return NextResponse.json({
+        ok: true,
+        query,
+        requestedLocation: location || "目前位置",
+        resolvedLocation: anchor.label,
+        anchor: { lat: anchor.lat, lng: anchor.lng },
+        radiusMeters: radius,
+        resultCount: googleResults.length,
+        provider: "google",
+        results: googleResults,
+      } satisfies PlaceResponse);
+    }
+
     const cacheKey = [
+      "osm",
       query.toLowerCase(),
       location.toLowerCase(),
       anchor.lat.toFixed(3),
@@ -276,7 +483,7 @@ export async function POST(request: NextRequest) {
     const cached = readCache(cacheKey);
     if (cached) return NextResponse.json(cached);
 
-    const raw = await overpass(anchor.lat, anchor.lng, radius);
+    const raw = await overpass(query, anchor.lat, anchor.lng, radius);
     const seen = new Set<string>();
     const results: PlaceResult[] = [];
 
@@ -320,8 +527,9 @@ export async function POST(request: NextRequest) {
         mapsUrl:
           "https://www.google.com/maps/search/?api=1&query=" +
           encodeURIComponent(`${name} ${lat},${lng}`),
-        imageUrl: placeImageUrl(tags, lat, lng),
+        imageUrl: placeImageUrl(tags),
         website: safeWebsite(tags),
+        provider: "osm",
       });
     }
 
@@ -335,6 +543,7 @@ export async function POST(request: NextRequest) {
       anchor: { lat: anchor.lat, lng: anchor.lng },
       radiusMeters: radius,
       resultCount: selected.length,
+      provider: "osm",
       results: selected,
     };
 
