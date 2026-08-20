@@ -1,7 +1,6 @@
 /* NUBO_YOUTUBE_AUDIO_QUALITY_V14_6
- * Keep the visible compact player card, while giving YouTube a 480x270
- * rendering viewport so adaptive streaming does not treat the player as
- * an 88-104px thumbnail.
+ * Keep enough internal viewport for YouTube adaptive streaming, while making
+ * the visible video preview easier to see on mobile.
  */
 .nubo-inline-music-frame {
   position: relative;
@@ -34,19 +33,46 @@
 }
 
 @media (max-width: 680px) {
+  .nubo-inline-music {
+    grid-template-columns: 122px minmax(0, 1fr) 82px;
+  }
+
+  .nubo-inline-music-frame {
+    width: 122px;
+    height: 69px;
+  }
+
   .nubo-inline-music-frame iframe {
-    transform: translate(-50%, -50%) scale(0.216667) !important;
+    transform: translate(-50%, -50%) scale(0.254167) !important;
   }
 }
 
 @media (max-width: 430px) {
+  .nubo-inline-music {
+    grid-template-columns: 116px minmax(0, 1fr) 78px;
+  }
+
+  .nubo-inline-music-frame {
+    width: 116px;
+    height: 65px;
+  }
+
   .nubo-inline-music-frame iframe {
-    transform: translate(-50%, -50%) scale(0.183333) !important;
+    transform: translate(-50%, -50%) scale(0.241667) !important;
   }
 }
 
 @media (max-width: 360px) {
+  .nubo-inline-music {
+    grid-template-columns: 104px minmax(0, 1fr) 74px;
+  }
+
+  .nubo-inline-music-frame {
+    width: 104px;
+    height: 58px;
+  }
+
   .nubo-inline-music-frame iframe {
-    transform: translate(-50%, -50%) scale(0.158333) !important;
+    transform: translate(-50%, -50%) scale(0.216667) !important;
   }
 }
