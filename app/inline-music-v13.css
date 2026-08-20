@@ -6,7 +6,7 @@
   width: min(720px, calc(100% - 24px));
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: 144px minmax(0, 1fr) auto;
+  grid-template-columns: 202px minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 10px;
@@ -22,7 +22,7 @@
 .nubo-inline-music-frame {
   position: relative;
   z-index: 1;
-  width: 144px;
+  width: 202px;
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border-radius: 12px;
@@ -55,19 +55,20 @@
   white-space: nowrap;
 }
 
+/* YouTube visual balance: video +40%, song metadata -15%. */
 .nubo-inline-music-info strong {
   color: #fff;
-  font-size: 15px;
+  font-size: 12.75px;
 }
 
 .nubo-inline-music-info span {
   color: rgba(255, 255, 255, 0.72);
-  font-size: 12px;
+  font-size: 10.2px;
 }
 
 .nubo-inline-music-info small {
   color: rgba(255, 255, 255, 0.56);
-  font-size: 11px;
+  font-size: 9.35px;
 }
 
 .nubo-inline-music-controls {
@@ -134,24 +135,24 @@ body.nubo-inline-music-active .shell {
   .nubo-inline-music {
     bottom: max(8px, calc(env(safe-area-inset-bottom) + 6px));
     width: calc(100% - 16px);
-    grid-template-columns: 104px minmax(0, 1fr) 96px;
+    grid-template-columns: 146px minmax(0, 1fr) 96px;
     gap: 9px;
     padding: 8px;
     border-radius: 16px;
   }
 
   .nubo-inline-music-frame {
-    width: 104px;
+    width: 146px;
     border-radius: 10px;
   }
 
   .nubo-inline-music-info strong {
-    font-size: 13px;
+    font-size: 11.05px;
   }
 
   .nubo-inline-music-info span,
   .nubo-inline-music-info small {
-    font-size: 10px;
+    font-size: 8.5px;
   }
 
   .nubo-inline-music-controls {
@@ -174,12 +175,12 @@ body.nubo-inline-music-active .shell {
 
 @media (max-width: 430px) {
   .nubo-inline-music {
-    grid-template-columns: 88px minmax(0, 1fr) 88px;
+    grid-template-columns: 123px minmax(0, 1fr) 88px;
     gap: 7px;
   }
 
   .nubo-inline-music-frame {
-    width: 88px;
+    width: 123px;
   }
 
   .nubo-inline-music-controls {
@@ -195,11 +196,11 @@ body.nubo-inline-music-active .shell {
 
 @media (max-width: 360px) {
   .nubo-inline-music {
-    grid-template-columns: 76px minmax(0, 1fr) 82px;
+    grid-template-columns: 106px minmax(0, 1fr) 82px;
   }
 
   .nubo-inline-music-frame {
-    width: 76px;
+    width: 106px;
   }
 
   .nubo-inline-music-controls {
