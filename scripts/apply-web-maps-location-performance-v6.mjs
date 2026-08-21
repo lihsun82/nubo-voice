@@ -14,11 +14,17 @@ if (!source.includes(marker)) {
     `// NUBO_MAPS_SMOOTH_20_V5\n// ${marker}`,
   );
 
-  // Stop using a five-minute-old coarse location. Prefer a fresh GPS fix while
-  // still allowing a very recent position to return quickly on repeated searches.
-  source = source.replace(/enableHighAccuracy:\s*false,/g, 'enableHighAccuracy: true,');
-  source = source.replace(/timeout:\s*(?:700|1200|2500),/g, 'timeout: 2200,');
-  source = source.replace(/maximumAge:\s*300000,/g, 'maximumAge: 15000,');
+  // Replace the coarse five-minute cache with a short high-accuracy watch.
+  // A fresh <=120m fix returns immediately; otherwise we keep the best fix for
+  // at most 2.2s instead of accepting the first inaccurate network position.
+  const positionPattern = /function readBrowserPosition\(\) \{[\s\S]*?\n\}\n\nfunction buildNuboMapsEmbedUrl/;
+  if (!positionPattern.test(source)) {
+    throw new Error('maps v6 readBrowserPosition block missing');
+  }
+  source = source.replace(
+    positionPattern,
+    `function readBrowserPosition() {\n  return new Promise<{ latitude: number; longitude: number } | null>((resolve) => {\n    if (typeof navigator === \"undefined\" || !navigator.geolocation) {\n      resolve(null);\n      return;\n    }\n\n    let settled = false;\n    let watchId = -1;\n    let best: GeolocationPosition | null = null;\n    let timer = 0;\n\n    const finish = (position: GeolocationPosition | null) => {\n      if (settled) return;\n      settled = true;\n      if (watchId >= 0) navigator.geolocation.clearWatch(watchId);\n      if (timer) window.clearTimeout(timer);\n      resolve(position ? {\n        latitude: position.coords.latitude,\n        longitude: position.coords.longitude,\n      } : null);\n    };\n\n    const accept = (position: GeolocationPosition) => {\n      const accuracy = Number(position.coords.accuracy);\n      if (!best || accuracy < Number(best.coords.accuracy)) best = position;\n      if (Number.isFinite(accuracy) && accuracy <= 120) finish(position);\n    };\n\n    watchId = navigator.geolocation.watchPosition(\n      accept,\n      () => finish(best),\n      {\n        enableHighAccuracy: true,\n        timeout: 3200,\n        maximumAge: 15000,\n      },\n    );\n\n    timer = window.setTimeout(() => finish(best), 2200);\n  });\n}\n\nfunction buildNuboMapsEmbedUrl`,
+  );
 
   // Make the map iframe start loading immediately once the accurate location is
   // resolved and tell the browser this frame is user-visible/important.
@@ -42,6 +48,7 @@ if (!source.includes(marker)) {
 
   if (!source.includes(marker)) throw new Error('maps v6 marker missing');
   if (!source.includes('enableHighAccuracy: true,')) throw new Error('maps v6 high accuracy patch missing');
+  if (!source.includes('accuracy <= 120')) throw new Error('maps v6 accuracy gate missing');
   if (!source.includes('maximumAge: 15000,')) throw new Error('maps v6 fresh location patch missing');
   if (!source.includes('width: "116px"')) throw new Error('maps v6 larger image patch missing');
 
