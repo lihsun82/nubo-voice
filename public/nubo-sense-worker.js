@@ -82,8 +82,6 @@ function considerDetection(type, rawLabel, score) {
       label: rawLabel,
       confidence: score,
       timestampMs: now,
-      // Keep the existing contract so apply-web-sense-native-guard-v1 accepts
-      // this event while still rejecting Android-native Sense duplicates.
       source: "web-yamnet",
     },
   });
@@ -92,7 +90,10 @@ function considerDetection(type, rawLabel, score) {
 async function ensureClassifier() {
   if (!classifierPromise) {
     classifierPromise = (async () => {
-      const fileset = await FilesetResolver.forAudioTasks(WASM_ROOT);
+      // This worker itself is an ES module, so MediaPipe must resolve the
+      // corresponding wasm_module_* files. Using the classic fileset here
+      // causes the runtime to fail with "ModuleFactory not set".
+      const fileset = await FilesetResolver.forAudioTasks(WASM_ROOT, true);
       return AudioClassifier.createFromOptions(fileset, {
         baseOptions: {
           modelAssetPath: MODEL_URL,
