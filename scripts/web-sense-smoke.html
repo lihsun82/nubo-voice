@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>NUBO Web Sense smoke</title></head>
+<body data-sense-status="booting">BOOTING
+<script type="module">
+  const body = document.body;
+  const finish = (status, text) => {
+    body.dataset.senseStatus = status;
+    body.textContent = text;
+  };
+  const timer = setTimeout(() => finish('error', 'TIMEOUT'), 18000);
+  try {
+    const worker = new Worker('/public/nubo-sense-worker.js', { type: 'module' });
+    worker.onmessage = (event) => {
+      const data = event.data || {};
+      if (data.type === 'ready') {
+        clearTimeout(timer);
+        finish('ready', 'READY');
+        worker.terminate();
+      } else if (data.type === 'error') {
+        clearTimeout(timer);
+        finish('error', 'ERROR:' + String(data.message || 'worker error'));
+        worker.terminate();
+      }
+    };
+    worker.onerror = (event) => {
+      clearTimeout(timer);
+      finish('error', 'WORKER_ERROR:' + String(event.message || 'unknown'));
+    };
+    worker.postMessage({ type: 'init' });
+  } catch (error) {
+    clearTimeout(timer);
+    finish('error', 'START_ERROR:' + String(error));
+  }
+</script>
+</body>
+</html>

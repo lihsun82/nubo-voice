@@ -1,19 +1,23 @@
+import {
+  AudioClassifier,
+  FilesetResolver,
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-audio@1.0.1/audio_bundle.mjs";
+
 const MEDIAPIPE_VERSION = "1.0.1";
 const WASM_ROOT = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-audio@${MEDIAPIPE_VERSION}/wasm`;
-const MODULE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-audio@${MEDIAPIPE_VERSION}/+esm`;
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite";
 
 let classifierPromise = null;
 const candidateStates = new Map();
 
 const rules = {
-  cough: { minScore: 0.18, cooldownMs: 15000 },
-  sneeze: { minScore: 0.20, cooldownMs: 20000 },
-  yawn: { minScore: 0.16, cooldownMs: 30000 },
-  breathing: { minScore: 0.20, cooldownMs: 25000 },
-  scream: { minScore: 0.22, cooldownMs: 10000 },
-  laughter: { minScore: 0.18, cooldownMs: 15000 },
-  crying: { minScore: 0.22, cooldownMs: 25000 },
+  cough: { minScore: 0.13, cooldownMs: 12000 },
+  sneeze: { minScore: 0.15, cooldownMs: 15000 },
+  yawn: { minScore: 0.13, cooldownMs: 22000 },
+  breathing: { minScore: 0.14, cooldownMs: 18000 },
+  scream: { minScore: 0.19, cooldownMs: 9000 },
+  laughter: { minScore: 0.14, cooldownMs: 12000 },
+  crying: { minScore: 0.19, cooldownMs: 18000 },
 };
 
 function mapLabelToEventType(rawLabel) {
@@ -58,7 +62,7 @@ function ruleFor(type, rawLabel) {
   const base = rules[type];
   if (!base) return null;
   if (type === "breathing" && String(rawLabel || "").toLowerCase().includes("gasp")) {
-    return { ...base, minScore: 0.26 };
+    return { ...base, minScore: 0.20 };
   }
   return base;
 }
@@ -86,15 +90,16 @@ function considerDetection(type, rawLabel, score) {
 async function ensureClassifier() {
   if (!classifierPromise) {
     classifierPromise = (async () => {
-      const module = await import(MODULE_URL);
-      const fileset = await module.FilesetResolver.forAudioTasks(WASM_ROOT);
-      return module.AudioClassifier.createFromOptions(fileset, {
+      // This worker itself is an ES module, so MediaPipe must resolve the
+      // corresponding wasm_module_* files. Using the classic fileset here
+      // causes the runtime to fail with "ModuleFactory not set".
+      const fileset = await FilesetResolver.forAudioTasks(WASM_ROOT, true);
+      return AudioClassifier.createFromOptions(fileset, {
         baseOptions: {
           modelAssetPath: MODEL_URL,
-          delegate: "CPU",
         },
-        maxResults: 30,
-        scoreThreshold: 0.05,
+        maxResults: 100,
+        scoreThreshold: 0.02,
       });
     })().catch((error) => {
       classifierPromise = null;
@@ -135,7 +140,7 @@ self.onmessage = async (message) => {
   try {
     if (data.type === "init") {
       await ensureClassifier();
-      self.postMessage({ type: "ready" });
+      self.postMessage({ type: "ready", source: "web-yamnet-v2" });
       return;
     }
     if (data.type === "classify" && data.audioBuffer) {
@@ -145,7 +150,7 @@ self.onmessage = async (message) => {
   } catch (error) {
     self.postMessage({
       type: "error",
-      message: String(error?.message || error || "NUBO Sense worker error").slice(0, 220),
+      message: String(error?.message || error || "NUBO Sense worker error").slice(0, 260),
     });
   }
 };
