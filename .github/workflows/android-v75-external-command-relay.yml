@@ -8,7 +8,6 @@ on:
       - ".github/workflows/android-v75-external-command-relay.yml"
       - "scripts/apply-v75-external-command-relay.py"
       - "scripts/apply-web-v75-external-command-relay.cjs"
-      - "package.json"
 
 permissions:
   contents: read
@@ -95,7 +94,7 @@ jobs:
           grep -q 'NUBO_V71_MAPS_BACKGROUND_VOICE_KEEPALIVE' lib/browser-nubo-tools.ts
 
       - name: Typecheck V75
-        run: npm run typecheck
+        run: npx tsc --noEmit
 
       - name: Build signed V75 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
