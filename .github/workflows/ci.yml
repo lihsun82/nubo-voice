@@ -20,4 +20,4 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - name: Smoke Web Sense worker in Chrome
-        run: bash scripts/smoke-web-sense-worker.sh
+        run: node scripts/smoke-web-sense-worker.mjs
