@@ -10,7 +10,6 @@ on:
       - "scripts/apply-v76-native-lookup-filler.py"
       - "scripts/apply-v75-external-command-relay.py"
       - "scripts/apply-web-lookup-filler-v1.mjs"
-      - "package.json"
 
 permissions:
   contents: read
@@ -100,7 +99,7 @@ jobs:
           grep -q 'android.permission.FOREGROUND_SERVICE_MICROPHONE' android-nubo/app/src/main/AndroidManifest.xml
 
       - name: Typecheck V77
-        run: npm run typecheck
+        run: npx tsc --noEmit
 
       - name: Build signed V77 APK
         run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
