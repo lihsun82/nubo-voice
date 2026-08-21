@@ -10,9 +10,6 @@ const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/audio_classif
 let classifierPromise = null;
 const candidateStates = new Map();
 
-// Slightly more sensitive than the first Web build. Android keeps its own
-// thresholds; these are only for pure Web NUBO where browser audio processing
-// can attenuate short non-speech transients.
 const rules = {
   cough: { minScore: 0.13, cooldownMs: 12000 },
   sneeze: { minScore: 0.15, cooldownMs: 15000 },
@@ -85,7 +82,9 @@ function considerDetection(type, rawLabel, score) {
       label: rawLabel,
       confidence: score,
       timestampMs: now,
-      source: "web-yamnet-v2",
+      // Keep the existing contract so apply-web-sense-native-guard-v1 accepts
+      // this event while still rejecting Android-native Sense duplicates.
+      source: "web-yamnet",
     },
   });
 }
@@ -98,9 +97,6 @@ async function ensureClassifier() {
         baseOptions: {
           modelAssetPath: MODEL_URL,
         },
-        // Keep many candidates from YAMNet, then apply NUBO's own event
-        // thresholds below. The old top-30 cap could hide quieter sigh/yawn
-        // classes behind speech/background categories.
         maxResults: 100,
         scoreThreshold: 0.02,
       });
