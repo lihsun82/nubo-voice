@@ -24,14 +24,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * v0.4 multi-display transition renderer.
+ * v0.5 multi-display transition renderer and display verifier.
  *
- * During a fold transition the cover display receives the frosted overlay while
- * every other visible display receives a nearly transparent KEEP_SCREEN_ON
- * window. This lets the inner panel remain active until the hinge reaches the
- * fully-closed endpoint, provided ColorOS exposes/activates that display.
+ * Android 16 exposes a built-in display category that can include currently
+ * inactive internal panels. We use the literal category string so the app can
+ * also run with compileSdk 36. This lets the service distinguish "panel exists"
+ * from "panel is actually ON", which is critical on OPPO Find N6.
  */
 final class GlassOverlayController {
+    private static final String BUILT_IN_CATEGORY =
+            "android.hardware.display.category.BUILT_IN_DISPLAYS";
+
     private final Context appContext;
     private final DisplayManager displayManager;
     private final Map<Integer, OverlaySlot> keeperSlots = new HashMap<>();
@@ -83,17 +86,32 @@ final class GlassOverlayController {
         return visibleDisplays().size();
     }
 
+    int getActiveBuiltInDisplayCount() {
+        int count = 0;
+        for (Display display : builtInDisplays()) {
+            if (isVisibleState(display)) count++;
+        }
+        return count;
+    }
+
+    int getBuiltInDisplayCount() {
+        return builtInDisplays().size();
+    }
+
+    boolean areBothBuiltInDisplaysActive() {
+        return getActiveBuiltInDisplayCount() >= 2;
+    }
+
     String getDisplaySummary() {
-        if (displayManager == null) return "DisplayManager unavailable";
-        Display[] displays = displayManager.getDisplays();
-        if (displays.length == 0) return "no displays";
+        List<Display> displays = builtInDisplays();
+        if (displays.isEmpty()) return "no built-in displays";
         StringBuilder out = new StringBuilder();
         for (Display display : displays) {
             if (out.length() > 0) out.append(" | ");
             Point p = realSize(display);
             out.append("#").append(display.getDisplayId())
                     .append(" ").append(p.x).append("x").append(p.y)
-                    .append(" s=").append(display.getState());
+                    .append(" s=").append(stateName(display.getState()));
         }
         return out.toString();
     }
@@ -165,7 +183,6 @@ final class GlassOverlayController {
         if (keepScreenOn) {
             Set<Integer> desiredKeepers = new HashSet<>();
             for (Display display : visible) {
-                // Cover is already kept awake by the blur window itself.
                 if (cover != null && display.getDisplayId() == cover.getDisplayId()) continue;
                 desiredKeepers.add(display.getDisplayId());
                 ensureKeeper(display);
@@ -235,7 +252,8 @@ final class GlassOverlayController {
             for (Display display : visible) {
                 if (display.getDisplayId() == coverDisplayHint) return display;
             }
-            // If the known cover disappeared, do not accidentally frost the inner panel.
+            // Built-in display IDs can change when panels become active. If two
+            // panels are visible, size is the more reliable discriminator.
             if (visible.size() == 1) return null;
         }
         return smallestDisplay(visible);
@@ -272,9 +290,29 @@ final class GlassOverlayController {
 
     private List<Display> visibleDisplays() {
         List<Display> out = new ArrayList<>();
-        if (displayManager == null) return out;
-        for (Display display : displayManager.getDisplays()) {
+        for (Display display : builtInDisplays()) {
             if (isVisibleState(display)) out.add(display);
+        }
+        return out;
+    }
+
+    private List<Display> builtInDisplays() {
+        List<Display> out = new ArrayList<>();
+        if (displayManager == null) return out;
+
+        Display[] candidate = new Display[0];
+        try {
+            candidate = displayManager.getDisplays(BUILT_IN_CATEGORY);
+        } catch (Throwable ignored) {}
+        if (candidate == null || candidate.length == 0) {
+            candidate = displayManager.getDisplays();
+        }
+
+        Set<Integer> seen = new HashSet<>();
+        if (candidate != null) {
+            for (Display display : candidate) {
+                if (display != null && seen.add(display.getDisplayId())) out.add(display);
+            }
         }
         return out;
     }
@@ -285,6 +323,15 @@ final class GlassOverlayController {
         return state == Display.STATE_ON
                 || state == Display.STATE_DOZE
                 || state == Display.STATE_DOZE_SUSPEND;
+    }
+
+    private static String stateName(int state) {
+        if (state == Display.STATE_ON) return "ON";
+        if (state == Display.STATE_OFF) return "OFF";
+        if (state == Display.STATE_DOZE) return "DOZE";
+        if (state == Display.STATE_DOZE_SUSPEND) return "DOZE_SUSPEND";
+        if (state == Display.STATE_UNKNOWN) return "UNKNOWN";
+        return String.valueOf(state);
     }
 
     private static boolean safeBlurEnabled(WindowManager wm) {
