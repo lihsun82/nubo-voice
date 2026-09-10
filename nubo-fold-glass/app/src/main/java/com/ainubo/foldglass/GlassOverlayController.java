@@ -20,6 +20,7 @@ final class GlassOverlayController {
     private FrostedGlassView glassView;
     private WindowManager.LayoutParams layoutParams;
     private boolean added = false;
+    private boolean keepScreenOn = false;
 
     GlassOverlayController(Context context) {
         this.context = context.getApplicationContext();
@@ -62,6 +63,26 @@ final class GlassOverlayController {
         return true;
     }
 
+    void setKeepScreenOn(boolean enabled) {
+        keepScreenOn = enabled;
+        ensureWindow();
+
+        if (enabled) {
+            layoutParams.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            // Deprecated but still useful as a compatibility wake-up hint on OEM foldables.
+            layoutParams.flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        } else {
+            layoutParams.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            layoutParams.flags &= ~WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        }
+
+        if (added) {
+            try {
+                windowManager.updateViewLayout(root, layoutParams);
+            } catch (Exception ignored) {}
+        }
+    }
+
     void hide() {
         if (added && root != null) {
             try {
@@ -85,6 +106,11 @@ final class GlassOverlayController {
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                 | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                 | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+
+        if (keepScreenOn) {
+            flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        }
 
         layoutParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
