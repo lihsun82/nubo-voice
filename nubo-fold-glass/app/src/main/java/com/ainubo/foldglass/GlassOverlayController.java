@@ -16,23 +16,36 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * v0.4 multi-display transition renderer.
+ *
+ * During a fold transition the cover display receives the frosted overlay while
+ * every other visible display receives a nearly transparent KEEP_SCREEN_ON
+ * window. This lets the inner panel remain active until the hinge reaches the
+ * fully-closed endpoint, provided ColorOS exposes/activates that display.
+ */
 final class GlassOverlayController {
     private final Context appContext;
     private final DisplayManager displayManager;
+    private final Map<Integer, OverlaySlot> keeperSlots = new HashMap<>();
 
-    private Context windowContext;
-    private WindowManager windowManager;
-    private FrameLayout root;
-    private FrostedGlassView glassView;
-    private WindowManager.LayoutParams layoutParams;
-    private boolean added = false;
+    private OverlaySlot blurSlot;
+    private int coverDisplayHint = -1;
+    private int resolvedCoverDisplayId = -1;
+    private int resolvedInnerDisplayId = -1;
     private boolean keepScreenOn = false;
     private float lastLevel = 0f;
-    private String displaySignature = "";
 
     GlassOverlayController(Context context) {
-        this.appContext = context.getApplicationContext();
-        this.displayManager = appContext.getSystemService(DisplayManager.class);
+        appContext = context.getApplicationContext();
+        displayManager = appContext.getSystemService(DisplayManager.class);
     }
 
     boolean isBlurAvailable() {
@@ -44,10 +57,50 @@ final class GlassOverlayController {
         }
     }
 
+    void setCoverDisplayHint(int displayId) {
+        coverDisplayHint = displayId;
+    }
+
+    int captureCoverDisplayHint() {
+        List<Display> visible = visibleDisplays();
+        Display smallest = smallestDisplay(visible);
+        if (smallest != null) {
+            coverDisplayHint = smallest.getDisplayId();
+            resolvedCoverDisplayId = coverDisplayHint;
+        }
+        return coverDisplayHint;
+    }
+
+    int getResolvedCoverDisplayId() {
+        return resolvedCoverDisplayId;
+    }
+
+    int getResolvedInnerDisplayId() {
+        return resolvedInnerDisplayId;
+    }
+
+    int getVisibleDisplayCount() {
+        return visibleDisplays().size();
+    }
+
+    String getDisplaySummary() {
+        if (displayManager == null) return "DisplayManager unavailable";
+        Display[] displays = displayManager.getDisplays();
+        if (displays.length == 0) return "no displays";
+        StringBuilder out = new StringBuilder();
+        for (Display display : displays) {
+            if (out.length() > 0) out.append(" | ");
+            Point p = realSize(display);
+            out.append("#").append(display.getDisplayId())
+                    .append(" ").append(p.x).append("x").append(p.y)
+                    .append(" s=").append(display.getState());
+        }
+        return out.toString();
+    }
+
     boolean showLevel(float level) {
         level = clamp(level);
         lastLevel = level;
-
         if (!Settings.canDrawOverlays(appContext)) {
             hide();
             return false;
@@ -56,169 +109,174 @@ final class GlassOverlayController {
             hide();
             return true;
         }
-
-        ensureBoundToActiveDisplay();
-        if (windowManager == null || root == null || layoutParams == null) return false;
-
-        if (!added) {
-            try {
-                windowManager.addView(root, layoutParams);
-                added = true;
-            } catch (Exception e) {
-                added = false;
-                return false;
-            }
-        }
-
-        glassView.setGlassLevel(level, isBlurAvailable());
-        layoutParams.setBlurBehindRadius(Math.round(20f + 104f * level));
-        layoutParams.alpha = 0.20f + 0.17f * level;
-
-        try {
-            windowManager.updateViewLayout(root, layoutParams);
-        } catch (Exception ignored) {}
-        return true;
+        reconcileDisplays();
+        return blurSlot != null && blurSlot.added;
     }
 
     void setKeepScreenOn(boolean enabled) {
         keepScreenOn = enabled;
-        if (layoutParams != null) {
-            applyKeepScreenFlags(layoutParams);
-            if (added && windowManager != null && root != null) {
-                try {
-                    windowManager.updateViewLayout(root, layoutParams);
-                } catch (Exception ignored) {}
+        if (!enabled) {
+            clearKeepers();
+            if (blurSlot != null) {
+                blurSlot.keepAwake = false;
+                blurSlot.applyParams();
             }
+            return;
         }
+        if (lastLevel >= 0.015f) reconcileDisplays();
     }
 
-    /**
-     * Called after ColorOS/device_state switches between the cover and inner display.
-     * If the logical display id, size, rotation or power state changed, recreate the
-     * overlay using a window context bound to the currently visible display.
-     */
     void refreshDisplayBinding() {
-        String newSignature = signatureOf(selectActiveDisplay());
-        if (!newSignature.equals(displaySignature)) {
-            rebuildForActiveDisplay();
-        }
+        if (lastLevel >= 0.015f) reconcileDisplays();
     }
 
     void forceRebind() {
-        rebuildForActiveDisplay();
+        removeBlurSlot();
+        clearKeepers();
+        if (lastLevel >= 0.015f) reconcileDisplays();
     }
 
     void hide() {
-        removeCurrentWindow();
+        lastLevel = 0f;
+        resolvedCoverDisplayId = -1;
+        resolvedInnerDisplayId = -1;
+        removeBlurSlot();
+        clearKeepers();
     }
 
-    private void ensureBoundToActiveDisplay() {
-        Display display = selectActiveDisplay();
-        String newSignature = signatureOf(display);
-        if (windowManager == null || root == null || !newSignature.equals(displaySignature)) {
-            rebuildForDisplay(display);
+    private void reconcileDisplays() {
+        List<Display> visible = visibleDisplays();
+        if (visible.isEmpty()) {
+            removeBlurSlot();
+            clearKeepers();
+            resolvedCoverDisplayId = -1;
+            resolvedInnerDisplayId = -1;
+            return;
         }
-    }
 
-    private void rebuildForActiveDisplay() {
-        rebuildForDisplay(selectActiveDisplay());
-    }
+        Display cover = resolveCoverDisplay(visible);
+        Display inner = resolveInnerDisplay(visible, cover);
+        resolvedCoverDisplayId = cover == null ? -1 : cover.getDisplayId();
+        resolvedInnerDisplayId = inner == null ? -1 : inner.getDisplayId();
 
-    private void rebuildForDisplay(Display display) {
-        float levelToRestore = lastLevel;
-        removeCurrentWindow();
-        root = null;
-        glassView = null;
-        layoutParams = null;
-        windowManager = null;
-        windowContext = null;
-        displaySignature = "";
+        if (cover != null) ensureBlurSlot(cover);
+        else removeBlurSlot();
 
-        if (display == null) return;
-
-        try {
-            windowContext = appContext.createWindowContext(
-                    display,
-                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    null);
-            windowManager = windowContext.getSystemService(WindowManager.class);
-            buildWindow(windowContext);
-            displaySignature = signatureOf(display);
-
-            if (levelToRestore >= 0.015f && Settings.canDrawOverlays(appContext)) {
-                glassView.setGlassLevel(levelToRestore, isBlurAvailable());
-                layoutParams.setBlurBehindRadius(Math.round(20f + 104f * levelToRestore));
-                layoutParams.alpha = 0.20f + 0.17f * levelToRestore;
-                try {
-                    windowManager.addView(root, layoutParams);
-                    added = true;
-                } catch (Exception ignored) {
-                    added = false;
-                }
-            }
-        } catch (Exception ignored) {
-            windowManager = null;
-        }
-    }
-
-    private void buildWindow(Context context) {
-        root = new FrameLayout(context);
-        glassView = new FrostedGlassView(context);
-        root.addView(glassView, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-
-        int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-                | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-
-        layoutParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                flags,
-                PixelFormat.TRANSLUCENT);
-        layoutParams.gravity = Gravity.TOP | Gravity.START;
-        layoutParams.setBlurBehindRadius(0);
-        layoutParams.alpha = 0.20f;
-        applyKeepScreenFlags(layoutParams);
-    }
-
-    private void applyKeepScreenFlags(WindowManager.LayoutParams params) {
         if (keepScreenOn) {
-            params.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-            params.flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            Set<Integer> desiredKeepers = new HashSet<>();
+            for (Display display : visible) {
+                // Cover is already kept awake by the blur window itself.
+                if (cover != null && display.getDisplayId() == cover.getDisplayId()) continue;
+                desiredKeepers.add(display.getDisplayId());
+                ensureKeeper(display);
+            }
+            removeStaleKeepers(desiredKeepers);
         } else {
-            params.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-            params.flags &= ~WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            clearKeepers();
         }
     }
 
-    private void removeCurrentWindow() {
-        if (added && root != null && windowManager != null) {
-            try {
-                windowManager.removeView(root);
-            } catch (Exception ignored) {}
+    private void ensureBlurSlot(Display display) {
+        String signature = signatureOf(display);
+        if (blurSlot == null
+                || blurSlot.displayId != display.getDisplayId()
+                || !signature.equals(blurSlot.signature)) {
+            removeBlurSlot();
+            blurSlot = OverlaySlot.create(appContext, display, true);
         }
-        added = false;
+        if (blurSlot == null) return;
+        blurSlot.keepAwake = keepScreenOn;
+        blurSlot.level = lastLevel;
+        blurSlot.realBlur = blurSlot.windowManager != null
+                && safeBlurEnabled(blurSlot.windowManager);
+        blurSlot.ensureAdded();
+        blurSlot.applyParams();
     }
 
-    private Display selectActiveDisplay() {
-        if (displayManager == null) return null;
-
-        Display defaultDisplay = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
-        if (isVisibleState(defaultDisplay)) return defaultDisplay;
-
-        Display[] displays = displayManager.getDisplays();
-        for (Display display : displays) {
-            if (display.getState() == Display.STATE_ON) return display;
+    private void ensureKeeper(Display display) {
+        int id = display.getDisplayId();
+        String signature = signatureOf(display);
+        OverlaySlot slot = keeperSlots.get(id);
+        if (slot == null || !signature.equals(slot.signature)) {
+            if (slot != null) slot.remove();
+            slot = OverlaySlot.create(appContext, display, false);
+            if (slot != null) keeperSlots.put(id, slot);
         }
-        for (Display display : displays) {
-            if (isVisibleState(display)) return display;
+        if (slot != null) {
+            slot.keepAwake = true;
+            slot.ensureAdded();
+            slot.applyParams();
         }
-        return defaultDisplay != null ? defaultDisplay : (displays.length > 0 ? displays[0] : null);
+    }
+
+    private void removeStaleKeepers(Set<Integer> desired) {
+        List<Integer> remove = new ArrayList<>();
+        for (Map.Entry<Integer, OverlaySlot> entry : keeperSlots.entrySet()) {
+            if (!desired.contains(entry.getKey())) {
+                entry.getValue().remove();
+                remove.add(entry.getKey());
+            }
+        }
+        for (Integer id : remove) keeperSlots.remove(id);
+    }
+
+    private void removeBlurSlot() {
+        if (blurSlot != null) blurSlot.remove();
+        blurSlot = null;
+    }
+
+    private void clearKeepers() {
+        for (OverlaySlot slot : keeperSlots.values()) slot.remove();
+        keeperSlots.clear();
+    }
+
+    private Display resolveCoverDisplay(List<Display> visible) {
+        if (coverDisplayHint >= 0) {
+            for (Display display : visible) {
+                if (display.getDisplayId() == coverDisplayHint) return display;
+            }
+            // If the known cover disappeared, do not accidentally frost the inner panel.
+            if (visible.size() == 1) return null;
+        }
+        return smallestDisplay(visible);
+    }
+
+    private static Display resolveInnerDisplay(List<Display> visible, Display cover) {
+        Display best = null;
+        long bestArea = -1L;
+        for (Display display : visible) {
+            if (cover != null && display.getDisplayId() == cover.getDisplayId()) continue;
+            Point p = realSize(display);
+            long area = (long) Math.max(1, p.x) * Math.max(1, p.y);
+            if (area > bestArea) {
+                bestArea = area;
+                best = display;
+            }
+        }
+        return best;
+    }
+
+    private static Display smallestDisplay(List<Display> displays) {
+        Display best = null;
+        long bestArea = Long.MAX_VALUE;
+        for (Display display : displays) {
+            Point p = realSize(display);
+            long area = (long) Math.max(1, p.x) * Math.max(1, p.y);
+            if (area < bestArea) {
+                bestArea = area;
+                best = display;
+            }
+        }
+        return best;
+    }
+
+    private List<Display> visibleDisplays() {
+        List<Display> out = new ArrayList<>();
+        if (displayManager == null) return out;
+        for (Display display : displayManager.getDisplays()) {
+            if (isVisibleState(display)) out.add(display);
+        }
+        return out;
     }
 
     private static boolean isVisibleState(Display display) {
@@ -229,21 +287,139 @@ final class GlassOverlayController {
                 || state == Display.STATE_DOZE_SUSPEND;
     }
 
+    private static boolean safeBlurEnabled(WindowManager wm) {
+        try { return wm.isCrossWindowBlurEnabled(); }
+        catch (Exception ignored) { return false; }
+    }
+
     @SuppressWarnings("deprecation")
+    private static Point realSize(Display display) {
+        Point p = new Point();
+        try { display.getRealSize(p); } catch (Exception ignored) {}
+        return p;
+    }
+
     private static String signatureOf(Display display) {
         if (display == null) return "none";
-        Point size = new Point();
-        try {
-            display.getRealSize(size);
-        } catch (Exception ignored) {}
-        return display.getDisplayId()
-                + ":" + size.x + "x" + size.y
-                + ":r" + display.getRotation()
-                + ":s" + display.getState();
+        Point p = realSize(display);
+        return display.getDisplayId() + ":" + p.x + "x" + p.y
+                + ":r" + display.getRotation() + ":s" + display.getState();
     }
 
     private static float clamp(float value) {
         return Math.max(0f, Math.min(1f, value));
+    }
+
+    private static final class OverlaySlot {
+        final int displayId;
+        final String signature;
+        final boolean frost;
+        final WindowManager windowManager;
+        final FrameLayout root;
+        final FrostedGlassView glassView;
+        final WindowManager.LayoutParams params;
+        boolean added = false;
+        boolean keepAwake = false;
+        float level = 0f;
+        boolean realBlur = false;
+
+        private OverlaySlot(int displayId,
+                            String signature,
+                            boolean frost,
+                            WindowManager windowManager,
+                            FrameLayout root,
+                            FrostedGlassView glassView,
+                            WindowManager.LayoutParams params) {
+            this.displayId = displayId;
+            this.signature = signature;
+            this.frost = frost;
+            this.windowManager = windowManager;
+            this.root = root;
+            this.glassView = glassView;
+            this.params = params;
+        }
+
+        static OverlaySlot create(Context appContext, Display display, boolean frost) {
+            try {
+                Context wc = appContext.createWindowContext(
+                        display,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        null);
+                WindowManager wm = wc.getSystemService(WindowManager.class);
+                if (wm == null) return null;
+
+                FrameLayout root = new FrameLayout(wc);
+                FrostedGlassView view = frost ? new FrostedGlassView(wc) : null;
+                if (view != null) {
+                    root.addView(view, new FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT));
+                }
+
+                int flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;
+                if (frost) flags |= WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+
+                int width = frost ? WindowManager.LayoutParams.MATCH_PARENT : 2;
+                int height = frost ? WindowManager.LayoutParams.MATCH_PARENT : 2;
+                WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                        width,
+                        height,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        flags,
+                        PixelFormat.TRANSLUCENT);
+                lp.gravity = Gravity.TOP | Gravity.START;
+                lp.alpha = frost ? 0.20f : 0.01f;
+                if (frost) lp.setBlurBehindRadius(0);
+                return new OverlaySlot(display.getDisplayId(), signatureOf(display), frost, wm, root, view, lp);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        void ensureAdded() {
+            if (added) return;
+            try {
+                windowManager.addView(root, params);
+                added = true;
+            } catch (Exception ignored) {
+                added = false;
+            }
+        }
+
+        @SuppressWarnings("deprecation")
+        void applyParams() {
+            if (keepAwake) {
+                params.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+                params.flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            } else {
+                params.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+                params.flags &= ~WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+            }
+
+            if (frost && glassView != null) {
+                glassView.setGlassLevel(level, realBlur);
+                params.setBlurBehindRadius(Math.round(20f + 104f * level));
+                params.alpha = 0.20f + 0.17f * level;
+            } else {
+                params.alpha = 0.01f;
+            }
+
+            if (added) {
+                try { windowManager.updateViewLayout(root, params); }
+                catch (Exception ignored) {}
+            }
+        }
+
+        void remove() {
+            if (added) {
+                try { windowManager.removeView(root); }
+                catch (Exception ignored) {}
+            }
+            added = false;
+        }
     }
 
     private static final class FrostedGlassView extends View {
@@ -262,8 +438,7 @@ final class GlassOverlayController {
             invalidate();
         }
 
-        @Override
-        protected void onDraw(Canvas canvas) {
+        @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             int h = Math.max(1, getHeight());
             int baseAlpha = realBlur
