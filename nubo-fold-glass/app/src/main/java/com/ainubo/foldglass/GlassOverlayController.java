@@ -6,34 +6,49 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.graphics.Shader;
+import android.hardware.display.DisplayManager;
 import android.provider.Settings;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
 final class GlassOverlayController {
-    private final Context context;
-    private final WindowManager windowManager;
+    private final Context appContext;
+    private final DisplayManager displayManager;
+
+    private Context windowContext;
+    private WindowManager windowManager;
     private FrameLayout root;
     private FrostedGlassView glassView;
     private WindowManager.LayoutParams layoutParams;
     private boolean added = false;
     private boolean keepScreenOn = false;
+    private float lastLevel = 0f;
+    private String displaySignature = "";
 
     GlassOverlayController(Context context) {
-        this.context = context.getApplicationContext();
-        this.windowManager = (WindowManager) this.context.getSystemService(Context.WINDOW_SERVICE);
+        this.appContext = context.getApplicationContext();
+        this.displayManager = appContext.getSystemService(DisplayManager.class);
     }
 
     boolean isBlurAvailable() {
-        return windowManager.isCrossWindowBlurEnabled();
+        try {
+            WindowManager wm = appContext.getSystemService(WindowManager.class);
+            return wm != null && wm.isCrossWindowBlurEnabled();
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     boolean showLevel(float level) {
         level = clamp(level);
-        if (!Settings.canDrawOverlays(context)) {
+        lastLevel = level;
+
+        if (!Settings.canDrawOverlays(appContext)) {
             hide();
             return false;
         }
@@ -42,7 +57,9 @@ final class GlassOverlayController {
             return true;
         }
 
-        ensureWindow();
+        ensureBoundToActiveDisplay();
+        if (windowManager == null || root == null || layoutParams == null) return false;
+
         if (!added) {
             try {
                 windowManager.addView(root, layoutParams);
@@ -54,8 +71,8 @@ final class GlassOverlayController {
         }
 
         glassView.setGlassLevel(level, isBlurAvailable());
-        layoutParams.setBlurBehindRadius(Math.round(18f + 96f * level));
-        layoutParams.alpha = 0.18f + 0.16f * level;
+        layoutParams.setBlurBehindRadius(Math.round(20f + 104f * level));
+        layoutParams.alpha = 0.20f + 0.17f * level;
 
         try {
             windowManager.updateViewLayout(root, layoutParams);
@@ -65,36 +82,86 @@ final class GlassOverlayController {
 
     void setKeepScreenOn(boolean enabled) {
         keepScreenOn = enabled;
-        ensureWindow();
-
-        if (enabled) {
-            layoutParams.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-            // Deprecated but still useful as a compatibility wake-up hint on OEM foldables.
-            layoutParams.flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
-        } else {
-            layoutParams.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-            layoutParams.flags &= ~WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        if (layoutParams != null) {
+            applyKeepScreenFlags(layoutParams);
+            if (added && windowManager != null && root != null) {
+                try {
+                    windowManager.updateViewLayout(root, layoutParams);
+                } catch (Exception ignored) {}
+            }
         }
+    }
 
-        if (added) {
-            try {
-                windowManager.updateViewLayout(root, layoutParams);
-            } catch (Exception ignored) {}
+    /**
+     * Called after ColorOS/device_state switches between the cover and inner display.
+     * If the logical display id, size, rotation or power state changed, recreate the
+     * overlay using a window context bound to the currently visible display.
+     */
+    void refreshDisplayBinding() {
+        String newSignature = signatureOf(selectActiveDisplay());
+        if (!newSignature.equals(displaySignature)) {
+            rebuildForActiveDisplay();
         }
+    }
+
+    void forceRebind() {
+        rebuildForActiveDisplay();
     }
 
     void hide() {
-        if (added && root != null) {
-            try {
-                windowManager.removeView(root);
-            } catch (Exception ignored) {}
-        }
-        added = false;
+        removeCurrentWindow();
     }
 
-    private void ensureWindow() {
-        if (root != null) return;
+    private void ensureBoundToActiveDisplay() {
+        Display display = selectActiveDisplay();
+        String newSignature = signatureOf(display);
+        if (windowManager == null || root == null || !newSignature.equals(displaySignature)) {
+            rebuildForDisplay(display);
+        }
+    }
 
+    private void rebuildForActiveDisplay() {
+        rebuildForDisplay(selectActiveDisplay());
+    }
+
+    private void rebuildForDisplay(Display display) {
+        float levelToRestore = lastLevel;
+        removeCurrentWindow();
+        root = null;
+        glassView = null;
+        layoutParams = null;
+        windowManager = null;
+        windowContext = null;
+        displaySignature = "";
+
+        if (display == null) return;
+
+        try {
+            windowContext = appContext.createWindowContext(
+                    display,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    null);
+            windowManager = windowContext.getSystemService(WindowManager.class);
+            buildWindow(windowContext);
+            displaySignature = signatureOf(display);
+
+            if (levelToRestore >= 0.015f && Settings.canDrawOverlays(appContext)) {
+                glassView.setGlassLevel(levelToRestore, isBlurAvailable());
+                layoutParams.setBlurBehindRadius(Math.round(20f + 104f * levelToRestore));
+                layoutParams.alpha = 0.20f + 0.17f * levelToRestore;
+                try {
+                    windowManager.addView(root, layoutParams);
+                    added = true;
+                } catch (Exception ignored) {
+                    added = false;
+                }
+            }
+        } catch (Exception ignored) {
+            windowManager = null;
+        }
+    }
+
+    private void buildWindow(Context context) {
         root = new FrameLayout(context);
         glassView = new FrostedGlassView(context);
         root.addView(glassView, new FrameLayout.LayoutParams(
@@ -107,11 +174,6 @@ final class GlassOverlayController {
                 | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                 | WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
 
-        if (keepScreenOn) {
-            flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
-            flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
-        }
-
         layoutParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -120,7 +182,64 @@ final class GlassOverlayController {
                 PixelFormat.TRANSLUCENT);
         layoutParams.gravity = Gravity.TOP | Gravity.START;
         layoutParams.setBlurBehindRadius(0);
-        layoutParams.alpha = 0.18f;
+        layoutParams.alpha = 0.20f;
+        applyKeepScreenFlags(layoutParams);
+    }
+
+    private void applyKeepScreenFlags(WindowManager.LayoutParams params) {
+        if (keepScreenOn) {
+            params.flags |= WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            params.flags |= WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        } else {
+            params.flags &= ~WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON;
+            params.flags &= ~WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON;
+        }
+    }
+
+    private void removeCurrentWindow() {
+        if (added && root != null && windowManager != null) {
+            try {
+                windowManager.removeView(root);
+            } catch (Exception ignored) {}
+        }
+        added = false;
+    }
+
+    private Display selectActiveDisplay() {
+        if (displayManager == null) return null;
+
+        Display defaultDisplay = displayManager.getDisplay(Display.DEFAULT_DISPLAY);
+        if (isVisibleState(defaultDisplay)) return defaultDisplay;
+
+        Display[] displays = displayManager.getDisplays();
+        for (Display display : displays) {
+            if (display.getState() == Display.STATE_ON) return display;
+        }
+        for (Display display : displays) {
+            if (isVisibleState(display)) return display;
+        }
+        return defaultDisplay != null ? defaultDisplay : (displays.length > 0 ? displays[0] : null);
+    }
+
+    private static boolean isVisibleState(Display display) {
+        if (display == null) return false;
+        int state = display.getState();
+        return state == Display.STATE_ON
+                || state == Display.STATE_DOZE
+                || state == Display.STATE_DOZE_SUSPEND;
+    }
+
+    @SuppressWarnings("deprecation")
+    private static String signatureOf(Display display) {
+        if (display == null) return "none";
+        Point size = new Point();
+        try {
+            display.getRealSize(size);
+        } catch (Exception ignored) {}
+        return display.getDisplayId()
+                + ":" + size.x + "x" + size.y
+                + ":r" + display.getRotation()
+                + ":s" + display.getState();
     }
 
     private static float clamp(float value) {
@@ -148,8 +267,8 @@ final class GlassOverlayController {
             super.onDraw(canvas);
             int h = Math.max(1, getHeight());
             int baseAlpha = realBlur
-                    ? Math.round(38f + 46f * level)
-                    : Math.round(70f + 80f * level);
+                    ? Math.round(42f + 50f * level)
+                    : Math.round(76f + 82f * level);
             int top = Color.argb(baseAlpha, 244, 249, 252);
             int bottom = Color.argb(Math.max(0, baseAlpha - 14), 224, 233, 239);
             paint.setShader(new LinearGradient(0f, 0f, 0f, h, top, bottom, Shader.TileMode.CLAMP));
