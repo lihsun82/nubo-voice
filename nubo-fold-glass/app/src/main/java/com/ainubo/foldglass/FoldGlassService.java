@@ -24,16 +24,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * NUBO Fold Glass v0.5 - OPPO Find N6 dual-panel lock.
+ * NUBO Fold Glass v0.6 - OPPO Find N6 seamless panel hand-off.
  *
- * Goal:
- *  - Fully closed: outer normal, inner allowed to turn off.
- *  - Any intermediate angle: BOTH physical built-in displays must remain active;
- *    outer gets the frost, inner stays visible.
- *  - Fully open: restore stock ColorOS behavior.
+ * CLOSED: outer normal, inner released.
+ * TRANSITION: outer + inner physical panels must both stay ON; outer is frosted.
+ * OPEN: inner normal, transition override released.
  *
- * v0.5 never trusts the name HALF_OPENED alone. A DeviceState is persisted only
- * after DisplayManager confirms that at least two built-in panels are actually ON.
+ * v0.6 verifies panel power with system-level dumpsys DisplayDeviceInfo instead
+ * of trusting app-visible DisplayManager entries. This fixes the ColorOS case
+ * where a physical panel is hidden from third-party apps during folding.
  */
 public class FoldGlassService extends Service implements SensorEventListener, DisplayManager.DisplayListener {
     public static final String ACTION_START_AUTO = "com.ainubo.foldglass.START_AUTO";
@@ -60,6 +59,10 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
     static final String KEY_BUILTIN_DISPLAY_COUNT = "builtin_display_count";
     static final String KEY_ACTIVE_BUILTIN_COUNT = "active_builtin_count";
     static final String KEY_DISPLAY_SUMMARY = "display_summary";
+    static final String KEY_PHYSICAL_PANEL_COUNT = "physical_panel_count";
+    static final String KEY_PHYSICAL_ACTIVE_COUNT = "physical_active_count";
+    static final String KEY_PHYSICAL_PANEL_SUMMARY = "physical_panel_summary";
+    static final String KEY_PHYSICAL_PANEL_BACKEND = "physical_panel_backend";
     static final String KEY_CLOSED_STATE_ID = "closed_state_id";
     static final String KEY_OPEN_STATE_ID = "open_state_id";
     static final String KEY_VERIFIED_DUAL_STATE_ID = "verified_dual_state_id";
@@ -71,12 +74,14 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
     private static final String CHANNEL_ID = "nubo_fold_glass";
     private static final int NOTIFICATION_ID = 6106;
 
-    private static final float CLOSED_ENDPOINT_MAX = 2.0f;
-    private static final float OPEN_ENDPOINT_MIN = 178.0f;
-    private static final float CALIBRATION_MIN_ANGLE = 12f;
-    private static final float CALIBRATION_MAX_ANGLE = 168f;
-    private static final float MIN_TRANSITION_GLASS = 0.08f;
-    private static final long REASSERT_COOLDOWN_MS = 420L;
+    // Do not release the overlap until the mechanism is effectively at an endpoint.
+    private static final float CLOSED_ENDPOINT_MAX = 1.0f;
+    private static final float OPEN_ENDPOINT_MIN = 179.0f;
+    private static final float CALIBRATION_MIN_ANGLE = 8f;
+    private static final float CALIBRATION_MAX_ANGLE = 172f;
+    private static final float MIN_TRANSITION_GLASS = 0.10f;
+    private static final long REASSERT_COOLDOWN_MS = 260L;
+    private static final long PANEL_WATCHDOG_MS = 620L;
 
     private SensorManager sensorManager;
     private Sensor hingeSensor;
@@ -157,6 +162,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
             manualMode = true;
             transitionActive = false;
             calibrationAttempted = false;
+            mainHandler.removeCallbacks(panelWatchdogRunnable);
             resetForcedStateAsync("手動預覽");
             float level = clamp(intent.getFloatExtra(EXTRA_LEVEL, 0f));
             overlay.setKeepScreenOn(level >= 0.015f);
@@ -180,7 +186,8 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                     .putBoolean(KEY_DUAL_VERIFIED, false)
                     .putInt(KEY_VERIFIED_DUAL_STATE_ID, -1)
                     .putString(KEY_VERIFIED_DUAL_STATE_NAME, "")
-                    .putString(KEY_CALIBRATION_STATUS, "已清除舊結果；請保持手機半折，v0.5 會重新搜尋真正雙螢幕 state")
+                    .putString(KEY_CALIBRATION_STATUS,
+                            "v0.6 已清除舊結果；保持半折，改用系統層 physical panel 掃描")
                     .apply();
             if (isCalibrationAngle(lastAngle)) startCalibrationIfNeeded();
             return START_STICKY;
@@ -190,6 +197,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         calibrationAttempted = false;
         prefs.edit().putBoolean(KEY_MANUAL, false).apply();
         probeDeviceStateAsync();
+        if (isCalibrationAngle(lastAngle) && verifiedDualStateId < 0) startCalibrationIfNeeded();
         return START_STICKY;
     }
 
@@ -214,6 +222,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         transitionActive = false;
         calibrationAttempted = false;
         reassertFailures = 0;
+        mainHandler.removeCallbacks(panelWatchdogRunnable);
         updateGlobalAwake(false);
         overlay.setKeepScreenOn(false);
         overlay.hide();
@@ -222,13 +231,14 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         captureEndpointStateAsync(true);
 
         mainHandler.removeCallbacks(captureCoverRunnable);
-        mainHandler.postDelayed(captureCoverRunnable, 240);
+        mainHandler.postDelayed(captureCoverRunnable, 220);
     }
 
     private void enterOpenEndpoint() {
         transitionActive = false;
         calibrationAttempted = false;
         reassertFailures = 0;
+        mainHandler.removeCallbacks(panelWatchdogRunnable);
         updateGlobalAwake(false);
         overlay.setKeepScreenOn(false);
         overlay.hide();
@@ -239,6 +249,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
     }
 
     private void enterTransition(float angle) {
+        boolean wasTransition = transitionActive;
         transitionActive = true;
         updateGlobalAwake(true);
 
@@ -247,6 +258,11 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         float level = Math.max(MIN_TRANSITION_GLASS, AngleMapper.toGlassLevel(angle));
         prefs.edit().putFloat(KEY_LAST_LEVEL, level).apply();
         overlay.showLevel(level);
+
+        if (!wasTransition) {
+            mainHandler.removeCallbacks(panelWatchdogRunnable);
+            mainHandler.postDelayed(panelWatchdogRunnable, 120);
+        }
 
         if (verifiedDualStateId >= 0) {
             ensureVerifiedDualStateAsync(false);
@@ -269,8 +285,10 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
     private void captureEndpointStateAsync(boolean closed) {
         if (deviceStateExecutor == null) return;
         deviceStateExecutor.execute(() -> {
-            sleepQuietly(260);
+            sleepQuietly(240);
             int state = deviceState.getCurrentState();
+            DeviceStateController.PanelSnapshot snapshot = deviceState.getPhysicalPanelSnapshot();
+            writePhysicalSnapshot(snapshot);
             mainHandler.post(() -> {
                 if (state < 0) return;
                 if (closed && lastAngle <= CLOSED_ENDPOINT_MAX) {
@@ -292,6 +310,8 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
             String states = deviceState.describeStates();
             boolean shizukuRunning = deviceState.isShizukuRunning();
             boolean shizukuGranted = deviceState.hasShizukuPermission();
+            DeviceStateController.PanelSnapshot snapshot = deviceState.getPhysicalPanelSnapshot();
+            writePhysicalSnapshot(snapshot);
 
             mainHandler.post(() -> prefs.edit()
                     .putBoolean(KEY_DEVICE_STATE_AVAILABLE, available)
@@ -299,13 +319,18 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                     .putString(KEY_SHIZUKU_STATUS,
                             shizukuGranted ? "Shizuku 已授權 ✓"
                                     : shizukuRunning ? "Shizuku 已啟動，尚未授權"
-                                    : "Shizuku 未啟動；若 OPPO 阻擋 state 控制則需要它")
+                                    : "Shizuku 未啟動；Find N6 系統層控制建議啟用")
                     .putString(KEY_DEVICE_STATE_STATUS,
                             "支援 states：" + states)
                     .apply());
         });
     }
 
+    /**
+     * One-time Find N6 calibration. The phone must be physically half folded.
+     * Every non-endpoint state is tested. A state wins only when dumpsys display
+     * proves that at least two physical INTERNAL DisplayDeviceInfo entries are ON.
+     */
     private void startCalibrationIfNeeded() {
         if (calibrationRunning || calibrationAttempted || manualMode || !transitionActive) return;
         if (!isCalibrationAngle(lastAngle) || deviceStateExecutor == null) return;
@@ -313,7 +338,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         calibrationAttempted = true;
         calibrationRunning = true;
         prefs.edit().putString(KEY_CALIBRATION_STATUS,
-                "正在搜尋 Find N6 真正雙螢幕 state…請先保持半折").apply();
+                "v0.6 正在掃描 OPPO states；請保持半折不要移動…").apply();
 
         deviceStateExecutor.execute(() -> {
             List<DeviceStateController.StateInfo> candidates =
@@ -321,33 +346,41 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
             StringBuilder attempts = new StringBuilder();
             DeviceStateController.StateInfo winner = null;
             DeviceStateController.CommandResult winnerResult = null;
-            int winnerActive = 0;
+            DeviceStateController.PanelSnapshot winnerSnapshot = null;
 
             for (DeviceStateController.StateInfo candidate : candidates) {
                 if (!transitionActive || manualMode) break;
+
                 DeviceStateController.CommandResult result = deviceState.requestState(candidate.id);
                 if (attempts.length() > 0) attempts.append(" ; ");
                 attempts.append(candidate.id).append(":").append(candidate.name)
-                        .append(result.ok ? "=cmdOK" : "=cmdFAIL");
+                        .append(result.ok ? "=OK" : "=FAIL");
                 if (!result.ok) continue;
 
-                sleepQuietly(220);
-                int active = overlay.getActiveBuiltInDisplayCount();
-                attempts.append("/active=").append(active);
-                if (active >= 2) {
+                // Allow ColorOS display policy and HWC to settle, then inspect
+                // the actual physical panel devices rather than app visibility.
+                sleepQuietly(260);
+                DeviceStateController.PanelSnapshot snapshot = deviceState.getPhysicalPanelSnapshot();
+                writePhysicalSnapshot(snapshot);
+                attempts.append("/phys=")
+                        .append(snapshot.activeInternalPanels)
+                        .append("/").append(snapshot.totalInternalPanels)
+                        .append("@").append(snapshot.backend);
+
+                if (snapshot.bothOn()) {
                     winner = candidate;
                     winnerResult = result;
-                    winnerActive = active;
+                    winnerSnapshot = snapshot;
                     break;
                 }
 
                 deviceState.resetState();
-                sleepQuietly(110);
+                sleepQuietly(130);
             }
 
             final DeviceStateController.StateInfo found = winner;
             final DeviceStateController.CommandResult foundResult = winnerResult;
-            final int activeCount = winnerActive;
+            final DeviceStateController.PanelSnapshot foundSnapshot = winnerSnapshot;
             final String attemptText = attempts.toString();
 
             if (found == null || !transitionActive || manualMode) {
@@ -358,7 +391,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                 calibrationRunning = false;
                 stateCommandInFlight = false;
 
-                if (found != null && transitionActive && !manualMode) {
+                if (found != null && foundSnapshot != null && transitionActive && !manualMode) {
                     verifiedDualStateId = found.id;
                     verifiedDualStateName = found.name;
                     transitionStateForced = true;
@@ -369,23 +402,27 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                             .putInt(KEY_VERIFIED_DUAL_STATE_ID, found.id)
                             .putString(KEY_VERIFIED_DUAL_STATE_NAME, found.name)
                             .putString(KEY_CALIBRATION_STATUS,
-                                    "雙螢幕驗證成功 ✓ state=" + found.id + ":" + found.name
-                                            + " · active=" + activeCount
+                                    "實體雙面板驗證成功 ✓ state=" + found.id + ":" + found.name
+                                            + " · " + foundSnapshot.summary
                                             + " · backend=" + (foundResult == null ? "?" : foundResult.backend))
-                            .putString(KEY_DEVICE_STATE_STATUS, "校準紀錄：" + attemptText)
+                            .putString(KEY_DEVICE_STATE_STATUS, "v0.6 掃描：" + attemptText)
                             .apply();
+
+                    // Re-assert once after binding the overlay because some OEM
+                    // policies perform a second fold display decision shortly after.
                     overlay.forceRebind();
                     overlay.setCoverDisplayHint(coverDisplayId);
                     overlay.setKeepScreenOn(true);
                     overlay.showLevel(prefs.getFloat(KEY_LAST_LEVEL, MIN_TRANSITION_GLASS));
+                    mainHandler.postDelayed(() -> ensureVerifiedDualStateAsync(true), 150);
                 } else {
                     transitionStateForced = false;
                     prefs.edit()
                             .putBoolean(KEY_DUAL_VERIFIED, false)
                             .putBoolean(KEY_FORCED_TRANSITION, false)
                             .putString(KEY_CALIBRATION_STATUS,
-                                    "沒有找到能讓兩塊面板同時 ON 的 state。若命令被 OPPO 擋住，請啟動並授權 Shizuku 後重新校準。")
-                            .putString(KEY_DEVICE_STATE_STATUS, "校準紀錄：" + attemptText)
+                                    "尚未找到 physical INTERNAL ON=2 的 OPPO state。請確認 Shizuku 已授權後在半折時按重新校準。")
+                            .putString(KEY_DEVICE_STATE_STATUS, "v0.6 掃描：" + attemptText)
                             .apply();
                 }
                 updateDisplayDiagnostics();
@@ -394,12 +431,15 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         });
     }
 
+    /**
+     * Keeps the verified overlap state alive. Before issuing a state command we
+     * probe physical panels; if both are already ON we leave the system alone.
+     * If ColorOS turns the outer panel OFF, the same verified state is pulsed
+     * twice to win the hand-off race, then verified again with dumpsys display.
+     */
     private void ensureVerifiedDualStateAsync(boolean forceReassert) {
         if (verifiedDualStateId < 0 || manualMode || !transitionActive) return;
         if (calibrationRunning || stateCommandInFlight || deviceStateExecutor == null) return;
-
-        int active = overlay.getActiveBuiltInDisplayCount();
-        if (!forceReassert && transitionStateForced && active >= 2) return;
 
         long now = SystemClock.elapsedRealtime();
         if (now - lastReassertAt < REASSERT_COOLDOWN_MS) return;
@@ -408,14 +448,37 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         final int target = verifiedDualStateId;
 
         deviceStateExecutor.execute(() -> {
-            DeviceStateController.CommandResult result = deviceState.requestState(target);
+            DeviceStateController.PanelSnapshot before = deviceState.getPhysicalPanelSnapshot();
+            writePhysicalSnapshot(before);
+
+            if (!forceReassert && transitionStateForced && before.bothOn()) {
+                mainHandler.post(() -> {
+                    stateCommandInFlight = false;
+                    prefs.edit()
+                            .putBoolean(KEY_FORCED_TRANSITION, true)
+                            .putString(KEY_DEVICE_STATE_STATUS,
+                                    "折疊銜接維持中 ✓ " + before.summary)
+                            .apply();
+                });
+                return;
+            }
+
+            DeviceStateController.CommandResult first = deviceState.requestState(target);
+            sleepQuietly(90);
+            DeviceStateController.CommandResult second = first;
+            if (transitionActive && !manualMode) {
+                second = deviceState.requestState(target);
+            }
             sleepQuietly(170);
-            int activeCount = overlay.getActiveBuiltInDisplayCount();
+
+            DeviceStateController.PanelSnapshot after = deviceState.getPhysicalPanelSnapshot();
+            writePhysicalSnapshot(after);
             int current = deviceState.getCurrentState();
+            final DeviceStateController.CommandResult finalResult = second.ok ? second : first;
 
             mainHandler.post(() -> {
                 stateCommandInFlight = false;
-                boolean success = result.ok && activeCount >= 2 && transitionActive && !manualMode;
+                boolean success = finalResult.ok && after.bothOn() && transitionActive && !manualMode;
                 transitionStateForced = success;
 
                 if (success) {
@@ -425,9 +488,9 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                             .putBoolean(KEY_DUAL_VERIFIED, true)
                             .putInt(KEY_CURRENT_DEVICE_STATE, current)
                             .putString(KEY_DEVICE_STATE_STATUS,
-                                    "雙螢幕鎖定 ON ✓ state=" + target
-                                            + " · active=" + activeCount
-                                            + " · backend=" + result.backend)
+                                    "折疊銜接鎖定 ON ✓ state=" + target
+                                            + " · " + after.summary
+                                            + " · backend=" + finalResult.backend)
                             .apply();
                     overlay.forceRebind();
                     overlay.setCoverDisplayHint(coverDisplayId);
@@ -439,12 +502,12 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                             .putBoolean(KEY_FORCED_TRANSITION, false)
                             .putInt(KEY_CURRENT_DEVICE_STATE, current)
                             .putString(KEY_DEVICE_STATE_STATUS,
-                                    "雙螢幕重新鎖定失敗 #" + reassertFailures
-                                            + " · active=" + activeCount
-                                            + " · " + result.output)
+                                    "ColorOS 面板銜接重套失敗 #" + reassertFailures
+                                            + " · " + after.summary
+                                            + " · " + finalResult.output)
                             .apply();
 
-                    if (reassertFailures >= 3 && transitionActive) {
+                    if (reassertFailures >= 4 && transitionActive) {
                         verifiedDualStateId = -1;
                         verifiedDualStateName = "";
                         transitionStateForced = false;
@@ -453,7 +516,8 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                                 .putBoolean(KEY_DUAL_VERIFIED, false)
                                 .putInt(KEY_VERIFIED_DUAL_STATE_ID, -1)
                                 .putString(KEY_VERIFIED_DUAL_STATE_NAME, "")
-                                .putString(KEY_CALIBRATION_STATUS, "舊雙螢幕 state 已失效，重新自動校準")
+                                .putString(KEY_CALIBRATION_STATUS,
+                                        "舊銜接 state 無法維持兩面 ON，v0.6 重新掃描 system states")
                                 .apply();
                         startCalibrationIfNeeded();
                     }
@@ -464,6 +528,18 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
             });
         });
     }
+
+    private final Runnable panelWatchdogRunnable = new Runnable() {
+        @Override public void run() {
+            if (!transitionActive || manualMode) return;
+            if (verifiedDualStateId >= 0) {
+                ensureVerifiedDualStateAsync(false);
+            } else if (!calibrationRunning) {
+                startCalibrationIfNeeded();
+            }
+            mainHandler.postDelayed(this, PANEL_WATCHDOG_MS);
+        }
+    };
 
     private void resetForcedStateAsync(String reason) {
         if (deviceStateExecutor == null) return;
@@ -479,8 +555,10 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         stateCommandInFlight = true;
         deviceStateExecutor.execute(() -> {
             DeviceStateController.CommandResult result = deviceState.resetState();
-            sleepQuietly(100);
+            sleepQuietly(110);
             int current = deviceState.getCurrentState();
+            DeviceStateController.PanelSnapshot snapshot = deviceState.getPhysicalPanelSnapshot();
+            writePhysicalSnapshot(snapshot);
             mainHandler.post(() -> {
                 stateCommandInFlight = false;
                 transitionStateForced = false;
@@ -489,7 +567,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                         .putInt(KEY_CURRENT_DEVICE_STATE, current)
                         .putString(KEY_DEVICE_STATE_STATUS,
                                 result.ok
-                                        ? reason + "：已解除雙螢幕鎖定，恢復 ColorOS"
+                                        ? reason + "：已解除銜接 state，恢復 ColorOS"
                                         : reason + "：解除 state 失敗 " + result.output)
                         .apply();
                 updateDisplayDiagnostics();
@@ -502,7 +580,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (pm == null) return;
         int flags = PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP;
-        screenWakeLock = pm.newWakeLock(flags, getPackageName() + ":FindN6DualPanelTransition");
+        screenWakeLock = pm.newWakeLock(flags, getPackageName() + ":FindN6PanelHandoff");
         screenWakeLock.setReferenceCounted(false);
     }
 
@@ -527,6 +605,16 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         if (prefs != null) prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, false).apply();
     }
 
+    private void writePhysicalSnapshot(DeviceStateController.PanelSnapshot snapshot) {
+        if (snapshot == null || prefs == null) return;
+        prefs.edit()
+                .putInt(KEY_PHYSICAL_PANEL_COUNT, snapshot.totalInternalPanels)
+                .putInt(KEY_PHYSICAL_ACTIVE_COUNT, snapshot.activeInternalPanels)
+                .putString(KEY_PHYSICAL_PANEL_SUMMARY, snapshot.summary)
+                .putString(KEY_PHYSICAL_PANEL_BACKEND, snapshot.backend)
+                .apply();
+    }
+
     private void updateDisplayDiagnostics() {
         if (overlay == null || prefs == null) return;
         int resolvedCover = coverDisplayId >= 0 ? coverDisplayId : overlay.getResolvedCoverDisplayId();
@@ -546,7 +634,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
 
     private void scheduleDisplayRefresh() {
         mainHandler.removeCallbacks(displayRefreshRunnable);
-        mainHandler.postDelayed(displayRefreshRunnable, 55);
+        mainHandler.postDelayed(displayRefreshRunnable, 45);
     }
 
     private final Runnable displayRefreshRunnable = () -> {
@@ -555,12 +643,8 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         if (transitionActive && !manualMode) {
             overlay.setKeepScreenOn(true);
             overlay.showLevel(prefs.getFloat(KEY_LAST_LEVEL, MIN_TRANSITION_GLASS));
-            int active = overlay.getActiveBuiltInDisplayCount();
-            if (verifiedDualStateId >= 0 && active < 2) {
-                ensureVerifiedDualStateAsync(true);
-            } else if (verifiedDualStateId < 0 && !calibrationRunning) {
-                startCalibrationIfNeeded();
-            }
+            if (verifiedDualStateId >= 0) ensureVerifiedDualStateAsync(false);
+            else if (!calibrationRunning) startCalibrationIfNeeded();
         }
         updateDisplayDiagnostics();
     };
@@ -570,6 +654,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
         if (displayManager != null) displayManager.unregisterDisplayListener(this);
         mainHandler.removeCallbacks(displayRefreshRunnable);
         mainHandler.removeCallbacks(captureCoverRunnable);
+        mainHandler.removeCallbacks(panelWatchdogRunnable);
 
         transitionActive = false;
         manualMode = false;
@@ -604,7 +689,7 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                 CHANNEL_ID,
                 "NUBO Fold Glass",
                 NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Find N6 半折期間內外雙螢幕鎖定與外螢幕霧化");
+        channel.setDescription("Find N6 開合銜接：內外面板重疊亮屏與正面霧化");
         nm.createNotificationChannel(channel);
     }
 
@@ -621,8 +706,8 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_view)
-                .setContentTitle("NUBO Fold Glass v0.5")
-                .setContentText("半折：內外螢幕都亮；完全合起才關內螢幕")
+                .setContentTitle("NUBO Fold Glass v0.6")
+                .setContentText("開合銜接：外螢幕＋內螢幕重疊亮屏，正面霧化")
                 .setContentIntent(openPi)
                 .addAction(new Notification.Action.Builder(
                         null, "停止", stopPi).build())
