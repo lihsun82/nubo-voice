@@ -228,6 +228,9 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                 if (candidate != null) {
                     transitionStateId = candidate.id;
                     transitionStateName = candidate.name;
+                } else {
+                    transitionStateId = -1;
+                    transitionStateName = "";
                 }
                 prefs.edit()
                         .putBoolean(KEY_DEVICE_STATE_AVAILABLE, available)
@@ -249,9 +252,9 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
     }
 
     /**
-     * Serializes request/reset commands. If the hinge reaches an endpoint while
-     * a request is in flight, the desired flag changes and the opposite command
-     * is dispatched immediately after the current one completes.
+     * Serializes request/reset commands. If OPPO rejects the first transition
+     * request, fail closed: stop forcing device state and wait for Shizuku or a
+     * fresh service start instead of hammering the system command repeatedly.
      */
     private void dispatchStateCommand() {
         if (stateCommandInFlight || deviceStateExecutor == null) return;
@@ -275,20 +278,29 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
 
             mainHandler.post(() -> {
                 stateCommandInFlight = false;
-                if (result.ok) transitionStateForced = request;
-                else if (!request) transitionStateForced = false;
+                if (result.ok) {
+                    transitionStateForced = request;
+                } else if (!request) {
+                    transitionStateForced = false;
+                } else {
+                    // Prevent repeated failed requests during every sensor event.
+                    transitionStateId = -1;
+                    transitionStateName = "";
+                }
 
                 prefs.edit()
                         .putBoolean(KEY_FORCED_TRANSITION, transitionStateForced)
                         .putBoolean(KEY_DEVICE_STATE_AVAILABLE, result.ok || prefs.getBoolean(KEY_DEVICE_STATE_AVAILABLE, false))
                         .putInt(KEY_CURRENT_DEVICE_STATE, current)
+                        .putInt(KEY_TRANSITION_STATE_ID, transitionStateId)
+                        .putString(KEY_TRANSITION_STATE_NAME, transitionStateName)
                         .putString(KEY_DEVICE_STATE_STATUS,
                                 result.ok
                                         ? (request
                                             ? "雙螢幕過渡 state=" + target + " 已啟用 · backend=" + result.backend
                                             : "已解除過渡 state，恢復 ColorOS · backend=" + result.backend)
                                         : (request
-                                            ? "雙螢幕過渡 state 啟用失敗：" + result.output
+                                            ? "雙螢幕過渡 state 啟用失敗，已停止重試：" + result.output
                                             : "解除過渡 state 失敗：" + result.output))
                         .apply();
 
@@ -303,7 +315,9 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
                     updateDisplayDiagnostics();
                 }, 100);
 
-                if (wantTransitionState != transitionStateForced) dispatchStateCommand();
+                if (result.ok && wantTransitionState != transitionStateForced) {
+                    dispatchStateCommand();
+                }
             });
         });
     }
@@ -340,8 +354,9 @@ public class FoldGlassService extends Service implements SensorEventListener, Di
 
     private void updateDisplayDiagnostics() {
         if (overlay == null || prefs == null) return;
+        int resolvedCover = coverDisplayId >= 0 ? coverDisplayId : overlay.getResolvedCoverDisplayId();
         prefs.edit()
-                .putInt(KEY_COVER_DISPLAY_ID, coverDisplayId >= 0 ? coverDisplayId : overlay.getResolvedCoverDisplayId())
+                .putInt(KEY_COVER_DISPLAY_ID, resolvedCover)
                 .putInt(KEY_INNER_DISPLAY_ID, overlay.getResolvedInnerDisplayId())
                 .putInt(KEY_DISPLAY_COUNT, overlay.getVisibleDisplayCount())
                 .putString(KEY_DISPLAY_SUMMARY, overlay.getDisplaySummary())
