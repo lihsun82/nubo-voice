@@ -13,6 +13,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.IBinder;
+import android.os.PowerManager;
 
 public class FoldGlassService extends Service implements SensorEventListener {
     public static final String ACTION_START_AUTO = "com.ainubo.foldglass.START_AUTO";
@@ -27,15 +28,19 @@ public class FoldGlassService extends Service implements SensorEventListener {
     static final String KEY_MANUAL = "manual";
     static final String KEY_SENSOR = "sensor";
     static final String KEY_BLUR_AVAILABLE = "blur_available";
+    static final String KEY_KEEP_SCREEN_ON = "keep_screen_on";
 
     private static final String CHANNEL_ID = "nubo_fold_glass";
     private static final int NOTIFICATION_ID = 6106;
+    private static final float AWAKE_LEVEL_THRESHOLD = 0.015f;
 
     private SensorManager sensorManager;
     private Sensor hingeSensor;
     private GlassOverlayController overlay;
     private SharedPreferences prefs;
+    private PowerManager.WakeLock screenWakeLock;
     private boolean manualMode = false;
+    private boolean keepingScreenOn = false;
 
     @Override
     public void onCreate() {
@@ -44,9 +49,11 @@ public class FoldGlassService extends Service implements SensorEventListener {
         overlay = new GlassOverlayController(this);
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         hingeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE);
+        createScreenWakeLock();
 
         prefs.edit()
                 .putBoolean(KEY_RUNNING, true)
+                .putBoolean(KEY_KEEP_SCREEN_ON, false)
                 .putBoolean(KEY_BLUR_AVAILABLE, overlay.isBlurAvailable())
                 .putString(KEY_SENSOR, hingeSensor == null
                         ? "未偵測到標準 TYPE_HINGE_ANGLE"
@@ -70,6 +77,7 @@ public class FoldGlassService extends Service implements SensorEventListener {
         if (ACTION_PREVIEW.equals(action)) {
             manualMode = true;
             float level = Math.max(0f, Math.min(1f, intent.getFloatExtra(EXTRA_LEVEL, 0f)));
+            updateScreenAwakeState(level);
             overlay.showLevel(level);
             prefs.edit()
                     .putBoolean(KEY_MANUAL, true)
@@ -81,6 +89,7 @@ public class FoldGlassService extends Service implements SensorEventListener {
         manualMode = false;
         prefs.edit().putBoolean(KEY_MANUAL, false).apply();
         if (hingeSensor == null) {
+            updateScreenAwakeState(0f);
             overlay.hide();
             prefs.edit().putFloat(KEY_LAST_LEVEL, 0f).apply();
         }
@@ -100,6 +109,7 @@ public class FoldGlassService extends Service implements SensorEventListener {
         float level = AngleMapper.toGlassLevel(angle);
         prefs.edit().putFloat(KEY_LAST_ANGLE, angle).apply();
         if (!manualMode) {
+            updateScreenAwakeState(level);
             overlay.showLevel(level);
             prefs.edit().putFloat(KEY_LAST_LEVEL, level).apply();
         }
@@ -108,14 +118,60 @@ public class FoldGlassService extends Service implements SensorEventListener {
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {}
 
+    @SuppressWarnings("deprecation")
+    private void createScreenWakeLock() {
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm == null) return;
+        int flags = PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP;
+        screenWakeLock = pm.newWakeLock(flags, getPackageName() + ":HalfFoldCoverScreen");
+        screenWakeLock.setReferenceCounted(false);
+    }
+
+    private void updateScreenAwakeState(float level) {
+        boolean shouldKeepAwake = level >= AWAKE_LEVEL_THRESHOLD;
+        overlay.setKeepScreenOn(shouldKeepAwake);
+
+        if (shouldKeepAwake == keepingScreenOn) return;
+        keepingScreenOn = shouldKeepAwake;
+
+        if (screenWakeLock != null) {
+            if (shouldKeepAwake) {
+                if (!screenWakeLock.isHeld()) {
+                    try {
+                        screenWakeLock.acquire();
+                    } catch (Exception ignored) {}
+                }
+            } else if (screenWakeLock.isHeld()) {
+                try {
+                    screenWakeLock.release();
+                } catch (Exception ignored) {}
+            }
+        }
+
+        prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, shouldKeepAwake).apply();
+    }
+
+    private void releaseScreenWakeLock() {
+        keepingScreenOn = false;
+        if (overlay != null) overlay.setKeepScreenOn(false);
+        if (screenWakeLock != null && screenWakeLock.isHeld()) {
+            try {
+                screenWakeLock.release();
+            } catch (Exception ignored) {}
+        }
+        if (prefs != null) prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, false).apply();
+    }
+
     @Override
     public void onDestroy() {
         if (sensorManager != null) sensorManager.unregisterListener(this);
+        releaseScreenWakeLock();
         if (overlay != null) overlay.hide();
         if (prefs != null) {
             prefs.edit()
                     .putBoolean(KEY_RUNNING, false)
                     .putBoolean(KEY_MANUAL, false)
+                    .putBoolean(KEY_KEEP_SCREEN_ON, false)
                     .putFloat(KEY_LAST_LEVEL, 0f)
                     .apply();
         }
@@ -134,7 +190,7 @@ public class FoldGlassService extends Service implements SensorEventListener {
                 CHANNEL_ID,
                 "NUBO Fold Glass",
                 NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("維持鉸鏈角度偵測與半折霧化效果");
+        channel.setDescription("維持鉸鏈角度偵測、半折霧化與半折亮屏效果");
         nm.createNotificationChannel(channel);
     }
 
@@ -151,8 +207,8 @@ public class FoldGlassService extends Service implements SensorEventListener {
 
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_view)
-                .setContentTitle("NUBO Fold Glass 運作中")
-                .setContentText("半折時自動霧化；完全展開或闔上恢復清晰")
+                .setContentTitle("NUBO Fold Glass v0.2 運作中")
+                .setContentText("半折自動霧化並保持螢幕亮起；展開或闔上後釋放")
                 .setContentIntent(openPi)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(
