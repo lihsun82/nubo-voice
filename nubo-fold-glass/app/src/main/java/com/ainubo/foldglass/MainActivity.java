@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
     private final Runnable refresher = new Runnable() {
         @Override public void run() {
             refreshStatus();
-            handler.postDelayed(this, 450);
+            handler.postDelayed(this, 400);
         }
     };
 
@@ -68,18 +68,18 @@ public class MainActivity extends Activity {
         root.setPadding(dp(22), dp(24), dp(22), dp(40));
         scroll.addView(root);
 
-        root.addView(label("NUBO LABS / FIND N6 PANEL HANDOFF", 12, Color.rgb(156,165,176)));
+        root.addView(label("NUBO LABS / FIND N6 DIRECT POWER HANDOFF", 12, Color.rgb(156,165,176)));
         TextView title = label("Fold Glass", 34, Color.WHITE);
         title.setPadding(0, dp(6), 0, dp(2));
         root.addView(title);
-        TextView subtitle = label("OPPO Find N6 開合銜接修正版 · physical panel verify · v0.6", 15, Color.rgb(216,233,242));
+        TextView subtitle = label("OPPO Find N6 開合視覺銜接 · DisplayManagerService direct ON · v0.7", 15, Color.rgb(216,233,242));
         subtitle.setPadding(0, 0, 0, dp(20));
         root.addView(subtitle);
 
         permissionStatus = label("覆蓋權限：檢查中", 15, Color.WHITE);
         sensorStatus = label("鉸鏈感測器：檢查中", 15, Color.WHITE);
         blurStatus = label("系統 Blur Behind：檢查中", 15, Color.WHITE);
-        deviceStateStatus = label("折疊銜接 state：檢查中", 14, Color.rgb(216,233,242));
+        deviceStateStatus = label("系統控制：檢查中", 14, Color.rgb(216,233,242));
         displayStatus = label("螢幕面板：檢查中", 14, Color.rgb(216,233,242));
         liveStatus = label("服務：尚未啟動", 15, Color.WHITE);
         root.addView(permissionStatus);
@@ -93,15 +93,15 @@ public class MainActivity extends Activity {
         permission.setOnClickListener(v -> openOverlayPermission());
         root.addView(permission, buttonLp());
 
-        Button start = button("② 啟動：開合途中內外都亮＋正面霧化");
-        start.setOnClickListener(v -> startAuto());
-        root.addView(start, buttonLp());
-
-        Button shizuku = button("③ 授權 Shizuku（v0.6 建議必開）");
+        Button shizuku = button("② 授權 Shizuku（v0.7 必須）");
         shizuku.setOnClickListener(v -> requestShizuku());
         root.addView(shizuku, buttonLp());
 
-        Button recalibrate = button("④ 半折校準：搜尋 physical ON 2/2 state");
+        Button start = button("③ 啟動：開合途中外＋內螢幕直接維持 ON＋正面霧化");
+        start.setOnClickListener(v -> startAuto());
+        root.addView(start, buttonLp());
+
+        Button recalibrate = button("④ 進階：半折掃描 concurrent state（可選）");
         recalibrate.setOnClickListener(v -> recalibrate());
         root.addView(recalibrate, buttonLp());
 
@@ -109,22 +109,22 @@ public class MainActivity extends Activity {
         stop.setOnClickListener(v -> stopGlass());
         root.addView(stop, buttonLp());
 
-        TextView flow = label("v0.6 折疊銜接模式", 20, Color.WHITE);
+        TextView flow = label("v0.7 正確銜接模式", 20, Color.WHITE);
         flow.setPadding(0, dp(22), 0, dp(4));
         root.addView(flow);
         root.addView(label(
-                "完全合起 ≈0°：外螢幕正常，內側大螢幕才允許關閉。\n"
-                        + "只要開始打開：外螢幕＋內側大螢幕進入重疊亮屏期。\n"
-                        + "開合途中：正面外螢幕套霧化，裡面大螢幕保持正常顯示。\n"
-                        + "約 90°：正面霧化最強，但兩塊實體面板仍需 ON。\n"
-                        + "完全展開 ≈180°：解除銜接 state，回到 ColorOS 正常內螢幕。\n"
-                        + "反方向合起完全相同；真正合到底才結束重疊亮屏。",
+                "完全合起 ≈0°：外螢幕正常，內螢幕關閉。\n"
+                        + "一離開 0°：v0.7 直接對外、內兩個 logical display 要求 STATE_ON。\n"
+                        + "開合途中：兩面維持重疊亮屏，正面外螢幕同步套霧化。\n"
+                        + "約 90°：正面霧化最強；外螢幕不能先黑掉，內螢幕也不能中斷。\n"
+                        + "完全展開 ≈180°：reset display-power override，回到 ColorOS 正常內螢幕。\n"
+                        + "反方向合起完全相同；真正到 0° 才結束重疊亮屏。",
                 14, Color.rgb(216,233,242)));
 
         TextView test = label("手動霧化測試", 20, Color.WHITE);
         test.setPadding(0, dp(24), 0, dp(4));
         root.addView(test);
-        root.addView(label("滑桿只測霧化外觀，不會切換 OPPO Device State。", 14, Color.rgb(156,165,176)));
+        root.addView(label("滑桿只測霧化外觀，不會直接控制螢幕電源。", 14, Color.rgb(156,165,176)));
 
         manualLabel = label("霧化強度 0%", 14, Color.rgb(216,233,242));
         manualLabel.setPadding(0, dp(10), 0, 0);
@@ -149,10 +149,10 @@ public class MainActivity extends Activity {
         root.addView(auto, buttonLp());
 
         TextView note = label(
-                "v0.6 第一次測試：先完整合起 → 啟動 Shizuku → 按③授權 → 按② → 慢慢打開並停在約 90° → 按④。"
-                        + "這版不再用 App 的 DisplayManager 判斷成功，而會透過系統 dumpsys display 讀取實體 DisplayDeviceInfo。"
-                        + "只有下方出現『physical INTERNAL ON 2/2』才會把該 OPPO state 記成真正銜接 state。"
-                        + "找到後，開合途中 watchdog 會持續檢查；ColorOS 若把正面面板切 OFF，會自動重套已驗證 state。",
+                "v0.7 請先啟動 Shizuku 並按②授權，再按③。"
+                        + "這版不再把 WakeLock 或 HALF_FOLDED 當成外螢幕亮屏控制，而是透過 Shizuku Binder 呼叫 Android DisplayManagerService 的 requestDisplayPower(STATE_ON)。"
+                        + "開合途中會短週期重送外＋內兩塊 logical display 的 ON 要求；0°/180° 才 reset。"
+                        + "④只是在 direct power 之外額外尋找 OPPO concurrent state，不是啟動主功能的必要步驟。",
                 13, Color.rgb(156,165,176));
         note.setPadding(0, dp(18), 0, 0);
         root.addView(note);
@@ -196,11 +196,11 @@ public class MainActivity extends Activity {
     private void requestShizuku() {
         try {
             if (!Shizuku.pingBinder()) {
-                deviceStateStatus.setText("Shizuku：尚未啟動。請先在 Shizuku App 以無線偵錯啟動服務。");
+                deviceStateStatus.setText("Shizuku：尚未啟動。請先在 Shizuku App 用無線偵錯啟動服務。");
                 return;
             }
             if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                deviceStateStatus.setText("Shizuku：已授權 ✓。請把手機停在半折後按④做 physical panel 校準。");
+                deviceStateStatus.setText("Shizuku：已授權 ✓。現在直接按③啟動 v0.7 銜接模式。");
                 return;
             }
             Shizuku.requestPermission(6107);
@@ -227,18 +227,15 @@ public class MainActivity extends Activity {
         int dualState = prefs.getInt(FoldGlassService.KEY_VERIFIED_DUAL_STATE_ID, -1);
         String dualName = prefs.getString(FoldGlassService.KEY_VERIFIED_DUAL_STATE_NAME, "");
         int currentState = prefs.getInt(FoldGlassService.KEY_CURRENT_DEVICE_STATE, -1);
-        int closedState = prefs.getInt(FoldGlassService.KEY_CLOSED_STATE_ID, -1);
-        int openState = prefs.getInt(FoldGlassService.KEY_OPEN_STATE_ID, -1);
         String ds = prefs.getString(FoldGlassService.KEY_DEVICE_STATE_STATUS, "檢查中");
         String shizuku = prefs.getString(FoldGlassService.KEY_SHIZUKU_STATUS, "");
-        String calibration = prefs.getString(FoldGlassService.KEY_CALIBRATION_STATUS, "尚未做 v0.6 physical panel 校準");
-        deviceStateStatus.setText("折疊銜接 state："
-                + (verified ? "已驗證 ✓" : "尚未驗證")
-                + " · state=" + (dualState >= 0 ? dualState + ":" + dualName : "--")
+        String calibration = prefs.getString(FoldGlassService.KEY_CALIBRATION_STATUS,
+                "進階 concurrent state 尚未校準（非必要）");
+        deviceStateStatus.setText("系統控制："
+                + shizuku
+                + "\nDeviceState：" + (deviceControl ? "可讀取" : "受限制")
+                + " · concurrent=" + (verified ? "已驗證 " + dualState + ":" + dualName : "未使用/未驗證")
                 + " · current=" + (currentState >= 0 ? currentState : "--")
-                + " · closed/open=" + closedState + "/" + openState
-                + "\n" + (deviceControl ? "device_state 可讀取" : "device_state 受限制")
-                + " · " + shizuku
                 + "\n" + calibration
                 + "\n" + ds);
 
@@ -246,22 +243,34 @@ public class MainActivity extends Activity {
         int builtIn = prefs.getInt(FoldGlassService.KEY_BUILTIN_DISPLAY_COUNT, 0);
         int activeBuiltIn = prefs.getInt(FoldGlassService.KEY_ACTIVE_BUILTIN_COUNT, 0);
         int cover = prefs.getInt(FoldGlassService.KEY_COVER_DISPLAY_ID, -1);
-        int inner = prefs.getInt(FoldGlassService.KEY_INNER_DISPLAY_ID, -1);
+        int appInner = prefs.getInt(FoldGlassService.KEY_INNER_DISPLAY_ID, -1);
         String summary = prefs.getString(FoldGlassService.KEY_DISPLAY_SUMMARY, "--");
 
         int physicalCount = prefs.getInt(FoldGlassService.KEY_PHYSICAL_PANEL_COUNT, 0);
         int physicalActive = prefs.getInt(FoldGlassService.KEY_PHYSICAL_ACTIVE_COUNT, 0);
-        String physicalSummary = prefs.getString(FoldGlassService.KEY_PHYSICAL_PANEL_SUMMARY, "尚未取得系統層面板資料");
-        String physicalBackend = prefs.getString(FoldGlassService.KEY_PHYSICAL_PANEL_BACKEND, "--");
+        String physicalSummary = prefs.getString(FoldGlassService.KEY_PHYSICAL_PANEL_SUMMARY,
+                "尚未取得系統層面板資料");
 
-        displayStatus.setText("App 層內建螢幕：active " + activeBuiltIn + "/" + builtIn
-                + " · 可見=" + visible
-                + " · 外=" + (cover >= 0 ? cover : "--")
-                + " · 內=" + (inner >= 0 ? inner : "--")
+        int outerLogical = prefs.getInt(FoldGlassService.KEY_OUTER_LOGICAL_ID, -1);
+        int innerLogical = prefs.getInt(FoldGlassService.KEY_INNER_LOGICAL_ID, -1);
+        boolean directPowerOk = prefs.getBoolean(FoldGlassService.KEY_DIRECT_POWER_OK, false);
+        String directPowerStatus = prefs.getString(FoldGlassService.KEY_DIRECT_POWER_STATUS,
+                "尚未啟動直接 Display Power");
+        String logicalSummary = prefs.getString(FoldGlassService.KEY_LOGICAL_INTERNAL_SUMMARY,
+                "logical INTERNAL 尚未讀取");
+
+        displayStatus.setText("直接 Display Power：" + (directPowerOk ? "ON ✓" : "尚未成功")
+                + " · 外 logical=" + (outerLogical >= 0 ? outerLogical : "--")
+                + " · 內 logical=" + (innerLogical >= 0 ? innerLogical : "--")
+                + "\n" + directPowerStatus
+                + "\n" + logicalSummary
                 + "\n系統實體層：physical INTERNAL ON " + physicalActive + "/" + physicalCount
-                + " · backend=" + physicalBackend
                 + "\n" + physicalSummary
-                + "\nApp Display：" + summary);
+                + "\nApp 層：active " + activeBuiltIn + "/" + builtIn
+                + " · visible=" + visible
+                + " · cover=" + (cover >= 0 ? cover : "--")
+                + " · inner=" + (appInner >= 0 ? appInner : "--")
+                + "\n" + summary);
 
         boolean running = prefs.getBoolean(FoldGlassService.KEY_RUNNING, false);
         boolean manual = prefs.getBoolean(FoldGlassService.KEY_MANUAL, false);
@@ -274,8 +283,9 @@ public class MainActivity extends Activity {
                 + " · " + (manual ? "手動" : "銜接模式")
                 + " · 角度 " + angleText
                 + " · 正面霧化 " + Math.round(level * 100f) + "%"
-                + " · 銜接 state " + (forcedTransition ? "ON" : "OFF")
-                + " · 全域亮屏 " + (keepScreenOn ? "ON" : "OFF"));
+                + " · DirectPower " + (directPowerOk ? "ON" : "OFF")
+                + " · concurrent state " + (forcedTransition ? "ON" : "OFF")
+                + " · WakeLock " + (keepScreenOn ? "ON" : "OFF"));
     }
 
     private void requestNotificationsIfNeeded() {
