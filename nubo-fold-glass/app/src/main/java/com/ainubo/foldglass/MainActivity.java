@@ -39,7 +39,7 @@ public class MainActivity extends Activity {
     private final Runnable refresher = new Runnable() {
         @Override public void run() {
             refreshStatus();
-            handler.postDelayed(this, 500);
+            handler.postDelayed(this, 450);
         }
     };
 
@@ -68,19 +68,19 @@ public class MainActivity extends Activity {
         root.setPadding(dp(22), dp(24), dp(22), dp(40));
         scroll.addView(root);
 
-        root.addView(label("NUBO LABS / DUAL-DISPLAY FOLD TRANSITION", 12, Color.rgb(156,165,176)));
+        root.addView(label("NUBO LABS / FIND N6 DUAL-PANEL LOCK", 12, Color.rgb(156,165,176)));
         TextView title = label("Fold Glass", 34, Color.WHITE);
         title.setPadding(0, dp(6), 0, dp(2));
         root.addView(title);
-        TextView subtitle = label("OPPO Find N6 影片模式 · 雙螢幕半折過渡 · v0.4", 15, Color.rgb(216,233,242));
+        TextView subtitle = label("OPPO Find N6 半折兩面都亮修正版 · v0.5", 15, Color.rgb(216,233,242));
         subtitle.setPadding(0, 0, 0, dp(20));
         root.addView(subtitle);
 
         permissionStatus = label("覆蓋權限：檢查中", 15, Color.WHITE);
         sensorStatus = label("鉸鏈感測器：檢查中", 15, Color.WHITE);
         blurStatus = label("系統 Blur Behind：檢查中", 15, Color.WHITE);
-        deviceStateStatus = label("雙螢幕 Device State：檢查中", 14, Color.rgb(216,233,242));
-        displayStatus = label("Display：檢查中", 14, Color.rgb(216,233,242));
+        deviceStateStatus = label("雙螢幕鎖定：檢查中", 14, Color.rgb(216,233,242));
+        displayStatus = label("內建螢幕：檢查中", 14, Color.rgb(216,233,242));
         liveStatus = label("服務：尚未啟動", 15, Color.WHITE);
         root.addView(permissionStatus);
         root.addView(sensorStatus);
@@ -93,33 +93,37 @@ public class MainActivity extends Activity {
         permission.setOnClickListener(v -> openOverlayPermission());
         root.addView(permission, buttonLp());
 
-        Button start = button("② 啟動影片模式：外霧化＋內螢幕持續亮");
+        Button start = button("② 啟動：半折內外螢幕都亮＋外螢幕霧化");
         start.setOnClickListener(v -> startAuto());
         root.addView(start, buttonLp());
 
-        Button shizuku = button("③ OPPO 若限制雙螢幕，授權 Shizuku");
+        Button shizuku = button("③ 授權 Shizuku（OPPO 限制時需要）");
         shizuku.setOnClickListener(v -> requestShizuku());
         root.addView(shizuku, buttonLp());
+
+        Button recalibrate = button("④ 半折時重新搜尋真正雙螢幕 state");
+        recalibrate.setOnClickListener(v -> recalibrate());
+        root.addView(recalibrate, buttonLp());
 
         Button stop = button("停止並完全恢復 ColorOS 原生折疊");
         stop.setOnClickListener(v -> stopGlass());
         root.addView(stop, buttonLp());
 
-        TextView flow = label("影片對應模式", 20, Color.WHITE);
+        TextView flow = label("v0.5 正確折疊模式", 20, Color.WHITE);
         flow.setPadding(0, dp(22), 0, dp(4));
         root.addView(flow);
         root.addView(label(
-                "全合約 0°：外螢幕正常、內側大螢幕關閉。\n"
-                        + "開始打開 → 半折：外螢幕進入霧化；內側大螢幕同時保持亮著。\n"
-                        + "約 90°：霧化最強，內螢幕仍亮。\n"
-                        + "全開約 180°：解除霧化與雙螢幕過渡，內螢幕正常。\n"
-                        + "再往回合完全相同；只有接近真正 0° 時才釋放內螢幕讓它關閉。",
+                "完全合起 ≈0°：外螢幕正常，內側大螢幕關閉。\n"
+                        + "只要離開完全閉合：外螢幕＋內側大螢幕都必須維持 ON。\n"
+                        + "半折：約 90° 外螢幕霧化最強，但兩面都持續顯示。\n"
+                        + "完全展開 ≈180°：解除雙螢幕鎖定，回到 ColorOS 正常內螢幕。\n"
+                        + "往回合也是同一邏輯；只有真正合到底才允許內螢幕關閉。",
                 14, Color.rgb(216,233,242)));
 
         TextView test = label("手動霧化測試", 20, Color.WHITE);
         test.setPadding(0, dp(24), 0, dp(4));
         root.addView(test);
-        root.addView(label("滑桿只測外觀，不會強制雙螢幕 Device State。", 14, Color.rgb(156,165,176)));
+        root.addView(label("滑桿只測霧化外觀，不會切換 Device State。", 14, Color.rgb(156,165,176)));
 
         manualLabel = label("霧化強度 0%", 14, Color.rgb(216,233,242));
         manualLabel.setPadding(0, dp(10), 0, 0);
@@ -139,14 +143,15 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        Button auto = button("回到自動折疊影片模式");
+        Button auto = button("回到自動雙螢幕折疊模式");
         auto.setOnClickListener(v -> startAuto());
         root.addView(auto, buttonLp());
 
         TextView note = label(
-                "第一次測試請從『完全合起來』開始啟動，讓 v0.4 記錄真正的外螢幕 Display ID。"
-                        + "若半折時 Display 數量顯示 2，且內螢幕 ID 有數字，代表雙面板已被系統同時暴露。"
-                        + "若只有 1 個 Display，或 Device State 顯示權限不足，請啟動 Shizuku 後按③授權，再停止/重新啟動影片模式。",
+                "第一次安裝 v0.5：先完整合起手機 → 按②啟動 → 慢慢打開並停在約 90°。"
+                        + "v0.5 會逐一測試 OPPO 回報的非端點 Device State，只有『內建螢幕 active=2』才會記為成功。"
+                        + "成功後會顯示『雙螢幕驗證成功 ✓』，之後每次半折直接鎖定；若 ColorOS 又把正面切暗會自動重套。"
+                        + "若校準全部 cmdFAIL，先啟動 Shizuku、按③授權，再於半折狀態按④。",
                 13, Color.rgb(156,165,176));
         note.setPadding(0, dp(18), 0, 0);
         root.addView(note);
@@ -174,6 +179,15 @@ public class MainActivity extends Activity {
                 .putExtra(FoldGlassService.EXTRA_LEVEL, level));
     }
 
+    private void recalibrate() {
+        if (!Settings.canDrawOverlays(this)) {
+            openOverlayPermission();
+            return;
+        }
+        startForegroundService(new Intent(this, FoldGlassService.class)
+                .setAction(FoldGlassService.ACTION_RECALIBRATE));
+    }
+
     private void stopGlass() {
         stopService(new Intent(this, FoldGlassService.class));
     }
@@ -185,7 +199,7 @@ public class MainActivity extends Activity {
                 return;
             }
             if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                deviceStateStatus.setText("Shizuku：已授權 ✓。請停止後重新啟動影片模式，重新偵測 OPPO states。");
+                deviceStateStatus.setText("Shizuku：已授權 ✓。請在半折狀態按④重新校準。");
                 return;
             }
             Shizuku.requestPermission(6107);
@@ -208,24 +222,35 @@ public class MainActivity extends Activity {
         blurStatus.setText("系統 Blur Behind：" + (blur ? "可用 ✓" : "目前停用 / 不支援"));
 
         boolean deviceControl = prefs.getBoolean(FoldGlassService.KEY_DEVICE_STATE_AVAILABLE, false);
-        int transitionState = prefs.getInt(FoldGlassService.KEY_TRANSITION_STATE_ID, -1);
-        String transitionName = prefs.getString(FoldGlassService.KEY_TRANSITION_STATE_NAME, "");
+        boolean verified = prefs.getBoolean(FoldGlassService.KEY_DUAL_VERIFIED, false);
+        int dualState = prefs.getInt(FoldGlassService.KEY_VERIFIED_DUAL_STATE_ID, -1);
+        String dualName = prefs.getString(FoldGlassService.KEY_VERIFIED_DUAL_STATE_NAME, "");
         int currentState = prefs.getInt(FoldGlassService.KEY_CURRENT_DEVICE_STATE, -1);
+        int closedState = prefs.getInt(FoldGlassService.KEY_CLOSED_STATE_ID, -1);
+        int openState = prefs.getInt(FoldGlassService.KEY_OPEN_STATE_ID, -1);
         String ds = prefs.getString(FoldGlassService.KEY_DEVICE_STATE_STATUS, "檢查中");
         String shizuku = prefs.getString(FoldGlassService.KEY_SHIZUKU_STATUS, "");
-        deviceStateStatus.setText("雙螢幕 Device State："
-                + (deviceControl ? "可讀取 ✓" : "受限制/待確認")
-                + " · 過渡=" + (transitionState >= 0 ? transitionState + ":" + transitionName : "--")
-                + " · 目前=" + (currentState >= 0 ? currentState : "--")
-                + "\n" + shizuku + "\n" + ds);
+        String calibration = prefs.getString(FoldGlassService.KEY_CALIBRATION_STATUS, "尚未校準");
+        deviceStateStatus.setText("雙螢幕鎖定："
+                + (verified ? "已驗證 ✓" : "尚未驗證")
+                + " · state=" + (dualState >= 0 ? dualState + ":" + dualName : "--")
+                + " · current=" + (currentState >= 0 ? currentState : "--")
+                + " · closed/open=" + closedState + "/" + openState
+                + "\n" + (deviceControl ? "device_state 可讀取" : "device_state 受限制")
+                + " · " + shizuku
+                + "\n" + calibration
+                + "\n" + ds);
 
-        int displayCount = prefs.getInt(FoldGlassService.KEY_DISPLAY_COUNT, 0);
+        int visible = prefs.getInt(FoldGlassService.KEY_DISPLAY_COUNT, 0);
+        int builtIn = prefs.getInt(FoldGlassService.KEY_BUILTIN_DISPLAY_COUNT, 0);
+        int activeBuiltIn = prefs.getInt(FoldGlassService.KEY_ACTIVE_BUILTIN_COUNT, 0);
         int cover = prefs.getInt(FoldGlassService.KEY_COVER_DISPLAY_ID, -1);
         int inner = prefs.getInt(FoldGlassService.KEY_INNER_DISPLAY_ID, -1);
         String summary = prefs.getString(FoldGlassService.KEY_DISPLAY_SUMMARY, "--");
-        displayStatus.setText("Display：可見 " + displayCount
-                + " · 外螢幕=" + (cover >= 0 ? cover : "--")
-                + " · 內螢幕=" + (inner >= 0 ? inner : "--")
+        displayStatus.setText("內建螢幕：active " + activeBuiltIn + "/" + builtIn
+                + " · 可見=" + visible
+                + " · 外=" + (cover >= 0 ? cover : "--")
+                + " · 內=" + (inner >= 0 ? inner : "--")
                 + "\n" + summary);
 
         boolean running = prefs.getBoolean(FoldGlassService.KEY_RUNNING, false);
@@ -236,11 +261,11 @@ public class MainActivity extends Activity {
         float level = prefs.getFloat(FoldGlassService.KEY_LAST_LEVEL, 0f);
         String angleText = angle < 0f ? "--" : String.format(Locale.TAIWAN, "%.1f°", angle);
         liveStatus.setText("服務：" + (running ? "運作中" : "停止")
-                + " · " + (manual ? "手動" : "影片模式")
+                + " · " + (manual ? "手動" : "自動")
                 + " · 角度 " + angleText
                 + " · 外霧化 " + Math.round(level * 100f) + "%"
-                + " · 雙螢幕 state " + (forcedTransition ? "ON" : "OFF")
-                + " · 內螢幕保活 " + (keepScreenOn ? "ON" : "OFF"));
+                + " · 雙螢幕鎖定 " + (forcedTransition ? "ON" : "OFF")
+                + " · 全域亮屏 " + (keepScreenOn ? "ON" : "OFF"));
     }
 
     private void requestNotificationsIfNeeded() {
