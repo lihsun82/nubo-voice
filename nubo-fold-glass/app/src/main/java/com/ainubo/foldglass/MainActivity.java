@@ -71,7 +71,7 @@ public class MainActivity extends Activity {
         TextView title = label("Fold Glass", 34, Color.WHITE);
         title.setPadding(0, dp(6), 0, dp(2));
         root.addView(title);
-        TextView subtitle = label("OPPO Find N6 半折霧透明效果 · v0.1", 15, Color.rgb(216,233,242));
+        TextView subtitle = label("OPPO Find N6 半折霧透明＋正面亮屏 · v0.2", 15, Color.rgb(216,233,242));
         subtitle.setPadding(0, 0, 0, dp(20));
         root.addView(subtitle);
 
@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
         permission.setOnClickListener(v -> openOverlayPermission());
         root.addView(permission, buttonLp());
 
-        Button start = button("② 啟動自動半折霧化");
+        Button start = button("② 啟動半折霧化＋正面亮屏");
         start.setOnClickListener(v -> startAuto());
         root.addView(start, buttonLp());
 
@@ -96,10 +96,10 @@ public class MainActivity extends Activity {
         stop.setOnClickListener(v -> stopGlass());
         root.addView(stop, buttonLp());
 
-        TextView test = label("手動霧化測試", 20, Color.WHITE);
+        TextView test = label("手動霧化／亮屏測試", 20, Color.WHITE);
         test.setPadding(0, dp(24), 0, dp(4));
         root.addView(test);
-        root.addView(label("拖到 100% 先確認 ColorOS 能不能做真正的毛玻璃背景。", 14, Color.rgb(156,165,176)));
+        root.addView(label("拖到 1% 以上會同時要求螢幕保持亮起；拖回 0% 立即釋放。", 14, Color.rgb(156,165,176)));
 
         manualLabel = label("霧化強度 0%", 14, Color.rgb(216,233,242));
         manualLabel.setPadding(0, dp(10), 0, 0);
@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
         root.addView(auto, buttonLp());
 
         TextView note = label(
-                "預設：90° 最霧；約 25° 以下與 155° 以上清晰。若顯示找不到 TYPE_HINGE_ANGLE，代表要做 OPPO 專屬感測器適配。",
+                "預設：90° 最霧；約 25° 以下與 155° 以上清晰。霧化區間內會保持目前啟用中的螢幕亮起；離開區間立即釋放。若 ColorOS 主動停用特定實體螢幕，則需要 OPPO 專屬顯示策略適配。",
                 13, Color.rgb(156,165,176));
         note.setPadding(0, dp(18), 0, 0);
         root.addView(note);
@@ -171,13 +171,15 @@ public class MainActivity extends Activity {
 
         boolean running = prefs.getBoolean(FoldGlassService.KEY_RUNNING, false);
         boolean manual = prefs.getBoolean(FoldGlassService.KEY_MANUAL, false);
+        boolean keepScreenOn = prefs.getBoolean(FoldGlassService.KEY_KEEP_SCREEN_ON, false);
         float angle = prefs.getFloat(FoldGlassService.KEY_LAST_ANGLE, -1f);
         float level = prefs.getFloat(FoldGlassService.KEY_LAST_LEVEL, 0f);
         String angleText = angle < 0f ? "--" : String.format(Locale.TAIWAN, "%.1f°", angle);
         liveStatus.setText("服務：" + (running ? "運作中" : "停止")
                 + " · " + (manual ? "手動" : "自動")
                 + " · 角度 " + angleText
-                + " · 霧化 " + Math.round(level * 100f) + "%");
+                + " · 霧化 " + Math.round(level * 100f) + "%"
+                + " · 亮屏 " + (keepScreenOn ? "ON" : "OFF"));
     }
 
     private void requestNotificationsIfNeeded() {
