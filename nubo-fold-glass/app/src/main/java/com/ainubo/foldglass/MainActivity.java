@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private TextView permissionStatus;
     private TextView sensorStatus;
     private TextView blurStatus;
+    private TextView deviceStateStatus;
     private TextView liveStatus;
     private TextView manualLabel;
     private SharedPreferences prefs;
@@ -67,39 +68,48 @@ public class MainActivity extends Activity {
         root.setPadding(dp(22), dp(24), dp(22), dp(40));
         scroll.addView(root);
 
-        root.addView(label("NUBO LABS / FOLDABLE EXPERIMENT", 12, Color.rgb(156,165,176)));
+        root.addView(label("NUBO LABS / OPPO FOLD DISPLAY", 12, Color.rgb(156,165,176)));
         TextView title = label("Fold Glass", 34, Color.WHITE);
         title.setPadding(0, dp(6), 0, dp(2));
         root.addView(title);
-        TextView subtitle = label("OPPO Find N6 半折霧透明＋正面亮屏 · v0.2", 15, Color.rgb(216,233,242));
+        TextView subtitle = label("Find N6 外螢幕半折鎖定＋霧透明 · v0.3", 15, Color.rgb(216,233,242));
         subtitle.setPadding(0, 0, 0, dp(20));
         root.addView(subtitle);
 
         permissionStatus = label("覆蓋權限：檢查中", 15, Color.WHITE);
         sensorStatus = label("鉸鏈感測器：檢查中", 15, Color.WHITE);
         blurStatus = label("系統 Blur Behind：檢查中", 15, Color.WHITE);
+        deviceStateStatus = label("OPPO 螢幕狀態控制：檢查中", 14, Color.rgb(216,233,242));
         liveStatus = label("服務：尚未啟動", 15, Color.WHITE);
         root.addView(permissionStatus);
         root.addView(sensorStatus);
         root.addView(blurStatus);
+        root.addView(deviceStateStatus);
         root.addView(liveStatus);
 
         Button permission = button("① 授權顯示在其他 App 上層");
         permission.setOnClickListener(v -> openOverlayPermission());
         root.addView(permission, buttonLp());
 
-        Button start = button("② 啟動半折霧化＋正面亮屏");
+        Button start = button("② 啟動 OPPO 半折外螢幕霧化");
         start.setOnClickListener(v -> startAuto());
         root.addView(start, buttonLp());
 
-        Button stop = button("停止 NUBO Fold Glass");
+        Button stop = button("停止並恢復 ColorOS 自動切換");
         stop.setOnClickListener(v -> stopGlass());
         root.addView(stop, buttonLp());
 
-        TextView test = label("手動霧化／亮屏測試", 20, Color.WHITE);
+        TextView flow = label("目標流程", 20, Color.WHITE);
+        flow.setPadding(0, dp(22), 0, dp(4));
+        root.addView(flow);
+        root.addView(label(
+                "全合 0°：外螢幕正常 → 打開途中：外螢幕保持顯示並逐漸霧化 → 90°：最霧 → 全開 180°：恢復內螢幕正常。反方向合起來完全相同。",
+                14, Color.rgb(216,233,242)));
+
+        TextView test = label("手動霧化測試", 20, Color.WHITE);
         test.setPadding(0, dp(24), 0, dp(4));
         root.addView(test);
-        root.addView(label("拖到 1% 以上會同時要求螢幕保持亮起；拖回 0% 立即釋放。", 14, Color.rgb(156,165,176)));
+        root.addView(label("這個滑桿只測霧化，不會強制切換內/外螢幕。", 14, Color.rgb(156,165,176)));
 
         manualLabel = label("霧化強度 0%", 14, Color.rgb(216,233,242));
         manualLabel.setPadding(0, dp(10), 0, 0);
@@ -119,12 +129,12 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
 
-        Button auto = button("回到自動角度模式");
+        Button auto = button("回到自動折疊模式");
         auto.setOnClickListener(v -> startAuto());
         root.addView(auto, buttonLp());
 
         TextView note = label(
-                "預設：90° 最霧；約 25° 以下與 155° 以上清晰。霧化區間內會保持目前啟用中的螢幕亮起；離開區間立即釋放。若 ColorOS 主動停用特定實體螢幕，則需要 OPPO 專屬顯示策略適配。",
+                "第一次使用建議先把手機完整合起來，再啟動功能，讓 v0.3 記住 Find N6 的『外螢幕 Device State ID』。之後打開或合起的中間角度會暫時鎖定該狀態；到 0° 或 180° 即解除。若上方顯示『一般 App 權限不足』，下一步需加入 Shizuku 模式。",
                 13, Color.rgb(156,165,176));
         note.setPadding(0, dp(18), 0, 0);
         root.addView(note);
@@ -169,9 +179,20 @@ public class MainActivity extends Activity {
         boolean blur = new GlassOverlayController(this).isBlurAvailable();
         blurStatus.setText("系統 Blur Behind：" + (blur ? "可用 ✓" : "目前停用 / 不支援"));
 
+        boolean deviceControl = prefs.getBoolean(FoldGlassService.KEY_DEVICE_STATE_AVAILABLE, false);
+        int closedState = prefs.getInt(FoldGlassService.KEY_CLOSED_STATE_ID, -1);
+        int currentState = prefs.getInt(FoldGlassService.KEY_CURRENT_DEVICE_STATE, -1);
+        String ds = prefs.getString(FoldGlassService.KEY_DEVICE_STATE_STATUS, "檢查中");
+        deviceStateStatus.setText("OPPO 螢幕狀態控制："
+                + (deviceControl ? "可用 ✓" : "尚未確認/不可用")
+                + " · 外螢幕 ID=" + (closedState >= 0 ? closedState : "--")
+                + " · 目前 ID=" + (currentState >= 0 ? currentState : "--")
+                + "\n" + ds);
+
         boolean running = prefs.getBoolean(FoldGlassService.KEY_RUNNING, false);
         boolean manual = prefs.getBoolean(FoldGlassService.KEY_MANUAL, false);
         boolean keepScreenOn = prefs.getBoolean(FoldGlassService.KEY_KEEP_SCREEN_ON, false);
+        boolean forcedCover = prefs.getBoolean(FoldGlassService.KEY_FORCED_COVER, false);
         float angle = prefs.getFloat(FoldGlassService.KEY_LAST_ANGLE, -1f);
         float level = prefs.getFloat(FoldGlassService.KEY_LAST_LEVEL, 0f);
         String angleText = angle < 0f ? "--" : String.format(Locale.TAIWAN, "%.1f°", angle);
@@ -179,6 +200,7 @@ public class MainActivity extends Activity {
                 + " · " + (manual ? "手動" : "自動")
                 + " · 角度 " + angleText
                 + " · 霧化 " + Math.round(level * 100f) + "%"
+                + " · 外螢幕鎖定 " + (forcedCover ? "ON" : "OFF")
                 + " · 亮屏 " + (keepScreenOn ? "ON" : "OFF"));
     }
 
