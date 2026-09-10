@@ -24,12 +24,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * v0.5 multi-display transition renderer and display verifier.
+ * v0.7 multi-display hand-off renderer.
  *
- * Android 16 exposes a built-in display category that can include currently
- * inactive internal panels. We use the literal category string so the app can
- * also run with compileSdk 36. This lets the service distinguish "panel exists"
- * from "panel is actually ON", which is critical on OPPO Find N6.
+ * The key change is that a known cover/inner logical display is eligible for an
+ * overlay even while ColorOS reports it OFF. v0.7 can therefore prepare the
+ * frost on the cover first, then the privileged display-power bridge turns that
+ * same panel ON without a black gap in between.
  */
 final class GlassOverlayController {
     private static final String BUILT_IN_CATEGORY =
@@ -41,6 +41,7 @@ final class GlassOverlayController {
 
     private OverlaySlot blurSlot;
     private int coverDisplayHint = -1;
+    private int innerDisplayHint = -1;
     private int resolvedCoverDisplayId = -1;
     private int resolvedInnerDisplayId = -1;
     private boolean keepScreenOn = false;
@@ -62,6 +63,11 @@ final class GlassOverlayController {
 
     void setCoverDisplayHint(int displayId) {
         coverDisplayHint = displayId;
+    }
+
+    void setHandoffDisplayHints(int coverId, int innerId) {
+        coverDisplayHint = coverId;
+        innerDisplayHint = innerId;
     }
 
     int captureCoverDisplayHint() {
@@ -103,7 +109,7 @@ final class GlassOverlayController {
     }
 
     String getDisplaySummary() {
-        List<Display> displays = builtInDisplays();
+        List<Display> displays = allHandoffDisplays();
         if (displays.isEmpty()) return "no built-in displays";
         StringBuilder out = new StringBuilder();
         for (Display display : displays) {
@@ -163,8 +169,10 @@ final class GlassOverlayController {
     }
 
     private void reconcileDisplays() {
-        List<Display> visible = visibleDisplays();
-        if (visible.isEmpty()) {
+        // v0.7 deliberately uses all known built-in/hinted displays here, not
+        // only ON displays. An OFF cover can receive its window before power-on.
+        List<Display> candidates = allHandoffDisplays();
+        if (candidates.isEmpty()) {
             removeBlurSlot();
             clearKeepers();
             resolvedCoverDisplayId = -1;
@@ -172,8 +180,8 @@ final class GlassOverlayController {
             return;
         }
 
-        Display cover = resolveCoverDisplay(visible);
-        Display inner = resolveInnerDisplay(visible, cover);
+        Display cover = resolveCoverDisplay(candidates);
+        Display inner = resolveInnerDisplay(candidates, cover);
         resolvedCoverDisplayId = cover == null ? -1 : cover.getDisplayId();
         resolvedInnerDisplayId = inner == null ? -1 : inner.getDisplayId();
 
@@ -182,7 +190,7 @@ final class GlassOverlayController {
 
         if (keepScreenOn) {
             Set<Integer> desiredKeepers = new HashSet<>();
-            for (Display display : visible) {
+            for (Display display : candidates) {
                 if (cover != null && display.getDisplayId() == cover.getDisplayId()) continue;
                 desiredKeepers.add(display.getDisplayId());
                 ensureKeeper(display);
@@ -247,22 +255,27 @@ final class GlassOverlayController {
         keeperSlots.clear();
     }
 
-    private Display resolveCoverDisplay(List<Display> visible) {
+    private Display resolveCoverDisplay(List<Display> candidates) {
         if (coverDisplayHint >= 0) {
-            for (Display display : visible) {
+            for (Display display : candidates) {
                 if (display.getDisplayId() == coverDisplayHint) return display;
             }
-            // Built-in display IDs can change when panels become active. If two
-            // panels are visible, size is the more reliable discriminator.
-            if (visible.size() == 1) return null;
+            // If a known cover id is absent, never frost the only remaining
+            // display because that is usually the large inner panel.
+            if (candidates.size() == 1) return null;
         }
-        return smallestDisplay(visible);
+        return smallestDisplay(candidates);
     }
 
-    private static Display resolveInnerDisplay(List<Display> visible, Display cover) {
+    private Display resolveInnerDisplay(List<Display> candidates, Display cover) {
+        if (innerDisplayHint >= 0) {
+            for (Display display : candidates) {
+                if (display.getDisplayId() == innerDisplayHint) return display;
+            }
+        }
         Display best = null;
         long bestArea = -1L;
-        for (Display display : visible) {
+        for (Display display : candidates) {
             if (cover != null && display.getDisplayId() == cover.getDisplayId()) continue;
             Point p = realSize(display);
             long area = (long) Math.max(1, p.x) * Math.max(1, p.y);
@@ -294,6 +307,25 @@ final class GlassOverlayController {
             if (isVisibleState(display)) out.add(display);
         }
         return out;
+    }
+
+    private List<Display> allHandoffDisplays() {
+        List<Display> out = builtInDisplays();
+        if (displayManager == null) return out;
+        Set<Integer> seen = new HashSet<>();
+        for (Display d : out) seen.add(d.getDisplayId());
+
+        addHintedDisplay(out, seen, coverDisplayHint);
+        addHintedDisplay(out, seen, innerDisplayHint);
+        return out;
+    }
+
+    private void addHintedDisplay(List<Display> out, Set<Integer> seen, int id) {
+        if (id < 0 || displayManager == null || seen.contains(id)) return;
+        try {
+            Display display = displayManager.getDisplay(id);
+            if (display != null && seen.add(id)) out.add(display);
+        } catch (Throwable ignored) {}
     }
 
     private List<Display> builtInDisplays() {
