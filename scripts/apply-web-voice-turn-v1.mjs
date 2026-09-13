@@ -5,7 +5,7 @@ let voice = fs.readFileSync(voicePath, 'utf8');
 
 if (!voice.includes('NUBO_COMPLETE_UTTERANCE_V1')) {
   const anchor = `              inputAudioTranscription: {},\n              outputAudioTranscription: {},`;
-  const replacement = `              inputAudioTranscription: {},\n              // NUBO_COMPLETE_UTTERANCE_V1\n              // Tolerate natural Mandarin pauses before declaring end-of-turn.\n              realtimeInputConfig: {\n                automaticActivityDetection: {\n                  disabled: false,\n                  startOfSpeechSensitivity: \"START_SENSITIVITY_HIGH\",\n                  endOfSpeechSensitivity: \"END_SENSITIVITY_LOW\",\n                  prefixPaddingMs: 150,\n                  silenceDurationMs: 1300,\n                },\n              },\n              outputAudioTranscription: {},`;
+  const replacement = `              inputAudioTranscription: {},\n              // NUBO_COMPLETE_UTTERANCE_V1\n              // Field-video fix: close Mandarin turns promptly after the user stops speaking.\n              realtimeInputConfig: {\n                automaticActivityDetection: {\n                  disabled: false,\n                  startOfSpeechSensitivity: \"START_SENSITIVITY_HIGH\",\n                  endOfSpeechSensitivity: \"END_SENSITIVITY_HIGH\",\n                  prefixPaddingMs: 150,\n                  silenceDurationMs: 800,\n                },\n              },\n              outputAudioTranscription: {},`;
 
   if (!voice.includes(anchor)) {
     throw new Error('voice turn patch: Gemini setup anchor missing');
@@ -27,4 +27,4 @@ if (!tools.includes('NUBO_COMPLETE_GUEST_INTAKE_V1')) {
   fs.writeFileSync(toolsPath, tools);
 }
 
-console.log('Applied complete-utterance VAD + guest intake guard');
+console.log('Applied faster complete-utterance VAD + guest intake guard');
