@@ -16,12 +16,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Check LINE config status endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --connect-timeout 10 --max-time 20 -sS \
+            'https://nubo-voice-places-test.onrender.com/api/line/status' \
+            -o /tmp/status.json
+          cat /tmp/status.json
+          echo
+
       - name: POST hotel guest-service test alert
         shell: bash
         run: |
           set -euo pipefail
           BODY='{"roomNumber":"TEST","issue":"NUBO LINE 客務通道測試：如果看到這則訊息，代表新寶客務 LINE API 與群組推播已成功連線。","source":"github-e2e-test-20260914"}'
-          HTTP_CODE=$(curl -sS -o /tmp/response.json -w '%{http_code}' \
+          HTTP_CODE=$(curl --connect-timeout 10 --max-time 25 -sS -o /tmp/response.json -w '%{http_code}' \
             -X POST 'https://nubo-voice-places-test.onrender.com/api/notify/guest-service' \
             -H 'Content-Type: application/json' \
             --data "$BODY")
