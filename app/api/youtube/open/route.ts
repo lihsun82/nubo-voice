@@ -1,142 +1,23 @@
-import { existsSync, mkdirSync } from "node:fs";
-import path from "node:path";
-import { spawn } from "node:child_process";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  searchYouTubeVideo,
   YouTubeApiError,
   youtubeErrorSuggestion,
 } from "@/lib/youtube";
+import { searchHighQualityYouTubeVideo } from "@/lib/youtube-quality-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const NUBO_RELEASE = "V15.6.25";
+
 const schema = z.object({
   query: z.string().min(1).max(300),
-  service: z.enum(["youtube", "youtube_music"]).default("youtube_music"),
+  service: z.enum(["youtube", "youtube_music"]).default("youtube"),
 });
 
-function browserCandidates(): string[] {
-  return [
-    process.env.LOCALAPPDATA
-      ? path.join(
-          process.env.LOCALAPPDATA,
-          "Google",
-          "Chrome",
-          "Application",
-          "chrome.exe",
-        )
-      : "",
-    process.env.PROGRAMFILES
-      ? path.join(
-          process.env.PROGRAMFILES,
-          "Google",
-          "Chrome",
-          "Application",
-          "chrome.exe",
-        )
-      : "",
-    process.env["PROGRAMFILES(X86)"]
-      ? path.join(
-          process.env["PROGRAMFILES(X86)"] as string,
-          "Google",
-          "Chrome",
-          "Application",
-          "chrome.exe",
-        )
-      : "",
-    process.env.PROGRAMFILES
-      ? path.join(
-          process.env.PROGRAMFILES,
-          "Microsoft",
-          "Edge",
-          "Application",
-          "msedge.exe",
-        )
-      : "",
-    process.env["PROGRAMFILES(X86)"]
-      ? path.join(
-          process.env["PROGRAMFILES(X86)"] as string,
-          "Microsoft",
-          "Edge",
-          "Application",
-          "msedge.exe",
-        )
-      : "",
-  ].filter(Boolean);
-}
-
-function openDedicatedPlayer(url: string): {
-  opened: boolean;
-  browser: string | null;
-  autoplayMode: boolean;
-} {
-  if (process.platform !== "win32") {
-    return { opened: false, browser: null, autoplayMode: false };
-  }
-
-  const browser = browserCandidates().find((candidate) => existsSync(candidate));
-  if (browser) {
-    const profileDir = path.join(
-      process.cwd(),
-      "data",
-      "youtube-autoplay-profile",
-    );
-    mkdirSync(profileDir, { recursive: true });
-    const child = spawn(
-      browser,
-      [
-        `--user-data-dir=${profileDir}`,
-        "--no-first-run",
-        "--disable-session-crashed-bubble",
-        "--autoplay-policy=no-user-gesture-required",
-        `--app=${url}`,
-      ],
-      {
-        detached: true,
-        windowsHide: true,
-        stdio: "ignore",
-      },
-    );
-    child.unref();
-    return {
-      opened: true,
-      browser: path.basename(browser),
-      autoplayMode: true,
-    };
-  }
-
-  try {
-    const child = spawn(
-      "rundll32.exe",
-      ["url.dll,FileProtocolHandler", url],
-      {
-        detached: true,
-        windowsHide: true,
-        stdio: "ignore",
-      },
-    );
-    child.unref();
-    return { opened: true, browser: "default", autoplayMode: false };
-  } catch {
-    return { opened: false, browser: null, autoplayMode: false };
-  }
-}
-
-function resolvePlayerBaseUrl(request: Request) {
-  const requestOrigin = new URL(request.url).origin;
-  const configured = process.env.NUBO_PUBLIC_URL?.trim();
-
-  if (!configured) return requestOrigin;
-
-  try {
-    const configuredUrl = new URL(configured);
-    const isLocal = ["127.0.0.1", "localhost"].includes(configuredUrl.hostname);
-    return isLocal ? requestOrigin : configuredUrl.origin;
-  } catch {
-    return requestOrigin;
-  }
+function youtubeSearchUrl(query: string) {
+  return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
 }
 
 export async function POST(request: Request) {
@@ -145,58 +26,43 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "缺少歌曲或影片名稱" }, { status: 400 });
   }
 
-  try {
-    const result = await searchYouTubeVideo(parsed.data.query);
-    const playerUrl = new URL("/youtube-player", resolvePlayerBaseUrl(request));
-    playerUrl.searchParams.set("videoId", result.videoId);
-    playerUrl.searchParams.set("title", result.title);
-    playerUrl.searchParams.set("channel", result.channelTitle);
+  const { query } = parsed.data;
 
-    const launch = openDedicatedPlayer(playerUrl.toString());
+  try {
+    const result = await searchHighQualityYouTubeVideo(query);
+    const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(result.videoId)}&autoplay=1`;
+
     return NextResponse.json({
       ok: true,
       ...result,
-      playerUrl: playerUrl.toString(),
-      ...launch,
-      message: launch.autoplayMode
-        ? `已開啟並自動播放：${result.title}`
-        : launch.opened
-          ? `已開啟播放器，但瀏覽器可能要求第一次手動按播放：${result.title}`
-          : `無法自動開啟瀏覽器，請使用playerUrl播放：${result.title}`,
+      url: watchUrl,
+      mobileUrl: watchUrl,
+      playerUrl: watchUrl,
+      mobileLabel: "YouTube",
+      autoOpen: true,
+      release: NUBO_RELEASE,
+      build: "youtube-direct-watch-or-search-v15-6-25",
+      message: `已找到並準備播放：${result.title}`,
     });
   } catch (error) {
-    if (error instanceof YouTubeApiError) {
-      const status =
-        error.reason === "missing_key" || error.reason === "api_not_enabled"
-          ? 503
-          : error.reason === "invalid_key" ||
-              error.reason === "key_restriction" ||
-              error.reason === "quota_exceeded"
-            ? 403
-            : error.reason === "no_results"
-              ? 404
-              : 502;
+    const fallbackUrl = youtubeSearchUrl(query);
+    const reason = error instanceof YouTubeApiError ? error.reason : "unknown";
 
-      return NextResponse.json(
-        {
-          error: error.message,
-          reason: error.reason,
-          googleReason: error.googleReason,
-          suggestion: youtubeErrorSuggestion(error.reason),
-          diagnosticUrl: "/api/youtube/status",
-        },
-        { status },
-      );
-    }
-
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "YouTube播放失敗",
-        reason: "unknown",
-        suggestion: youtubeErrorSuggestion("unknown"),
-        diagnosticUrl: "/api/youtube/status",
-      },
-      { status: 502 },
-    );
+    // API Key遺失、配額用完或搜尋服務異常時，仍回傳可開啟的YouTube搜尋頁。
+    return NextResponse.json({
+      ok: true,
+      fallback: true,
+      query,
+      url: fallbackUrl,
+      mobileUrl: fallbackUrl,
+      playerUrl: fallbackUrl,
+      mobileLabel: "YouTube",
+      autoOpen: true,
+      reason,
+      suggestion: youtubeErrorSuggestion(reason),
+      release: NUBO_RELEASE,
+      build: "youtube-direct-watch-or-search-v15-6-25",
+      message: "精確搜尋暫時不可用，已改開YouTube搜尋結果。",
+    });
   }
 }

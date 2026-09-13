@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { searchYouTubeVideo } from "@/lib/youtube";
+import { searchHighQualityYouTubeVideo } from "@/lib/youtube-quality-search";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   try {
     return NextResponse.json({
       ok: true,
-      ...(await searchYouTubeVideo(parsed.data.query)),
+      ...(await searchHighQualityYouTubeVideo(parsed.data.query)),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "YouTube搜尋失敗";

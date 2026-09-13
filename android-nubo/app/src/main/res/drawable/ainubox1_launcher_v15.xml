@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:fillColor="#111923" android:pathData="M8,8 L100,8 L100,100 L8,100 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,12 L96,12 L96,16 L12,16 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,92 L96,92 L96,96 L12,96 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M12,16 L16,16 L16,92 L12,92 Z" />
+    <path android:fillColor="#7EE8F2" android:pathData="M92,16 L96,16 L96,92 L92,92 Z" />
+
+    <path android:fillColor="#176BFF" android:pathData="M26,26 L42,26 L42,82 L26,82 Z" />
+    <path android:fillColor="#3CC8FF" android:pathData="M34,34 L42,26 L42,82 L34,74 Z" />
+    <path android:fillColor="#2A33A5" android:pathData="M26,26 L34,34 L34,74 L26,82 Z" />
+
+    <path android:fillColor="#32D8D1" android:pathData="M42,26 L70,68 L61,78 L34,34 Z" />
+    <path android:fillColor="#5063E8" android:pathData="M50,42 L70,68 L61,78 Z" />
+    <path android:fillColor="#9D7BF1" android:pathData="M61,78 L70,68 L78,78 L68,84 Z" />
+
+    <path android:fillColor="#7666E8" android:pathData="M68,26 L82,26 L82,82 L68,82 Z" />
+    <path android:fillColor="#B8A4FF" android:pathData="M68,26 L75,34 L75,74 L68,82 Z" />
+    <path android:fillColor="#72F5E4" android:pathData="M75,34 L82,26 L82,82 L75,74 Z" />
+
+    <path android:fillColor="#75F3E5" android:pathData="M72,18 L88,18 L88,21 L72,21 Z" />
+    <path android:fillColor="#75F3E5" android:pathData="M85,21 L88,21 L88,28 L85,28 Z" />
+    <path android:fillColor="#75F3E5" android:pathData="M78,27 L94,27 L94,30 L78,30 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M14,72 L30,72 L30,75 L14,75 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M27,75 L30,75 L30,84 L27,84 Z" />
+    <path android:fillColor="#4BC9FF" android:pathData="M20,83 L38,83 L38,86 L20,86 Z" />
+</vector>

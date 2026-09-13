@@ -1,0 +1,79 @@
+/* NUBO V15.6.18 PURE WHITE + GOLD MOLECULAR THEME */
+:root {
+  --bg: #ffffff;
+  --panel: rgba(255, 255, 255, 0.9);
+  --line: rgba(70, 101, 174, 0.16);
+  --text: #142447;
+  --muted: #71809a;
+  --accent: #6b63ff;
+  --accent-2: #55cfff;
+  --gold: #d7a63f;
+}
+
+html,
+body {
+  background: #ffffff !important;
+  color: var(--text) !important;
+}
+
+body::before {
+  opacity: 0.22 !important;
+  background-image:
+    linear-gradient(rgba(92, 124, 193, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92, 124, 193, 0.045) 1px, transparent 1px) !important;
+  background-size: 46px 46px !important;
+}
+
+.nubo-space-background {
+  background: #ffffff !important;
+}
+
+.nubo-space-grid {
+  opacity: 0.14 !important;
+}
+
+.nubo-space-horizon {
+  display: none !important;
+}
+
+.console,
+.provider-switcher,
+.nubo-voice-quick,
+.integration-card,
+.task-card,
+.task-panel,
+.inbox-card,
+.run-history,
+.question-history,
+.question-category,
+.voice-transcript,
+.capability {
+  background: rgba(255, 255, 255, 0.93) !important;
+  box-shadow:
+    0 16px 46px rgba(74, 93, 143, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98) !important;
+}
+
+.nubo-energy-orb {
+  filter:
+    drop-shadow(0 20px 36px rgba(79, 106, 190, 0.18))
+    drop-shadow(0 6px 18px rgba(215, 166, 63, 0.12)) !important;
+}
+
+.nubo-energy-orb::before {
+  border-color: rgba(215, 166, 63, 0.32) !important;
+  box-shadow:
+    0 0 0 18px rgba(255, 255, 255, 0),
+    0 0 0 38px rgba(255, 255, 255, 0),
+    0 0 42px rgba(215, 166, 63, 0.16) !important;
+}
+
+.nubo-energy-orb::after {
+  border-color: rgba(105, 99, 255, 0.22) !important;
+}
+
+.primary,
+.provider-buttons button.selected,
+.nubo-voice-quick .primary {
+  background: linear-gradient(135deg, #54cfff 0%, #6b73ff 46%, #8f65ff 78%, #d7a63f 120%) !important;
+}
