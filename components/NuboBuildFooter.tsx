@@ -46,8 +46,8 @@ export function NuboBuildFooter() {
     <footer>
       <span>
         {nativeVersion
-          ? `NUBO ${formatNativeVersion(nativeVersion)}｜Web UI V22.1｜Silent Audio Fix`
-          : "NUBO Web UI V22.1｜Silent Audio Fix｜瀏覽器版"}
+          ? `NUBO ${formatNativeVersion(nativeVersion)}｜Web UI V22.2｜LINE Guest Service`
+          : "NUBO Web UI V22.2｜LINE Guest Service｜瀏覽器版"}
       </span>
       <span>
         臺灣標準國語 Accent Lock・阿拉伯語／芬蘭語即時切換・Server VAD 400ms・延遲診斷・Pixel 熱管理
