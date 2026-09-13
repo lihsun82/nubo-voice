@@ -1,0 +1,186 @@
+:root {
+  --space-cyan: #70e8ff;
+  --space-blue: #668cff;
+  --space-violet: #c16dff;
+  --space-panel: rgba(7, 13, 31, 0.72);
+}
+
+body {
+  background: #020512;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% -5%, rgba(76, 210, 255, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(3, 8, 27, 0.1), rgba(2, 4, 15, 0.92));
+}
+
+.nubo-space-background {
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 72% 18%, rgba(88, 80, 255, 0.14), transparent 32%),
+    radial-gradient(circle at 14% 75%, rgba(174, 49, 255, 0.11), transparent 31%),
+    linear-gradient(180deg, #03081b 0%, #020512 55%, #01030c 100%);
+}
+
+.nubo-space-background canvas,
+.nubo-space-grid,
+.nubo-space-horizon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.nubo-space-grid {
+  opacity: 0.18;
+  transform-origin: center bottom;
+  transform: perspective(480px) rotateX(68deg) scale(1.65) translateY(29%);
+  background-image:
+    linear-gradient(rgba(94, 210, 255, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 210, 255, 0.15) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,.08) 25%, #000 100%);
+  animation: nubo-space-grid-drift 16s linear infinite;
+}
+
+.nubo-space-horizon {
+  inset: auto 0 0;
+  height: 48vh;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(81, 165, 255, 0.18), transparent 55%),
+    linear-gradient(to top, rgba(6, 10, 29, 0.72), transparent);
+}
+
+.shell {
+  position: relative;
+  z-index: 1;
+}
+
+.hero h1 {
+  color: transparent;
+  background: linear-gradient(180deg, #ffffff 0%, #bdefff 46%, #8d9eff 72%, #dd8cff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  filter: drop-shadow(0 0 24px rgba(97, 213, 255, 0.26));
+}
+
+.eyebrow {
+  color: #a7eaff;
+  text-shadow: 0 0 16px rgba(94, 225, 255, 0.4);
+}
+
+.console,
+.nubo-panel,
+.provider-switcher,
+.question-history {
+  background:
+    linear-gradient(145deg, rgba(11, 20, 45, 0.8), rgba(7, 10, 27, 0.7));
+  border-color: rgba(116, 222, 255, 0.18);
+  box-shadow:
+    0 30px 100px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 0 44px rgba(73, 115, 255, 0.06);
+}
+
+.nubo-energy-orb {
+  position: relative;
+  isolation: isolate;
+}
+
+.nubo-energy-orb::before,
+.nubo-energy-orb::after {
+  content: "";
+  position: absolute;
+  inset: 9%;
+  z-index: -1;
+  border-radius: 50%;
+  border: 1px solid rgba(111, 228, 255, 0.22);
+  box-shadow:
+    0 0 35px rgba(75, 212, 255, 0.16),
+    inset 0 0 30px rgba(146, 76, 255, 0.12);
+  animation: nubo-orb-shield 8s linear infinite;
+}
+
+.nubo-energy-orb::after {
+  inset: 18%;
+  border-style: dashed;
+  border-color: rgba(202, 106, 255, 0.28);
+  animation-direction: reverse;
+  animation-duration: 12s;
+}
+
+.nubo-voice-settings .nubo-panel-head > span {
+  border: 1px solid rgba(104, 226, 255, 0.28);
+  background: linear-gradient(135deg, rgba(68, 174, 255, 0.16), rgba(176, 76, 255, 0.16));
+  box-shadow: 0 0 24px rgba(84, 194, 255, 0.12);
+}
+
+.nubo-choice-card,
+.nubo-mode-card {
+  background: linear-gradient(145deg, rgba(12, 22, 48, 0.78), rgba(8, 12, 31, 0.72));
+  border-color: rgba(122, 217, 255, 0.15);
+}
+
+.nubo-choice-card:hover,
+.nubo-mode-card:hover,
+.nubo-choice-card.active,
+.nubo-mode-card.active {
+  border-color: rgba(112, 232, 255, 0.5);
+  box-shadow:
+    0 0 0 1px rgba(112, 232, 255, 0.1),
+    0 15px 36px rgba(19, 61, 133, 0.2),
+    0 0 24px rgba(181, 83, 255, 0.08);
+}
+
+.nubo-voice-gallery::before {
+  content: "聲線性別｜男聲・女聲・中性　　擬真模式｜標準・高擬真・官方推薦";
+  display: block;
+  margin: 0 0 12px;
+  padding: 10px 13px;
+  border: 1px solid rgba(117, 218, 255, 0.13);
+  border-radius: 12px;
+  color: #a8cddd;
+  background: rgba(7, 17, 38, 0.58);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@keyframes nubo-space-grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 54px, 54px 0; }
+}
+
+@keyframes nubo-orb-shield {
+  from { transform: rotate(0deg) scale(0.98); }
+  50% { transform: rotate(180deg) scale(1.025); }
+  to { transform: rotate(360deg) scale(0.98); }
+}
+
+@media (max-width: 680px) {
+  .nubo-space-grid {
+    opacity: 0.12;
+    background-size: 44px 44px;
+  }
+
+  .nubo-voice-gallery::before {
+    content: "可選男聲、女聲、中性聲，以及標準、高擬真與官方推薦聲線";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nubo-space-grid,
+  .nubo-energy-orb::before,
+  .nubo-energy-orb::after {
+    animation: none;
+  }
+}

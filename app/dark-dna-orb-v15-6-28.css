@@ -1,0 +1,195 @@
+/* NUBO V15.6.28 DARK DNA MOLECULAR THEME */
+:root {
+  color-scheme: dark;
+  --bg: #040711;
+  --panel: rgba(8, 13, 31, 0.82);
+  --line: rgba(96, 137, 255, 0.2);
+  --text: #eef5ff;
+  --muted: #8fa2c3;
+  --accent: #745cff;
+  --accent-2: #45dfff;
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 50% 14%, rgba(46, 73, 160, 0.18), transparent 28%),
+    radial-gradient(circle at 18% 30%, rgba(87, 41, 176, 0.11), transparent 30%),
+    radial-gradient(circle at 83% 44%, rgba(0, 177, 220, 0.1), transparent 31%),
+    linear-gradient(180deg, #060916 0%, #040711 48%, #02040b 100%) !important;
+  color: var(--text) !important;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -4;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(85, 126, 220, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(85, 126, 220, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.75), transparent 92%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  opacity: .52;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(83,231,255,.65) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 64% 27%, rgba(177,102,255,.5) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 84% 62%, rgba(247,194,82,.48) 0 1px, transparent 1.6px),
+    radial-gradient(circle at 32% 76%, rgba(83,231,255,.42) 0 1px, transparent 1.6px);
+  background-size: 88px 88px, 112px 112px, 146px 146px, 124px 124px;
+  animation: nubo-dark-drift 22s linear infinite;
+}
+
+@keyframes nubo-dark-drift {
+  from { transform: translate3d(0,0,0); }
+  to { transform: translate3d(-24px, 18px, 0); }
+}
+
+.nubo-space-background {
+  background: transparent !important;
+  opacity: .92 !important;
+}
+
+.nubo-space-grid {
+  opacity: .2 !important;
+  background-image:
+    linear-gradient(rgba(72, 117, 220, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(72, 117, 220, 0.08) 1px, transparent 1px) !important;
+}
+
+.nubo-space-horizon {
+  opacity: .24 !important;
+  background: radial-gradient(ellipse at center, rgba(51, 121, 255, .2), transparent 68%) !important;
+}
+
+.console,
+.provider-switcher,
+.nubo-voice-quick,
+.integration-card,
+.task-card,
+.task-panel,
+.inbox-card,
+.run-history,
+.question-history,
+.question-category,
+.voice-transcript,
+.capability {
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+  background: linear-gradient(180deg, rgba(11, 18, 43, .88), rgba(6, 11, 27, .84)) !important;
+  backdrop-filter: blur(22px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(22px) saturate(1.18) !important;
+  box-shadow:
+    0 18px 60px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(148,190,255,.07) !important;
+}
+
+h1,
+h2,
+h3,
+strong,
+b,
+summary,
+.provider-switcher,
+.question-category > summary {
+  color: var(--text) !important;
+}
+
+.subtitle,
+.eyebrow,
+small,
+.status span,
+.provider-label,
+.provider-switcher small,
+.voice-transcript,
+footer,
+.run-history > summary,
+.question-item-content small,
+.question-history-empty {
+  color: var(--muted) !important;
+}
+
+.primary,
+.provider-buttons button.selected,
+.nubo-voice-quick .primary {
+  color: #fff !important;
+  border-color: rgba(122, 116, 255, .28) !important;
+  background: linear-gradient(135deg, #28c9ff 0%, #536dff 46%, #9a55ff 78%, #d19a4c 100%) !important;
+  box-shadow: 0 12px 30px rgba(72, 93, 255, .3) !important;
+}
+
+.secondary,
+.provider-buttons button,
+.task-actions button,
+.question-delete,
+.question-delete-all {
+  color: #c9d7ef !important;
+  border-color: rgba(101, 137, 220, .22) !important;
+  background: rgba(10, 16, 37, .76) !important;
+}
+
+input,
+textarea,
+select {
+  color: #eef5ff !important;
+  border-color: rgba(101, 137, 220, .22) !important;
+  background: rgba(7, 12, 29, .78) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #7183a4 !important;
+}
+
+.question-history-count,
+.task-card .status,
+.task-card [class*="badge"],
+.task-card [class*="pill"] {
+  color: #bfcdf0 !important;
+  background: rgba(86, 107, 190, .14) !important;
+}
+
+.question-category > summary,
+.question-item,
+.capability {
+  background: rgba(8, 14, 33, .74) !important;
+}
+
+.nubo-energy-orb {
+  filter:
+    drop-shadow(0 0 22px rgba(74, 202, 255, .22))
+    drop-shadow(0 0 42px rgba(128, 76, 255, .15)) !important;
+}
+
+.nubo-energy-orb::before,
+.nubo-energy-orb::after {
+  content: none !important;
+  display: none !important;
+}
+
+.nubo-energy-orb canvas {
+  background: transparent !important;
+  filter: saturate(1.22) contrast(1.11) brightness(1.06) !important;
+}
+
+@media (max-width: 680px) {
+  .console,
+  .nubo-voice-quick,
+  .task-panel,
+  .run-history {
+    border-radius: 24px !important;
+  }
+
+  .nubo-energy-orb canvas {
+    filter: saturate(1.28) contrast(1.14) brightness(1.08) !important;
+  }
+}

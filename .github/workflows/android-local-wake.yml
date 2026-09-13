@@ -1,0 +1,162 @@
+name: NUBO Local Wake APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/nubo-local-kws-wake-v1
+    paths:
+      - "android-wake/**"
+      - ".github/workflows/android-local-wake.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-local-wake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Install sherpa-onnx keyword tooling
+        run: python -m pip install --disable-pip-version-check "sherpa-onnx==1.13.4" sentencepiece pypinyin
+
+      - name: Fetch official sherpa-onnx Android runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android-wake/app/libs
+          curl -fL --retry 3 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.4/sherpa-onnx-1.13.4.aar" \
+            -o android-wake/app/libs/sherpa-onnx-1.13.4.aar
+          test -s android-wake/app/libs/sherpa-onnx-1.13.4.aar
+          unzip -t android-wake/app/libs/sherpa-onnx-1.13.4.aar >/dev/null
+
+      - name: Fetch official Chinese-English KWS model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_ARCHIVE=/tmp/nubo-kws.tar.bz2
+          curl -fL --retry 3 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2" \
+            -o "$MODEL_ARCHIVE"
+          echo "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6  $MODEL_ARCHIVE" | sha256sum -c -
+          mkdir -p android-wake/app/src/main/assets
+          tar -xjf "$MODEL_ARCHIVE" -C android-wake/app/src/main/assets
+          MODEL=android-wake/app/src/main/assets/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20
+          test -d "$MODEL"
+          find "$MODEL" -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Keep chunk-16 FP32 model and generate multi-pronunciation NUBO keywords
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=android-wake/app/src/main/assets/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20
+
+          ENCODER="$MODEL/encoder-epoch-13-avg-2-chunk-16-left-64.onnx"
+          DECODER="$MODEL/decoder-epoch-13-avg-2-chunk-16-left-64.onnx"
+          JOINER="$MODEL/joiner-epoch-13-avg-2-chunk-16-left-64.onnx"
+          TOKENS="$MODEL/tokens.txt"
+          LEXICON="$MODEL/en.phone"
+
+          test -f "$ENCODER"
+          test -f "$DECODER"
+          test -f "$JOINER"
+          test -f "$TOKENS"
+          test -f "$LEXICON"
+
+          if ! grep -qE '^NUBO[[:space:]]' "$LEXICON"; then
+            printf 'NUBO N UW1 B OW0\n' >> "$LEXICON"
+          fi
+
+          cat > "$MODEL/keywords_raw.txt" <<'EOF'
+          NUBO :4.4 #0.07 @NUBO
+          HEY NUBO :4.5 #0.07 @HEY_NUBO
+          HI NUBO :4.5 #0.07 @HI_NUBO
+          努波 :4.4 #0.07 @努波
+          奴波 :4.4 #0.07 @奴波
+          努博 :4.4 #0.07 @努博
+          奴博 :4.4 #0.07 @奴博
+          嘿努波 :4.5 #0.07 @嘿努波
+          哈囉努波 :4.5 #0.07 @哈囉努波
+          你好努波 :4.5 #0.07 @你好努波
+          喂努波 :4.5 #0.07 @喂努波
+          EOF
+
+          if ! sherpa-onnx-cli text2token \
+            --tokens "$TOKENS" \
+            --tokens-type phone+ppinyin \
+            --lexicon "$LEXICON" \
+            "$MODEL/keywords_raw.txt" "$MODEL/keywords.txt"; then
+            echo "Full phrase set was not tokenizable; applying conservative fallback."
+            cat > "$MODEL/keywords_raw.txt" <<'EOF'
+          NUBO :4.4 #0.07 @NUBO
+          HEY NUBO :4.5 #0.07 @HEY_NUBO
+          HI NUBO :4.5 #0.07 @HI_NUBO
+          努波 :4.4 #0.07 @努波
+          奴波 :4.4 #0.07 @奴波
+          努博 :4.4 #0.07 @努博
+          奴博 :4.4 #0.07 @奴博
+          EOF
+            sherpa-onnx-cli text2token \
+              --tokens "$TOKENS" \
+              --tokens-type phone+ppinyin \
+              --lexicon "$LEXICON" \
+              "$MODEL/keywords_raw.txt" "$MODEL/keywords.txt"
+          fi
+
+          cat >> "$MODEL/keywords.txt" <<'EOF'
+          N UW0 B OW1 :4.4 #0.06 @NUBO_EN_STRESS_B
+          N UW1 B OW1 :4.4 #0.06 @NUBO_EN_STRESS_C
+          N Y UW1 B OW0 :4.4 #0.06 @NUBO_EN_NEWBO
+          EOF
+
+          test -s "$MODEL/keywords.txt"
+          echo "Generated wake keywords:"
+          cat "$MODEL/keywords.txt"
+
+          find "$MODEL" -maxdepth 1 -type f \( -name '*.onnx' -o -name '*.bin' -o -name '*.pt' \) \
+            ! -name 'encoder-epoch-13-avg-2-chunk-16-left-64.onnx' \
+            ! -name 'decoder-epoch-13-avg-2-chunk-16-left-64.onnx' \
+            ! -name 'joiner-epoch-13-avg-2-chunk-16-left-64.onnx' \
+            -delete
+
+      - name: Build NUBO Wake v1.2 diagnostic APK
+        run: gradle -p android-wake clean assembleDebug --stacktrace
+
+      - name: Verify package version model and foreground microphone service
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=android-wake/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/nubo-wake-badging.txt | head -n 12
+          grep -q "package: name='com.ainubo.nubowake'" /tmp/nubo-wake-badging.txt
+          grep -q "versionName='1.2.0-diagnostic'" /tmp/nubo-wake-badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml > /tmp/nubo-wake-manifest.txt
+          grep -q 'com.ainubo.nubowake.WakeService' /tmp/nubo-wake-manifest.txt
+          unzip -l "$APK" | grep -q 'encoder-epoch-13-avg-2-chunk-16-left-64.onnx'
+          unzip -l "$APK" | grep -q 'decoder-epoch-13-avg-2-chunk-16-left-64.onnx'
+          unzip -l "$APK" | grep -q 'joiner-epoch-13-avg-2-chunk-16-left-64.onnx'
+          ls -lh "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NUBO-Wake-v1.2-CHUNK16-FP32-DIAGNOSTIC
+          path: android-wake/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

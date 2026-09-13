@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { recordLineUserFromSource } from "@/lib/line-user-registry";
 import {
   getAllowedLineUserIds,
   isLineUserAllowed,
@@ -131,6 +132,12 @@ export async function POST(request: Request) {
     events.map(async (event) => {
       if (!isSupportedMessage(event)) return;
       if (isDuplicateEvent(event.webhookEventId)) return;
+
+      try {
+        await recordLineUserFromSource(event.source);
+      } catch (registryError) {
+        console.warn("[line/webhook] user registry skipped", registryError);
+      }
 
       const userId = event.source?.userId;
       if (event.source?.type !== "user" || !userId) {

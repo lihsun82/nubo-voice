@@ -5,12 +5,21 @@ import { confirmEmailSend } from "@/lib/gmail";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const schema = z.object({ pendingId: z.string().uuid() });
+const schema = z.object({
+  pendingId:
+    z.string().uuid().optional(),
+});
 
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) {
-    return NextResponse.json({ error: "缺少待確認郵件ID" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error:
+          "郵件確認資料格式錯誤",
+      },
+      { status: 400 },
+    );
   }
   try {
     const sent = await confirmEmailSend(parsed.data.pendingId);

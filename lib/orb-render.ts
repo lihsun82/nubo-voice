@@ -1,140 +1,482 @@
 import { ORB_SIZE, type OrbParticle } from "@/lib/orb-config";
+import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
-function drawTrack(
-  ctx: CanvasRenderingContext2D,
-  time: number,
-  radius: number,
-  tilt: number,
-  offset: number,
-  alpha: number,
-  violet: boolean,
-) {
-  const center = ORB_SIZE / 2;
-  ctx.beginPath();
-  for (let index = 0; index <= 140; index += 1) {
-    const ratio = index / 140;
-    const angle = ratio * Math.PI * 2 + time * 0.00031 + offset;
-    const localRadius = radius + Math.sin(angle * 4 + time * 0.001) * 8;
-    const x = center + Math.cos(angle) * localRadius;
-    const y = center + Math.sin(angle) * localRadius * tilt;
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = violet
-    ? `rgba(195,78,255,${alpha})`
-    : `rgba(86,196,255,${alpha})`;
-  ctx.lineWidth = 1.1;
-  ctx.shadowColor = violet ? "#c454ff" : "#64d5ff";
-  ctx.shadowBlur = 14;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
+type Tone = "blue" | "cyan" | "violet" | "gold";
+
+type ProjectedParticle = {
+  x: number;
+  y: number;
+  z: number;
+  depth: number;
+  size: number;
+  alpha: number;
+  tone: Tone;
+  sourceIndex: number;
+};
+
+const TONES: Record<Tone, { rgb: [number, number, number]; glow: string }> = {
+  blue: { rgb: [78, 126, 255], glow: "#587dff" },
+  cyan: { rgb: [74, 226, 255], glow: "#4de8ff" },
+  violet: { rgb: [182, 95, 255], glow: "#b865ff" },
+  gold: { rgb: [246, 191, 80], glow: "#f5c25a" },
+};
+
+function particleTone(hue: number): Tone {
+  if (hue > 0.95) return "gold";
+  if (hue > 0.78) return "violet";
+  if (hue > 0.34) return "cyan";
+  return "blue";
 }
 
-function drawParticles(
-  ctx: CanvasRenderingContext2D,
+function phaseDynamics(phase: NuboVoicePhase, time: number) {
+  if (phase === "speaking") {
+    const pulse =
+      Math.sin(time * 0.0105) * 0.07 +
+      Math.sin(time * 0.017 + 0.7) * 0.04 +
+      Math.sin(time * 0.0046 + 2.2) * 0.028;
+    return {
+      scale: 1.035 + pulse,
+      spin: 2.25,
+      jitter: 15,
+      brightness: 1.34,
+      link: 1.35,
+      glow: 1.3,
+    };
+  }
+  if (phase === "thinking") {
+    return {
+      scale: 1 + Math.sin(time * 0.0042) * 0.032,
+      spin: 1.65,
+      jitter: 8,
+      brightness: 1.16,
+      link: 1.14,
+      glow: 1.12,
+    };
+  }
+  if (phase === "listening") {
+    return {
+      scale: 1 + Math.sin(time * 0.0025) * 0.018,
+      spin: 1.05,
+      jitter: 3.5,
+      brightness: 1.04,
+      link: 1.02,
+      glow: 1.02,
+    };
+  }
+  if (phase === "connecting") {
+    return {
+      scale: 1 + Math.sin(time * 0.0032) * 0.024,
+      spin: 1.3,
+      jitter: 5,
+      brightness: 1.1,
+      link: 1.08,
+      glow: 1.08,
+    };
+  }
+  return {
+    scale: 1 + Math.sin(time * 0.0018) * 0.012,
+    spin: 0.72,
+    jitter: 2,
+    brightness: phase === "error" ? 0.65 : 0.96,
+    link: phase === "error" ? 0.7 : 0.92,
+    glow: phase === "error" ? 0.65 : 0.92,
+  };
+}
+
+function rotateXYZ(
+  x: number,
+  y: number,
+  z: number,
+  yaw: number,
+  pitch: number,
+  roll: number,
+) {
+  const cy = Math.cos(yaw);
+  const sy = Math.sin(yaw);
+  let rx = x * cy - z * sy;
+  let rz = x * sy + z * cy;
+  let ry = y;
+
+  const cp = Math.cos(pitch);
+  const sp = Math.sin(pitch);
+  const py = ry * cp - rz * sp;
+  const pz = ry * sp + rz * cp;
+  ry = py;
+  rz = pz;
+
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const qx = rx * cr - ry * sr;
+  const qy = rx * sr + ry * cr;
+
+  return { x: qx, y: qy, z: rz };
+}
+
+function projectParticles(
   particles: OrbParticle[],
   time: number,
   power: number,
-) {
+  phase: NuboVoicePhase,
+): ProjectedParticle[] {
   const center = ORB_SIZE / 2;
-  const cloudRadius = 182 + power * 4;
-  const rotation = time * 0.000115 * power;
+  const d = phaseDynamics(phase, time);
+  const yaw = time * 0.0002 * d.spin;
+  const pitch = 0.48 + Math.sin(time * 0.00031) * 0.22;
+  const roll = -0.18 + Math.sin(time * 0.00023 + 1.1) * 0.16;
+  const baseRadius = 180;
+  const cameraDistance = 3.55;
+  const speaking = phase === "speaking";
 
-  for (const particle of particles) {
-    const theta =
-      particle.theta + rotation + Math.sin(time * particle.speed + particle.offset) * 0.035;
-    const phi = particle.phi + Math.sin(time * 0.00039 + particle.offset) * 0.09;
-    const x3 = Math.sin(phi) * Math.cos(theta);
-    const y3 = Math.cos(phi);
-    const z3 = Math.sin(phi) * Math.sin(theta);
-    const depth = (z3 + 1) * 0.5;
-    const perspective = 0.66 + depth * 0.46;
-    const radius = cloudRadius + Math.sin(time * 0.00072 + particle.offset) * 9;
-    const x = center + x3 * radius * perspective;
-    const y = center + y3 * radius * perspective;
-    const alpha = Math.min((0.11 + depth * 0.76) * power, 0.98);
-    const red = 90 + Math.floor(particle.hue * 100 + depth * 70);
-    const green = 72 + Math.floor(depth * 126);
+  return particles
+    .map((particle, index) => {
+      const theta =
+        particle.theta +
+        Math.sin(time * particle.speed + particle.offset) * 0.026;
+      const phi =
+        particle.phi +
+        Math.sin(time * 0.0004 + particle.offset) * 0.018;
 
-    ctx.beginPath();
-    ctx.arc(x, y, particle.size * (0.5 + depth * 0.82), 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${red},${green},255,${alpha})`;
-    ctx.fill();
+      const sx = Math.sin(phi) * Math.cos(theta);
+      const sy = Math.cos(phi);
+      const sz = Math.sin(phi) * Math.sin(theta);
+      const rotated = rotateXYZ(sx, sy, sz, yaw, pitch, roll);
 
-    if (depth > 0.45) {
-      const trail = 9 + depth * 25 * Math.min(power, 2.1);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(x - Math.sin(theta) * trail, y + Math.cos(theta) * trail * 0.4);
-      ctx.strokeStyle = particle.hue > 0.5
-        ? `rgba(92,202,255,${0.04 + depth * 0.18})`
-        : `rgba(196,72,255,${0.035 + depth * 0.17})`;
-      ctx.lineWidth = 0.42 + depth * 0.9;
-      ctx.stroke();
-    }
-  }
+      const localPulse =
+        Math.sin(
+          time * (speaking ? 0.011 : 0.0031) +
+            particle.offset * 1.8 +
+            index * 0.021,
+        ) * d.jitter;
+      const speechWave = speaking
+        ? Math.sin(theta * 5.5 + time * 0.0125) * 5.5 +
+          Math.sin(phi * 4.3 - time * 0.0102) * 4
+        : 0;
+
+      const radius =
+        (baseRadius * particle.layer + localPulse + speechWave) * d.scale;
+
+      const zCamera = rotated.z + cameraDistance;
+      const perspective = cameraDistance / zCamera;
+      const x = center + rotated.x * radius * perspective;
+      const y = center + rotated.y * radius * perspective;
+      const depth = (rotated.z + 1) * 0.5;
+
+      const twinkle =
+        0.86 +
+        Math.sin(
+          time * (speaking ? 0.0108 : 0.0035) + particle.offset,
+        ) * 0.14;
+      const rearFade = 0.5 + depth * 0.5;
+      const alpha = Math.min(
+        (0.3 + depth * 0.62) *
+          twinkle *
+          d.brightness *
+          rearFade *
+          Math.min(power, 2.05),
+        1,
+      );
+
+      return {
+        x,
+        y,
+        z: rotated.z,
+        depth,
+        size:
+          particle.size *
+          (0.72 + depth * 0.62) *
+          (speaking ? 1.07 : 1),
+        alpha,
+        tone: particleTone(particle.hue),
+        sourceIndex: index,
+      };
+    })
+    .sort((a, b) => a.z - b.z);
 }
 
-function drawCore(
+function drawLatitudeLongitudeGrid(
   ctx: CanvasRenderingContext2D,
   time: number,
-  power: number,
-  coreRadius: number,
+  phase: NuboVoicePhase,
 ) {
   const center = ORB_SIZE / 2;
-  const shell = ctx.createRadialGradient(
-    center - 38,
-    center - 50,
-    5,
-    center,
-    center,
-    coreRadius,
-  );
-  shell.addColorStop(0, "rgba(255,255,255,.99)");
-  shell.addColorStop(0.08, "rgba(184,246,255,.98)");
-  shell.addColorStop(0.25, "rgba(63,179,255,.95)");
-  shell.addColorStop(0.48, "rgba(80,88,255,.93)");
-  shell.addColorStop(0.7, "rgba(157,45,255,.9)");
-  shell.addColorStop(0.88, "rgba(51,10,108,.97)");
-  shell.addColorStop(1, "rgba(3,5,19,1)");
-  ctx.fillStyle = shell;
-  ctx.beginPath();
-  ctx.arc(center, center, coreRadius, 0, Math.PI * 2);
-  ctx.fill();
+  const d = phaseDynamics(phase, time);
+  const yaw = time * 0.0002 * d.spin;
+  const pitch = 0.48 + Math.sin(time * 0.00031) * 0.22;
+  const roll = -0.18 + Math.sin(time * 0.00023 + 1.1) * 0.16;
+  const cameraDistance = 3.55;
+  const radius = 181 * d.scale;
+  const speaking = phase === "speaking";
 
-  for (let index = 0; index < 22; index += 1) {
-    const angle = time * (0.00042 + index * 0.000012) + index * 0.41;
+  const project = (x: number, y: number, z: number) => {
+    const r = rotateXYZ(x, y, z, yaw, pitch, roll);
+    const perspective = cameraDistance / (r.z + cameraDistance);
+    return {
+      x: center + r.x * radius * perspective,
+      y: center + r.y * radius * perspective,
+      z: r.z,
+    };
+  };
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  for (let latIndex = -3; latIndex <= 3; latIndex += 1) {
+    const latitude = (latIndex / 4) * (Math.PI / 2);
     ctx.beginPath();
-    ctx.moveTo(center + Math.cos(angle) * 24, center + Math.sin(angle) * 24);
-    ctx.quadraticCurveTo(
-      center + Math.cos(angle + 0.55) * coreRadius * 0.48,
-      center + Math.sin(angle + 0.55) * coreRadius * 0.48,
-      center + Math.cos(angle + 1.18) * coreRadius * 0.76,
-      center + Math.sin(angle + 1.18) * coreRadius * 0.76,
-    );
-    ctx.strokeStyle = index % 2
-      ? `rgba(82,215,255,${0.08 + power * 0.05})`
-      : `rgba(210,70,255,${0.07 + power * 0.045})`;
-    ctx.lineWidth = 0.65 + (index % 4) * 0.24;
+    for (let step = 0; step <= 120; step += 1) {
+      const lon = (step / 120) * Math.PI * 2;
+      const x = Math.cos(latitude) * Math.cos(lon);
+      const y = Math.sin(latitude);
+      const z = Math.cos(latitude) * Math.sin(lon);
+      const p = project(x, y, z);
+      if (step === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = `rgba(93,183,255,${speaking ? 0.12 : 0.07})`;
+    ctx.lineWidth = 0.45;
     ctx.stroke();
   }
 
-  const scanY = ((time * 0.0002 * power) % 1) * coreRadius * 2 - coreRadius;
-  const scan = ctx.createLinearGradient(
-    center,
-    center + scanY - 22,
-    center,
-    center + scanY + 22,
-  );
-  scan.addColorStop(0, "rgba(79,203,255,0)");
-  scan.addColorStop(0.5, `rgba(200,246,255,${0.54 * power})`);
-  scan.addColorStop(1, "rgba(143,68,255,0)");
+  for (let lonIndex = 0; lonIndex < 8; lonIndex += 1) {
+    const longitude = (lonIndex / 8) * Math.PI * 2;
+    ctx.beginPath();
+    for (let step = 0; step <= 100; step += 1) {
+      const lat = -Math.PI / 2 + (step / 100) * Math.PI;
+      const x = Math.cos(lat) * Math.cos(longitude);
+      const y = Math.sin(lat);
+      const z = Math.cos(lat) * Math.sin(longitude);
+      const p = project(x, y, z);
+      if (step === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = `rgba(181,100,255,${speaking ? 0.11 : 0.06})`;
+    ctx.lineWidth = 0.42;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawDNAHelix(
+  ctx: CanvasRenderingContext2D,
+  time: number,
+  phase: NuboVoicePhase,
+  axisYaw: number,
+  axisPitch: number,
+  phaseOffset: number,
+  colorA: string,
+  colorB: string,
+) {
+  const center = ORB_SIZE / 2;
+  const d = phaseDynamics(phase, time);
+  const speaking = phase === "speaking";
+  const radius = 186 * d.scale;
+  const cameraDistance = 3.55;
+  const spin = time * 0.00025 * d.spin + phaseOffset;
+  const strandA: Array<[number, number, number]> = [];
+  const strandB: Array<[number, number, number]> = [];
+
+  for (let i = 0; i <= 140; i += 1) {
+    const u = i / 140;
+    const lon = u * Math.PI * 2 + spin;
+    const lat = Math.sin(u * Math.PI * 4 + spin * 0.7) * 0.52;
+    const wobble = speaking
+      ? Math.sin(time * 0.011 + i * 0.18) * 3.2
+      : Math.sin(time * 0.0032 + i * 0.12) * 1.1;
+
+    const pointFor = (offset: number): [number, number, number] => {
+      const localLon = lon + offset;
+      const x = Math.cos(lat) * Math.cos(localLon);
+      const y = Math.sin(lat);
+      const z = Math.cos(lat) * Math.sin(localLon);
+      const r = rotateXYZ(
+        x,
+        y,
+        z,
+        axisYaw + time * 0.00008 * d.spin,
+        axisPitch,
+        0.22,
+      );
+      const perspective = cameraDistance / (r.z + cameraDistance);
+      return [
+        center + r.x * (radius + wobble) * perspective,
+        center + r.y * (radius + wobble) * perspective,
+        r.z,
+      ];
+    };
+
+    strandA.push(pointFor(0));
+    strandB.push(pointFor(Math.PI));
+  }
+
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(center, center, coreRadius - 2, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.fillStyle = scan;
-  ctx.fillRect(center - coreRadius, center + scanY - 24, coreRadius * 2, 48);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  const drawStrand = (
+    points: Array<[number, number, number]>,
+    color: string,
+  ) => {
+    for (let i = 1; i < points.length; i += 1) {
+      const a = points[i - 1];
+      const b = points[i];
+      const depth = ((a[2] + b[2]) * 0.5 + 1) * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]);
+      ctx.lineTo(b[0], b[1]);
+      ctx.strokeStyle = color.replace(
+        "ALPHA",
+        String((speaking ? 0.22 : 0.12) + depth * (speaking ? 0.2 : 0.11)),
+      );
+      ctx.lineWidth = (speaking ? 0.9 : 0.62) * (0.75 + depth * 0.35);
+      ctx.stroke();
+    }
+  };
+
+  drawStrand(strandA, colorA);
+  drawStrand(strandB, colorB);
+
+  for (let i = 8; i < strandA.length; i += 12) {
+    const a = strandA[i];
+    const b = strandB[i];
+    const dist = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (dist > 115) continue;
+    const depth = ((a[2] + b[2]) * 0.5 + 1) * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.strokeStyle = `rgba(110,190,255,${(speaking ? 0.12 : 0.06) + depth * 0.08})`;
+    ctx.lineWidth = 0.42;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawNetwork(
+  ctx: CanvasRenderingContext2D,
+  points: ProjectedParticle[],
+  phase: NuboVoicePhase,
+) {
+  const speaking = phase === "speaking";
+  const stride = points.length < 800 ? 6 : 9;
+  const maxDistance = points.length < 800 ? 50 : 43;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  for (let i = 0; i < points.length; i += stride) {
+    const from = points[i];
+    for (const offset of [9, 23, 41]) {
+      const to = points[(i + offset) % points.length];
+      const distance = Math.hypot(to.x - from.x, to.y - from.y);
+      if (distance > maxDistance) continue;
+      const tone = TONES[from.tone].rgb;
+      const front = Math.min(from.depth, to.depth);
+      const depthGap = Math.abs(from.z - to.z);
+      if (depthGap > 0.62) continue;
+      ctx.strokeStyle = `rgba(${tone[0]},${tone[1]},${tone[2]},${(0.035 + front * 0.1) * (speaking ? 1.35 : 1)})`;
+      ctx.lineWidth = speaking ? 0.68 : 0.46;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawNodes(
+  ctx: CanvasRenderingContext2D,
+  points: ProjectedParticle[],
+  time: number,
+  phase: NuboVoicePhase,
+) {
+  const speaking = phase === "speaking";
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  points.forEach((point, index) => {
+    const tone = TONES[point.tone];
+    const pulse =
+      0.94 +
+      Math.sin(time * (speaking ? 0.013 : 0.0042) + index * 0.58) *
+        (speaking ? 0.2 : 0.07);
+    const radius = Math.max(0.62, point.size * pulse);
+
+    if (point.depth > 0.7 && index % (speaking ? 11 : 15) === 0) {
+      const glowRadius = 4.5 + radius * (speaking ? 4.2 : 3.1);
+      const glow = ctx.createRadialGradient(
+        point.x,
+        point.y,
+        0,
+        point.x,
+        point.y,
+        glowRadius,
+      );
+      glow.addColorStop(
+        0,
+        `rgba(${tone.rgb[0]},${tone.rgb[1]},${tone.rgb[2]},${0.22 * point.alpha})`,
+      );
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.shadowColor = tone.glow;
+    ctx.shadowBlur = point.depth > 0.72 ? (speaking ? 10 : 5) : 1.5;
+    ctx.fillStyle = `rgba(${tone.rgb[0]},${tone.rgb[1]},${tone.rgb[2]},${point.alpha})`;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawCoreMolecules(
+  ctx: CanvasRenderingContext2D,
+  time: number,
+  phase: NuboVoicePhase,
+) {
+  const center = ORB_SIZE / 2;
+  const speaking = phase === "speaking";
+  const count = speaking ? 20 : 14;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  for (let i = 0; i < count; i += 1) {
+    const angle =
+      (i / count) * Math.PI * 2 +
+      time * (speaking ? 0.0012 : 0.0005);
+    const distance =
+      16 +
+      (i % 4) * 7 +
+      Math.sin(time * (speaking ? 0.012 : 0.0035) + i) *
+        (speaking ? 5 : 2);
+    const x = center + Math.cos(angle) * distance;
+    const y = center + Math.sin(angle * 1.17) * distance * 0.72;
+    const tone =
+      i % 8 === 0 ? TONES.gold : i % 3 === 0 ? TONES.violet : TONES.cyan;
+    const radius = speaking
+      ? 1.6 + (i % 3) * 0.45
+      : 1.05 + (i % 3) * 0.36;
+
+    ctx.shadowColor = tone.glow;
+    ctx.shadowBlur = speaking ? 10 : 5;
+    ctx.fillStyle = `rgba(${tone.rgb[0]},${tone.rgb[1]},${tone.rgb[2]},${speaking ? 0.92 : 0.72})`;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.restore();
 }
 
@@ -143,32 +485,34 @@ export function renderNuboOrb(
   particles: OrbParticle[],
   time: number,
   power: number,
+  phase: NuboVoicePhase,
 ) {
-  const center = ORB_SIZE / 2;
-  const pulse = 1 + Math.sin(time * 0.00245) * 0.026 * power;
-  const coreRadius = 132 * pulse;
-
   ctx.clearRect(0, 0, ORB_SIZE, ORB_SIZE);
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
 
-  const aura = ctx.createRadialGradient(center, center, 20, center, center, 262);
-  aura.addColorStop(0, `rgba(184,234,255,${0.15 * power})`);
-  aura.addColorStop(0.3, `rgba(73,128,255,${0.18 * power})`);
-  aura.addColorStop(0.58, `rgba(151,58,255,${0.16 * power})`);
-  aura.addColorStop(1, "rgba(10,3,36,0)");
-  ctx.fillStyle = aura;
-  ctx.beginPath();
-  ctx.arc(center, center, 264, 0, Math.PI * 2);
-  ctx.fill();
+  const points = projectParticles(particles, time, power, phase);
 
-  drawTrack(ctx, time, 173, 0.4, 0.1, 0.31 * power, false);
-  drawTrack(ctx, time, 194, 0.57, 1.35, 0.25 * power, true);
-  drawTrack(ctx, time, 216, 0.32, 2.65, 0.19 * power, false);
-  drawTrack(ctx, time, 235, 0.72, 4.05, 0.13 * power, true);
-  drawTrack(ctx, time, 249, 0.48, 5.25, 0.09 * power, false);
-  drawParticles(ctx, particles, time, power);
-  drawCore(ctx, time, power, coreRadius);
-
-  ctx.restore();
+  drawLatitudeLongitudeGrid(ctx, time, phase);
+  drawDNAHelix(
+    ctx,
+    time,
+    phase,
+    0.22,
+    0.45,
+    0.1,
+    "rgba(72,229,255,ALPHA)",
+    "rgba(185,98,255,ALPHA)",
+  );
+  drawDNAHelix(
+    ctx,
+    time,
+    phase,
+    1.3,
+    -0.28,
+    1.8,
+    "rgba(185,98,255,ALPHA)",
+    "rgba(76,170,255,ALPHA)",
+  );
+  drawNetwork(ctx, points, phase);
+  drawNodes(ctx, points, time, phase);
+  drawCoreMolecules(ctx, time, phase);
 }

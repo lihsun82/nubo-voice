@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="NUBO">
+  <defs>
+    <radialGradient id="core" cx="38%" cy="30%" r="70%">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.16" stop-color="#b9d7ff"/>
+      <stop offset="0.48" stop-color="#7768ff"/>
+      <stop offset="0.78" stop-color="#382676"/>
+      <stop offset="1" stop-color="#0b0d14"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#72d7ff"/>
+      <stop offset="0.5" stop-color="#9a79ff"/>
+      <stop offset="1" stop-color="#ff9f5f"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#07090d"/>
+  <circle cx="256" cy="256" r="174" fill="none" stroke="url(#ring)" stroke-width="7" opacity="0.75" filter="url(#glow)"/>
+  <circle cx="256" cy="256" r="132" fill="url(#core)" stroke="#ffffff" stroke-opacity="0.28" stroke-width="3"/>
+  <path d="M184 321V191h27l90 88v-88h27v130h-25l-92-90v90z" fill="#ffffff" fill-opacity="0.94"/>
+</svg>

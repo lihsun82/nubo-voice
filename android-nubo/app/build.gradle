@@ -1,0 +1,53 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.ainubo.nubo"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.ainubo.nubo"
+        minSdk 26
+        targetSdk 35
+        versionCode 22
+        versionName "0.22.0"
+    }
+
+    signingConfigs {
+        ainuboStable {
+            storeFile file("../ainubo-debug.jks")
+            storePassword "ainubo123"
+            keyAlias "ainubo"
+            keyPassword "ainubo123"
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+            signingConfig signingConfigs.ainuboStable
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.ainuboStable
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging {
+        resources {
+            excludes += ["META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*"]
+        }
+    }
+}

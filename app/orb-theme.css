@@ -8,25 +8,59 @@ body {
 }
 
 .orb-wrap {
-  min-height: 590px;
+  min-height: 650px;
   overflow: visible;
+  display: grid;
+  place-items: center;
 }
 
 .nubo-energy-orb {
-  width: 560px;
-  height: 560px;
+  width: min(560px, 92vw);
+  height: auto;
+  aspect-ratio: 560 / 620;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 0 36px rgba(86, 190, 255, 0.38)) drop-shadow(0 0 72px rgba(160, 62, 255, 0.32));
+  filter: drop-shadow(0 0 30px rgba(53, 220, 255, 0.32)) drop-shadow(0 0 70px rgba(19, 116, 255, 0.18));
 }
 
 .nubo-energy-orb canvas {
   display: block;
-  width: 560px;
-  height: 560px;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 560 / 620;
+}
+
+.nubo-hologram-avatar {
+  position: relative;
+  isolation: isolate;
+}
+
+.nubo-hologram-avatar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 78%;
+  height: 58%;
+  left: 11%;
+  top: 18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(22, 187, 255, 0.13), rgba(0, 99, 255, 0.035) 48%, transparent 74%);
+  filter: blur(22px);
+  pointer-events: none;
 }
 
 @media (max-width: 680px) {
-  .orb-wrap { min-height: 410px; }
-  .nubo-energy-orb { transform: scale(0.7); }
+  .orb-wrap {
+    min-height: 500px;
+  }
+
+  .nubo-energy-orb {
+    width: min(430px, 95vw);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nubo-energy-orb {
+    filter: drop-shadow(0 0 22px rgba(53, 220, 255, 0.24));
+  }
 }
