@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendGmailMessage } from "@/lib/gmail";
+import { pushHotelLineText } from "@/lib/nubo-hotel-line";
 import {
   classifyNuboGuestServiceTranscript,
   getNuboGuestServiceCategoryLabel,
@@ -47,9 +48,6 @@ function isSubstantiveIssue(value: string) {
   if (NON_SUBSTANTIVE_ISSUE_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return false;
   }
-
-  // 短但明確的客訴（例如「沒熱水」「很吵」）仍應接受；
-  // 只擋掉幾乎沒有語意內容的佔位字串。
   return normalized.length >= 2 && /[\p{L}\p{N}]/u.test(normalized);
 }
 
@@ -58,7 +56,6 @@ function getAlertRecipients() {
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
-
   return Array.from(new Set([...DEFAULT_ALERT_EMAILS, ...configured]));
 }
 
@@ -96,24 +93,12 @@ export async function POST(req: NextRequest) {
     const issue = clean(body.issue ?? body.transcript ?? body.text);
     const source = clean(body.source) || "guest_service_alert";
 
-    const missing = [
-      !surname ? "surname" : "",
-      !roomNumber ? "roomNumber" : "",
-      !contact ? "contact" : "",
-      !isSubstantiveIssue(issue) ? "issue" : "",
-    ].filter(Boolean);
-
-    if (missing.length) {
+    if (!isSubstantiveIssue(issue)) {
       return NextResponse.json(
         {
           ok: false,
           sent: false,
-          requiresCompleteIntake: true,
-          missing,
-          error:
-            missing.includes("issue")
-              ? "客訴/需求內容尚未完整。請先讓客人把內容說完，再寄送客務通知。"
-              : "客務資料未完整，必須先取得姓氏、房號、聯絡方式與完整客訴/需求內容。",
+          error: "客訴／需求內容尚未完整，暫不送出通知。",
         },
         { status: 400 },
       );
@@ -129,66 +114,102 @@ export async function POST(req: NextRequest) {
         : classification.urgency === "high"
           ? "優先"
           : "一般";
+    const urgencyIcon =
+      classification.urgency === "critical"
+        ? "🚨"
+        : classification.urgency === "high"
+          ? "⚠️"
+          : "🛎️";
 
-    const fingerprint = [roomNumber, surname, contact, issue]
+    const fingerprint = [roomNumber || "unknown-room", categoryLabel, issue]
       .map(normalize)
       .join(":");
     const now = Date.now();
-    const recipients = getAlertRecipients();
-    const recipientHeader = recipients.join(", ");
 
     if (wasRecentlyDelivered(fingerprint, now)) {
       return NextResponse.json({
         ok: true,
         sent: false,
         duplicate: true,
-        recipients,
+        channel: "line",
         source,
       });
     }
 
-    const subject =
-      classification.urgency === "critical"
-        ? `【NUBO緊急客務】${roomNumber}房｜${surname}姓｜${categoryLabel}`
-        : `【NUBO客務通知】${roomNumber}房｜${surname}姓｜${categoryLabel}`;
-
-    const emailBody = [
-      "NUBO 已完成客人客務資料建檔，請立即安排人員處理。",
-      "",
+    const lineText = [
+      `${urgencyIcon} NUBO 即時客務通知`,
       `時間：${getTaipeiTime()}（Asia/Taipei）`,
-      `房號：${roomNumber}`,
-      `客人姓氏：${surname}`,
-      `聯絡方式：${contact}`,
       `類型：${categoryLabel}`,
       `優先級：${urgencyLabel}`,
+      `房號：${roomNumber || "未提供"}`,
+      surname ? `客人姓氏：${surname}` : "",
+      contact ? `聯絡方式：${contact}` : "",
       "",
-      "客訴／需求內容：",
+      "旅客需求／客訴：",
       issue,
       "",
-      "此信由 AinuboX1 / NUBO 客務升級機制自動寄送。",
-    ].join("\n");
+      "請現場人員確認並處理。",
+    ]
+      .filter((line) => line !== "")
+      .join("\n");
 
-    const gmailResult = await sendGmailMessage(recipientHeader, subject, emailBody);
-
-    // Only mark the fingerprint as delivered after Gmail accepted the message.
-    // A failed OAuth/token/API request must remain retryable immediately.
+    // LINE is the operational primary channel. It must not wait for surname,
+    // phone number, Gmail OAuth, or a second confirmation.
+    const lineResult = await pushHotelLineText(lineText);
     recentAlerts.set(fingerprint, Date.now());
+
+    // Email is now an optional copy only. A Gmail failure must never block the
+    // LINE alert requested by hotel operations.
+    let emailSent = false;
+    let emailError: string | null = null;
+    if (
+      process.env.NUBO_GUEST_ALERT_EMAIL_COPY?.trim().toLowerCase() === "true" &&
+      surname &&
+      roomNumber &&
+      contact
+    ) {
+      try {
+        const recipients = getAlertRecipients();
+        const subject =
+          classification.urgency === "critical"
+            ? `【NUBO緊急客務】${roomNumber}房｜${surname}姓｜${categoryLabel}`
+            : `【NUBO客務通知】${roomNumber}房｜${surname}姓｜${categoryLabel}`;
+        await sendGmailMessage(
+          recipients.join(", "),
+          subject,
+          [
+            "NUBO 客務通知（LINE 已先行送達）。",
+            `時間：${getTaipeiTime()}（Asia/Taipei）`,
+            `房號：${roomNumber}`,
+            `客人姓氏：${surname}`,
+            `聯絡方式：${contact}`,
+            `類型：${categoryLabel}`,
+            `優先級：${urgencyLabel}`,
+            "",
+            issue,
+          ].join("\n"),
+        );
+        emailSent = true;
+      } catch (error) {
+        emailError = error instanceof Error ? error.message : String(error);
+        console.warn("[notify/guest-service] optional email copy failed", error);
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       sent: true,
-      recipients,
-      surname,
-      roomNumber,
-      contact,
+      channel: "line",
+      line: lineResult,
+      emailSent,
+      emailError,
+      surname: surname || null,
+      roomNumber: roomNumber || null,
+      contact: contact || null,
       issue,
       category: classification.matched ? classification.category : "guest_request",
       urgency: classification.urgency,
       source,
-      messageId:
-        gmailResult && typeof gmailResult === "object" && "id" in gmailResult
-          ? String(gmailResult.id ?? "") || null
-          : null,
     });
   } catch (error) {
     console.error("[notify/guest-service] failed", error);
