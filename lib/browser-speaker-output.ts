@@ -10,50 +10,74 @@ type SinkSelectableMediaElement = HTMLMediaElement & {
 
 const MULTIMEDIA_SINK_CANDIDATES = ["id-multimedia", "default", ""];
 
-export async function preferMultimediaAudioContext(context: AudioContext) {
-  const selectable = context as SinkSelectableAudioContext;
-  if (typeof selectable.setSinkId !== "function") return false;
+const audioContextSinkCache = new WeakMap<AudioContext, boolean>();
+const captureContextSinkCache = new WeakMap<AudioContext, boolean>();
+const mediaElementSinkCache = new WeakMap<HTMLMediaElement, boolean>();
 
-  for (const sinkId of MULTIMEDIA_SINK_CANDIDATES) {
+async function setAudioContextSinkOnce(
+  context: AudioContext,
+  cache: WeakMap<AudioContext, boolean>,
+  sinkIds: SinkIdValue[],
+) {
+  if (cache.has(context)) return cache.get(context) === true;
+
+  const selectable = context as SinkSelectableAudioContext;
+  if (typeof selectable.setSinkId !== "function") {
+    cache.set(context, false);
+    return false;
+  }
+
+  for (const sinkId of sinkIds) {
     try {
       await selectable.setSinkId(sinkId);
+      cache.set(context, true);
       return true;
     } catch {
-      // Try the next browser-supported multimedia/default sink alias.
+      // Try the next browser-supported sink alias once for this AudioContext.
     }
   }
 
+  cache.set(context, false);
   return false;
+}
+
+export async function preferMultimediaAudioContext(context: AudioContext) {
+  return setAudioContextSinkOnce(
+    context,
+    audioContextSinkCache,
+    MULTIMEDIA_SINK_CANDIDATES,
+  );
 }
 
 export async function preferMultimediaMediaElement(
   element: HTMLMediaElement,
 ) {
+  if (mediaElementSinkCache.has(element)) {
+    return mediaElementSinkCache.get(element) === true;
+  }
+
   const selectable = element as SinkSelectableMediaElement;
-  if (typeof selectable.setSinkId !== "function") return false;
+  if (typeof selectable.setSinkId !== "function") {
+    mediaElementSinkCache.set(element, false);
+    return false;
+  }
 
   for (const sinkId of MULTIMEDIA_SINK_CANDIDATES) {
     try {
-      await selectable.setSinkId(sinkId);
+      await selectable.setSinkId(String(sinkId));
+      mediaElementSinkCache.set(element, true);
       return true;
     } catch {
-      // Try the next browser-supported multimedia/default sink alias.
+      // Try the next browser-supported multimedia/default sink alias once.
     }
   }
 
+  mediaElementSinkCache.set(element, false);
   return false;
 }
 
 export async function disableHardwareOutputForCaptureContext(
   context: AudioContext,
 ) {
-  const selectable = context as SinkSelectableAudioContext;
-  if (typeof selectable.setSinkId !== "function") return false;
-
-  try {
-    await selectable.setSinkId({ type: "none" });
-    return true;
-  } catch {
-    return false;
-  }
+  return setAudioContextSinkOnce(context, captureContextSinkCache, [{ type: "none" }]);
 }
