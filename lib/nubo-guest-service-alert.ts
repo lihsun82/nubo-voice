@@ -123,6 +123,19 @@ const AMENITY_KEYWORDS = [
   "轉接頭",
 ];
 
+// Gemini Live on mobile can truncate or misrecognize the final syllable of
+// short Mandarin hotel requests. These aliases are intentionally narrow and
+// only cover common amenity phrases observed in real guest-service usage.
+const AMENITY_ASR_ALIASES = [
+  "送毛",
+  "毛今",
+  "毛金",
+  "毛經",
+  "送浴",
+  "浴今",
+  "浴金",
+];
+
 const FRONTDESK_KEYWORDS = [
   "換房",
   "換房間",
@@ -277,6 +290,16 @@ export function classifyNuboGuestServiceTranscript(
       category: "amenity",
       urgency: "normal",
       matchedKeywords: amenity,
+    };
+  }
+
+  const amenityAsr = matchedKeywords(text, AMENITY_ASR_ALIASES);
+  if (amenityAsr.length) {
+    return {
+      matched: true,
+      category: "amenity",
+      urgency: "normal",
+      matchedKeywords: amenityAsr,
     };
   }
 
