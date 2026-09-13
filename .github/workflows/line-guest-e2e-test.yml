@@ -16,14 +16,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check LINE config status endpoint
+      - name: Check NUBO LINE config status
         shell: bash
         run: |
           set -euo pipefail
+          echo 'NUBO status:'
           curl --connect-timeout 10 --max-time 20 -sS \
-            'https://nubo-voice-places-test.onrender.com/api/line/status' \
-            -o /tmp/status.json
-          cat /tmp/status.json
+            'https://nubo-voice-places-test.onrender.com/api/line/status'
+          echo
+          echo 'Relay health:'
+          curl --connect-timeout 10 --max-time 20 -sS \
+            'https://nubo-line-groupid-temp.onrender.com/health'
           echo
 
       - name: POST hotel guest-service test alert
