@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 const marker = 'NUBO_MOBILE_SPEECH_CHIME_GUARD_V1';
+const strongerFeedbackMarker = 'NUBO_BEEP_HARD_OFF_V2';
 
 const oldBackgroundBlock = `  const userAgent = window.navigator.userAgent;\n  const isIpadOs =\n    /Macintosh/i.test(userAgent) &&\n    window.navigator.maxTouchPoints > 1;\n\n  const isMobileBrowser =\n    /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) ||\n    isIpadOs;`;
 
@@ -38,7 +39,11 @@ if (feedback.includes(feedbackAnchor)) {
   feedback = feedback.replace(feedbackAnchor, feedbackReplacement);
   fs.writeFileSync(feedbackPath, feedback);
 }
-if (!feedback.includes(marker)) {
+// NUBO_BEEP_HARD_OFF_V2 disables the oscillator for every platform, which is
+// strictly stronger than the mobile-only guard this legacy patcher enforces.
+// Treat that marker as satisfying the same safety invariant so CI remains
+// idempotent after the newer hard-off audio fix changes the function signature.
+if (!feedback.includes(marker) && !feedback.includes(strongerFeedbackMarker)) {
   throw new Error('mobile speech chime guard: tech sound guard not applied');
 }
 
