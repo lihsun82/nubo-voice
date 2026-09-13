@@ -6,7 +6,10 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     this.queuedFrames = 0;
     this.started = false;
     this.wasActive = false;
-    this.startThresholdFrames = 960; // ~40 ms at 24 kHz
+    this.startThresholdFrames = 2880; // ~120 ms at 24 kHz; absorb mobile/network jitter.
+    this.fadeFrames = 96; // ~4 ms at 24 kHz; short enough to be inaudible, long enough to de-click.
+    this.fadeInRemaining = 0;
+    this.lastSample = 0;
 
     this.port.onmessage = (event) => {
       const data = event.data || {};
@@ -16,6 +19,8 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
         this.queuedFrames = 0;
         this.started = false;
         this.wasActive = false;
+        this.fadeInRemaining = 0;
+        this.lastSample = 0;
         return;
       }
 
@@ -38,6 +43,8 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     if (!this.started) {
       if (this.queuedFrames < this.startThresholdFrames) return true;
       this.started = true;
+      this.fadeInRemaining = this.fadeFrames;
+      this.lastSample = 0;
     }
 
     let written = 0;
@@ -56,22 +63,45 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
       }
     }
 
+    // A restart after an underrun previously jumped directly from digital zero
+    // to the first PCM sample. Ramp the first ~4 ms from silence to the stream.
+    if (written > 0 && this.fadeInRemaining > 0) {
+      const fadeCount = Math.min(written, this.fadeInRemaining);
+      const fadeOffset = this.fadeFrames - this.fadeInRemaining;
+      for (let i = 0; i < fadeCount; i += 1) {
+        const gain = (fadeOffset + i + 1) / this.fadeFrames;
+        output[i] *= Math.min(1, gain);
+      }
+      this.fadeInRemaining -= fadeCount;
+    }
+
     if (written < output.length) {
-      // Network underflow / true end of turn. Fade the tail to zero instead of
-      // producing an abrupt sample discontinuity that becomes an audible click.
-      const fade = Math.min(written, 64);
-      for (let i = 0; i < fade; i += 1) {
-        const index = written - fade + i;
-        output[index] *= 1 - (i + 1) / fade;
+      if (written === 0 && Math.abs(this.lastSample) > 0.0001) {
+        // The queue can drain exactly at a render-quantum boundary. In that case
+        // there are no samples in this block to fade, so bridge the previous
+        // block's final sample down to zero instead of making a one-sample step.
+        const fade = Math.min(output.length, this.fadeFrames);
+        for (let i = 0; i < fade; i += 1) {
+          output[i] = this.lastSample * (1 - (i + 1) / fade);
+        }
+      } else if (written > 0) {
+        // Network underflow / true end of turn inside this render block.
+        const fade = Math.min(written, this.fadeFrames);
+        for (let i = 0; i < fade; i += 1) {
+          const index = written - fade + i;
+          output[index] *= 1 - (i + 1) / fade;
+        }
       }
 
       this.started = false;
+      this.fadeInRemaining = 0;
       if (this.wasActive) {
         this.wasActive = false;
         this.port.postMessage({ type: "drained" });
       }
     }
 
+    this.lastSample = output[output.length - 1] || 0;
     return true;
   }
 }
