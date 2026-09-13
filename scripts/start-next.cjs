@@ -36,7 +36,40 @@ const child = spawn(
   },
 );
 
+let shutdownSignal = null;
+let shutdownTimer = null;
+
+function clearShutdownTimer() {
+  if (!shutdownTimer) return;
+  clearTimeout(shutdownTimer);
+  shutdownTimer = null;
+}
+
+function beginGracefulShutdown(signal) {
+  if (shutdownSignal) return;
+  shutdownSignal = signal;
+  console.log(`[NUBO start] graceful shutdown requested by ${signal}`);
+
+  if (!child.killed) {
+    child.kill(signal);
+  }
+
+  // Railway gives the container a short grace period. If Next.js does not
+  // exit by itself, terminate the child without turning a planned deploy into
+  // an application crash notification.
+  shutdownTimer = setTimeout(() => {
+    if (!child.killed) {
+      try {
+        child.kill("SIGKILL");
+      } catch {}
+    }
+    process.exit(0);
+  }, 8000);
+  shutdownTimer.unref?.();
+}
+
 child.on("error", (error) => {
+  clearShutdownTimer();
   console.error(
     "[NUBO start] failed:",
     error,
@@ -45,9 +78,18 @@ child.on("error", (error) => {
 });
 
 child.on("exit", (code, signal) => {
+  clearShutdownTimer();
+
+  if (shutdownSignal) {
+    console.log(
+      `[NUBO start] graceful shutdown complete (${signal || `code ${code ?? 0}`})`,
+    );
+    process.exit(0);
+  }
+
   if (signal) {
     console.error(
-      `[NUBO start] stopped by ${signal}`,
+      `[NUBO start] stopped unexpectedly by ${signal}`,
     );
     process.exit(1);
   }
@@ -56,9 +98,5 @@ child.on("exit", (code, signal) => {
 });
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    if (!child.killed) {
-      child.kill(signal);
-    }
-  });
+  process.on(signal, () => beginGracefulShutdown(signal));
 }
