@@ -46,12 +46,25 @@ export function getHotelLineStatus() {
   };
 }
 
-async function pushViaRelay(text: string) {
-  const relay = getRelayConfig();
-  if (!relay.url || !relay.secret) {
-    throw new Error("LINE客務 Relay 尚未設定");
-  }
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
+function isRetryableRelayError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const name = error.name.toLowerCase();
+  const message = error.message.toLowerCase();
+  return (
+    name.includes("timeout") ||
+    name.includes("abort") ||
+    message.includes("timed out") ||
+    message.includes("fetch failed") ||
+    message.includes("network")
+  );
+}
+
+async function sendRelayAttempt(text: string, timeoutMs: number) {
+  const relay = getRelayConfig();
   const response = await fetch(relay.url, {
     method: "POST",
     headers: {
@@ -59,23 +72,60 @@ async function pushViaRelay(text: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });
 
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.ok !== true) {
-    throw new Error(
-      `LINE客務 Relay 發送失敗：${response.status}${payload?.error ? ` ${String(payload.error)}` : ""}`,
-    );
+  return { response, payload };
+}
+
+async function pushViaRelay(text: string) {
+  const relay = getRelayConfig();
+  if (!relay.url || !relay.secret) {
+    throw new Error("LINE客務 Relay 尚未設定");
   }
 
-  return {
-    targetCount: 1,
-    succeeded: 1,
-    failed: 0,
-    via: "relay" as const,
-  };
+  // Render Free relay sleeps after idle. The first request is allowed to wake it;
+  // if the edge times out / returns a transient gateway status, retry once with a
+  // longer window. Do not retry application-level 500 errors from LINE itself.
+  const attempts = [22_000, 60_000];
+  let lastError: Error | null = null;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    try {
+      const { response, payload } = await sendRelayAttempt(text, attempts[index]);
+      if (response.ok && payload?.ok === true) {
+        return {
+          targetCount: 1,
+          succeeded: 1,
+          failed: 0,
+          via: "relay" as const,
+          attempts: index + 1,
+        };
+      }
+
+      const detail = payload?.error ? ` ${String(payload.error)}` : "";
+      const error = new Error(`LINE客務 Relay 發送失敗：${response.status}${detail}`);
+      const retryableEdgeStatus = [429, 502, 503, 504].includes(response.status) && !detail;
+      if (index === 0 && retryableEdgeStatus) {
+        lastError = error;
+        await delay(1_500);
+        continue;
+      }
+      throw error;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      if (index === 0 && isRetryableRelayError(normalized)) {
+        lastError = normalized;
+        await delay(1_500);
+        continue;
+      }
+      throw normalized;
+    }
+  }
+
+  throw lastError ?? new Error("LINE客務 Relay 發送失敗");
 }
 
 export async function pushHotelLineText(text: string) {
