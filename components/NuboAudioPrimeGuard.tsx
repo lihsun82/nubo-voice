@@ -1,22 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import {
-  preferMultimediaAudioContext,
-  preferMultimediaMediaElement,
-} from "@/lib/browser-speaker-output";
 
 type NuboAudioWindow = Window & {
   __nuboAudioPrimed?: boolean;
   __nuboAudioContext?: AudioContext;
-  __nuboAudioOscillator?: OscillatorNode;
-  __nuboAudioGain?: GainNode;
-  __nuboSilentAudio?: HTMLAudioElement;
   webkitAudioContext?: typeof AudioContext;
 };
-
-const SILENT_WAV =
-  "data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 function preloadYouTubeApi() {
   if (
@@ -43,42 +33,19 @@ async function primeNuboAudioSession() {
     if (AudioContextConstructor) {
       const context =
         host.__nuboAudioContext ??
-        new AudioContextConstructor({ latencyHint: "playback" });
+        new AudioContextConstructor();
       host.__nuboAudioContext = context;
 
-      await preferMultimediaAudioContext(context);
-
-      if (!host.__nuboAudioOscillator || !host.__nuboAudioGain) {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-
-        oscillator.frequency.value = 20;
-        gain.gain.value = 0.000001;
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start();
-
-        host.__nuboAudioOscillator = oscillator;
-        host.__nuboAudioGain = gain;
+      // A real user gesture is enough to unlock Web Audio. Do not keep a
+      // permanent oscillator or looping HTMLAudio element alive: the old V22
+      // guard used a malformed/truncated silent WAV in an infinite loop, which
+      // can produce repeated Android/Chrome audio-pipeline ticks/beeps.
+      if (context.state === "suspended") {
+        await context.resume().catch(() => undefined);
       }
-
-      await context.resume().catch(() => undefined);
     }
   } catch {
-    // Web Audio 失敗時仍繼續嘗試 HTMLAudio 解鎖。
-  }
-
-  try {
-    const audio = host.__nuboSilentAudio ?? new Audio(SILENT_WAV);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = 0.001;
-    audio.setAttribute("playsinline", "true");
-    host.__nuboSilentAudio = audio;
-    await preferMultimediaMediaElement(audio);
-    await audio.play().catch(() => undefined);
-  } catch {
-    // HTMLAudio 不可用時交由 Web Audio 與播放器處理。
+    // Audio priming is best-effort; NUBO voice can create its own context.
   }
 
   host.__nuboAudioPrimed = true;
