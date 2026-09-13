@@ -41,6 +41,15 @@ if (!intake.includes(marker)) {
 const toolsPath = 'lib/browser-nubo-tools-line.ts';
 let tools = fs.readFileSync(toolsPath, 'utf8');
 
+// apply-web-voice-turn-v1 runs before this file and historically injects an
+// absolute four-field gate. Replace it here so deploy builds cannot resurrect
+// the old Gmail-oriented behavior.
+const legacyVoiceGuard = 'NUBO_COMPLETE_GUEST_INTAKE_V1：客訴／抱怨／客務建檔時，必須讓使用者把整段話說完並完成一個語音回合後，才可判斷資料是否完整。姓氏、房號、聯絡方式、實質客訴／需求內容四項缺一不可；「尚未提供客訴內容」「未提供」「待補」「不知道」「無」等佔位文字一律視為缺少客訴內容，禁止呼叫guest_service_alert。使用者仍在說話或句子尚未完成時，不得寄送郵件。';
+const lineVoiceGuard = `${marker}：客人把一個需求語音回合說完後，只要有實質需求內容即可立即通報LINE。毛巾、浴巾、備品、房務、設備異常與客訴都屬即時通報；姓氏、房號、聯絡方式為補充欄位，不得阻擋第一次LINE通知。`;
+if (tools.includes(legacyVoiceGuard)) {
+  tools = tools.replace(legacyVoiceGuard, lineVoiceGuard);
+}
+
 const oldDescription = '"客人客訴或客務需求的正式升級工具。只有在已取得客人姓氏、房號、聯絡方式與完整客訴/需求內容四項資料後才可呼叫；呼叫後會立即通知現場管理者，不需一般郵件二次確認。"';
 const newDescription = '"客人備品、毛巾、房務、設備異常、客訴或其他需要現場處理的即時LINE升級工具。只要有實質需求內容就立即呼叫；房號、姓氏與聯絡方式有取得就帶入，缺少時不得阻擋LINE通知。"';
 if (tools.includes(oldDescription)) {
@@ -64,6 +73,9 @@ tools = tools.replace(
 
 if (!tools.includes(marker)) {
   throw new Error('hotel LINE alert: system instruction marker missing');
+}
+if (tools.includes('四項缺一不可')) {
+  throw new Error('hotel LINE alert: legacy four-field gate survived build patch');
 }
 fs.writeFileSync(toolsPath, tools);
 
