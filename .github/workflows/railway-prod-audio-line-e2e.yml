@@ -1,0 +1,44 @@
+name: Railway Production Audio LINE E2E
+
+on:
+  push:
+    branches: [diag/prod-line-e2e-20260914]
+    paths:
+      - ".github/workflows/railway-prod-audio-line-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Mandarin guest request and call Railway production audio API
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg >/dev/null
+          espeak-ng -v cmn -s 135 -w guest.wav '幫我送兩條毛巾到三零五房'
+          ffmpeg -hide_banner -loglevel error -y -i guest.wav -ac 1 -ar 16000 -f s16le guest.pcm
+          python3 - <<'PY' > payload.json
+          import base64, json
+          pcm = open('guest.pcm','rb').read()
+          print(json.dumps({
+              'pcmBase64': base64.b64encode(pcm).decode(),
+              'sampleRate': 16000,
+              'source': 'railway-prod-audio-line-e2e-20260914',
+          }, ensure_ascii=False))
+          PY
+          out=$(mktemp)
+          code=$(curl -sS --max-time 120 -o "$out" -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            --data-binary @payload.json \
+            https://nubo.ainubo.com/api/notify/guest-service-audio)
+          cat "$out"
+          echo
+          echo "HTTP_STATUS=$code"
+          test "$code" = "200"
+          grep -q '"guestService":true' "$out"
+          grep -Eq '"(sent|duplicate)":true' "$out"
