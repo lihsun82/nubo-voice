@@ -48,6 +48,9 @@ function isSubstantiveIssue(value: string) {
   if (NON_SUBSTANTIVE_ISSUE_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return false;
   }
+  if (/^(?:(?:我要|我想|我要來|想要|需要)?(?:客訴|投訴|抱怨|反映|反應))$/u.test(normalized)) {
+    return false;
+  }
   return normalized.length >= 2 && /[\p{L}\p{N}]/u.test(normalized);
 }
 
@@ -105,23 +108,41 @@ export async function POST(req: NextRequest) {
     }
 
     const classification = classifyNuboGuestServiceTranscript(issue);
-    const categoryLabel = classification.matched
-      ? getNuboGuestServiceCategoryLabel(classification.category)
-      : "客人需求／客訴";
-    const urgencyLabel =
-      classification.urgency === "critical"
-        ? "緊急"
-        : classification.urgency === "high"
-          ? "優先"
-          : "一般";
-    const urgencyIcon =
-      classification.urgency === "critical"
-        ? "🚨"
-        : classification.urgency === "high"
-          ? "⚠️"
-          : "🛎️";
+    const isComplaint =
+      body.complaint === true ||
+      (classification.matched && classification.category === "complaint");
 
-    const fingerprint = [roomNumber || "unknown-room", categoryLabel, issue]
+    if (isComplaint && (!roomNumber || !surname || !isSubstantiveIssue(issue))) {
+      const missingFields = [
+        !roomNumber ? "房號" : "",
+        !surname ? "姓氏" : "",
+        !isSubstantiveIssue(issue) ? "客訴內容" : "",
+      ].filter(Boolean);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          sent: false,
+          complaint: true,
+          missingFields,
+          error: `客訴資料尚未完整，請先補齊：${missingFields.join("、")}。`,
+        },
+        { status: 409 },
+      );
+    }
+
+    const categoryLabel = isComplaint
+      ? "客訴/抱怨"
+      : classification.matched
+        ? getNuboGuestServiceCategoryLabel(classification.category)
+        : "客人需求";
+    const urgency = isComplaint ? "high" : classification.urgency;
+    const urgencyLabel =
+      urgency === "critical" ? "緊急" : urgency === "high" ? "優先" : "一般";
+    const urgencyIcon =
+      urgency === "critical" ? "🚨" : urgency === "high" ? "⚠️" : "🛎️";
+
+    const fingerprint = [roomNumber || "unknown-room", categoryLabel, surname, issue]
       .map(normalize)
       .join(":");
     const now = Date.now();
@@ -143,9 +164,9 @@ export async function POST(req: NextRequest) {
       `優先級：${urgencyLabel}`,
       `房號：${roomNumber || "未提供"}`,
       surname ? `客人姓氏：${surname}` : "",
-      contact ? `聯絡方式：${contact}` : "",
+      !isComplaint && contact ? `聯絡方式：${contact}` : "",
       "",
-      "旅客需求／客訴：",
+      isComplaint ? "客訴內容：" : "旅客需求：",
       issue,
       "",
       "請現場人員確認並處理。",
@@ -153,13 +174,9 @@ export async function POST(req: NextRequest) {
       .filter((line) => line !== "")
       .join("\n");
 
-    // LINE is the operational primary channel. It must not wait for surname,
-    // phone number, Gmail OAuth, or a second confirmation.
     const lineResult = await pushHotelLineText(lineText);
     recentAlerts.set(fingerprint, Date.now());
 
-    // Email is now an optional copy only. A Gmail failure must never block the
-    // LINE alert requested by hotel operations.
     let emailSent = false;
     let emailError: string | null = null;
     if (
@@ -171,7 +188,7 @@ export async function POST(req: NextRequest) {
       try {
         const recipients = getAlertRecipients();
         const subject =
-          classification.urgency === "critical"
+          urgency === "critical"
             ? `【NUBO緊急客務】${roomNumber}房｜${surname}姓｜${categoryLabel}`
             : `【NUBO客務通知】${roomNumber}房｜${surname}姓｜${categoryLabel}`;
         await sendGmailMessage(
@@ -203,12 +220,17 @@ export async function POST(req: NextRequest) {
       line: lineResult,
       emailSent,
       emailError,
+      complaint: isComplaint,
       surname: surname || null,
       roomNumber: roomNumber || null,
       contact: contact || null,
       issue,
-      category: classification.matched ? classification.category : "guest_request",
-      urgency: classification.urgency,
+      category: isComplaint
+        ? "complaint"
+        : classification.matched
+          ? classification.category
+          : "guest_request",
+      urgency,
       source,
     });
   } catch (error) {
