@@ -5,6 +5,7 @@ on:
     branches: [fix/complaint-three-field-intake]
   workflow_dispatch:
 
+# Verify the complete complaint-gating change set before production merge.
 jobs:
   verify:
     runs-on: ubuntu-latest
