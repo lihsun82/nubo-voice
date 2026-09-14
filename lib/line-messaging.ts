@@ -44,16 +44,23 @@ function normalizeLineText(text: string): string {
     : `${value.slice(0, LINE_TEXT_LIMIT - 40)}\n\n（內容過長，已截斷）`;
 }
 
-async function lineApiRequest(path: string, body: unknown) {
-  const accessToken = requireEnv("LINE_CHANNEL_ACCESS_TOKEN");
+async function lineApiRequestWithToken(
+  accessToken: string,
+  path: string,
+  body: unknown,
+) {
+  const token = accessToken.trim();
+  if (!token) throw new Error("LINE_CHANNEL_ACCESS_TOKEN 尚未設定");
+
   const response = await fetch(`${LINE_API_BASE}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
     cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
@@ -62,6 +69,14 @@ async function lineApiRequest(path: string, body: unknown) {
       payload?.message ?? `LINE Messaging API 錯誤：${response.status}`,
     );
   }
+}
+
+async function lineApiRequest(path: string, body: unknown) {
+  await lineApiRequestWithToken(
+    requireEnv("LINE_CHANNEL_ACCESS_TOKEN"),
+    path,
+    body,
+  );
 }
 
 export async function getLineMessageContent(messageId: string) {
@@ -121,6 +136,17 @@ export async function replyLineText(replyToken: string, text: string) {
 
 export async function pushLineText(userId: string, text: string) {
   await lineApiRequest("/v2/bot/message/push", {
+    to: userId,
+    messages: [{ type: "text", text: normalizeLineText(text) }],
+  });
+}
+
+export async function pushLineTextWithToken(
+  accessToken: string,
+  userId: string,
+  text: string,
+) {
+  await lineApiRequestWithToken(accessToken, "/v2/bot/message/push", {
     to: userId,
     messages: [{ type: "text", text: normalizeLineText(text) }],
   });
