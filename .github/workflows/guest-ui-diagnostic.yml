@@ -8,80 +8,67 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install isolated browser test tools
+      - name: Install isolated browser tools
         run: |
           mkdir -p "$RUNNER_TEMP/nubo-ui-test"
           cd "$RUNNER_TEMP/nubo-ui-test"
           npm install playwright@1.55.1 --no-audit --no-fund
           npx playwright install --with-deps chromium
-      - name: Test actual production transcription callbacks without microphone or AI calls
-        env:
-          TEST_DIR: ${{ runner.temp }}/nubo-ui-test
+      - name: Exercise the shipped page handler through browser protocol
         run: |
-          cd "$TEST_DIR"
+          cd "$RUNNER_TEMP/nubo-ui-test"
           cat > probe.cjs <<'JS'
-          const {chromium} = require('playwright');
-          const fs=require('node:fs');
-          const base='https://nubo.ainubo.com';
-          const id='UI-'+Date.now().toString(36);
-          const report={id,note:'Production JavaScript with simulated Live input transcription; no real microphone/AI call. At most ONE labelled test LINE push.',cases:[]};
-          const delay=ms=>new Promise(r=>setTimeout(r,ms));
-          const bounded=(p,ms)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error('bounded operation timeout '+ms)),ms))]);
+          const {chromium}=require('playwright');const fs=require('fs');
+          const base='https://nubo.ainubo.com',id='UI-'+Date.now().toString(36);
+          const report={id,note:'Actual production browser code with mocked Live input, NOT a microphone test. ONE labelled LINE push maximum.',cases:[]};
+          const wait=ms=>new Promise(r=>setTimeout(r,ms));
+          const bound=(p,ms=8000)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error('protocol timeout')),ms))]);
           (async()=>{
-            const browser=await chromium.launch({args:['--disable-gpu','--autoplay-policy=no-user-gesture-required']});
-            let liveAttempted=false;
-            async function runCase(name,packets,shouldSend,live=false){
-              const row={name,requests:[],results:[],errors:[],console:[],navigations:[],socketOpened:false};report.cases.push(row);
-              const ctx=await browser.newContext({viewport:{width:412,height:915},userAgent:'Mozilla/5.0 (Linux; Android 16; NUBO-Diagnostic) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NUBO-Stable/3.0'});
-              const page=await ctx.newPage();page.setDefaultTimeout(6000);let socket=null;
-              page.on('pageerror',e=>row.errors.push(e.message.slice(0,200)));
-              page.on('crash',()=>row.errors.push('renderer-crash'));
-              page.on('framenavigated',f=>{if(f===page.mainFrame()) row.navigations.push(new URL(f.url()).pathname)});
-              page.on('console',m=>{if(['error','warning'].includes(m.type())&&row.console.length<12)row.console.push(m.text().slice(0,200))});
-              await page.routeWebSocket(/generativelanguage\.googleapis\.com/,ws=>{socket=ws;row.socketOpened=true;ws.onMessage(()=>{});});
-              await page.route('**/api/**',async route=>{
-                const req=route.request(),u=new URL(req.url());
-                if(u.pathname==='/api/gemini-token')return route.fulfill({status:200,json:{token:'diagnostic-not-real',model:'gemini-diagnostic',ok:true}});
-                if(u.pathname==='/api/notify/guest-service'&&req.method()==='POST'){
-                  const p=req.postDataJSON();row.requests.push({issue:p.issue,roomNumber:p.roomNumber,source:p.source||'tool-call'});
-                  if(live&&!liveAttempted){liveAttempted=true;const post={...p,roomNumber:'TEST',surname:'',contact:'',issue:'[自動驗證 '+id+'，無需配送] '+String(p.issue||''),source:'production-browser-transcript-simulation'};
-                    try{const res=await route.fetch({postData:JSON.stringify(post),timeout:90000,maxRetries:0});const b=await res.json().catch(()=>({}));row.results.push({httpStatus:res.status(),ok:b.ok,sent:b.sent,duplicate:b.duplicate,error:b.error,channel:b.channel});return route.fulfill({response:res});}
-                    catch(e){row.results.push({error:String(e).slice(0,200)});return route.fulfill({status:502,json:{ok:false,sent:false,error:'Diagnostic send failed'}});}
+            const browser=await chromium.launch();let liveAttempted=false;
+            async function run(name,packets,expected,live=false){
+              const row={name,requests:[],results:[],errors:[],fastRouteBundle:false};report.cases.push(row);
+              const c=await browser.newContext({viewport:{width:412,height:915},isMobile:true,hasTouch:true,reducedMotion:'reduce',userAgent:'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NUBO-Stable/3.0'});
+              const p=await c.newPage();const d=await c.newCDPSession(p);let socket=null;
+              p.on('pageerror',e=>row.errors.push(e.message.slice(0,180)));
+              p.on('response',async r=>{if(r.url().includes('/_next/static/chunks/'))try{const s=await r.text();if(s.includes('[guest-line-fast-route]'))row.fastRouteBundle=true;}catch{}});
+              await p.routeWebSocket(/generativelanguage\.googleapis\.com/,w=>{socket=w;w.onMessage(()=>{});});
+              await p.route('**/api/**',async r=>{
+                const q=r.request(),u=new URL(q.url());
+                if(u.pathname==='/api/gemini-token')return r.fulfill({status:200,json:{ok:true,token:'diagnostic-not-real',model:'gemini-diagnostic'}});
+                if(u.pathname==='/api/notify/guest-service'&&q.method()==='POST'){
+                  const b=q.postDataJSON();row.requests.push({issue:b.issue,roomNumber:b.roomNumber,source:b.source||'tool-call'});
+                  if(live&&!liveAttempted){liveAttempted=true;
+                    try{const res=await r.fetch({postData:JSON.stringify({...b,roomNumber:'TEST',surname:'',contact:'',issue:'[自動驗證 '+id+'，無需配送] '+b.issue,source:'production-browser-transcript-simulation'}),timeout:90000,maxRetries:0});const x=await res.json().catch(()=>({}));row.results.push({http:res.status(),ok:x.ok,sent:x.sent,duplicate:x.duplicate,channel:x.channel,error:x.error});return r.fulfill({response:res});}
+                    catch(e){row.results.push({error:String(e).slice(0,250)});return r.fulfill({status:502,json:{ok:false,sent:false,error:'test request failed'}});}
                   }
-                  return route.fulfill({status:200,json:{ok:true,sent:true,channel:'line',diagnosticMock:true}});
+                  return r.fulfill({status:200,json:{ok:true,sent:true,channel:'line',diagnosticMock:true}});
                 }
-                if(req.method()==='GET')return route.continue();
-                return route.fulfill({status:200,json:{ok:true,enabled:false,items:[],tasks:[],entries:[]}});
+                return q.method()==='GET'?r.continue():r.fulfill({status:200,json:{ok:true}});
               });
               try{
-                const res=await page.goto(base+'/?native=stable-9&diagnostic='+id+'-'+name,{waitUntil:'domcontentloaded',timeout:65000});row.pageStatus=res.status();
-                const html=await res.text();row.rootContainsFastRoute=html.includes('guest-line');row.rootBytes=html.length;
-                await delay(1200);await page.screenshot({path:name+'-before.png',timeout:3000}).catch(e=>row.errors.push('before-screenshot: '+e.name));
-                if(!socket) await bounded(page.getByRole('button',{name:/啟動\s*NUBO|啟動語音/}).first().dispatchEvent('click'),8000);
-                for(let i=0;i<40&&!socket;i++)await delay(200);
-                if(!socket)throw Error('Live WebSocket not created');
-                // Deliberately do NOT send setupComplete: avoid microphone/audio code.
-                // The existing onmessage transcription handler is tested as shipped.
-                for(const p of packets){socket.send(JSON.stringify({serverContent:p}));await delay(140);}
-                await delay(3500);
-                if(live&&row.requests.length)for(let i=0;i<90&&!row.results.length;i++)await delay(1000);
-                row.requestCount=row.requests.length;row.pass=shouldSend?row.requestCount>0:row.requestCount===0;
-                if(live)row.pass=row.pass&&row.results.some(r=>r.httpStatus===200&&r.sent===true);
-              }catch(e){row.pass=false;row.errors.push(String(e).slice(0,500));}
-              await page.screenshot({path:name+'-after.png',timeout:2000}).catch(()=>{});await ctx.close();console.log('CASE',JSON.stringify(row));return row.pass;
+                const res=await p.goto(base+'/?native=stable-9&diagnostic='+id+'-'+name,{waitUntil:'domcontentloaded',timeout:65000});row.http=res.status();await wait(2000);
+                const state=await bound(d.send('Runtime.evaluate',{expression:'JSON.stringify({ready:document.readyState,buttons:Array.from(document.querySelectorAll("button")).slice(0,4).map(x=>({text:x.textContent,disabled:x.disabled}))})',returnByValue:true}));row.dom=state.result?.value;
+                const clicked=await bound(d.send('Runtime.evaluate',{expression:'(()=>{const b=Array.from(document.querySelectorAll("button")).find(x=>x.textContent.replace(/\\s/g,"")==="啟動NUBO");if(!b)return "not-found";b.click();return "clicked"})()',userGesture:true,returnByValue:true}));row.click=clicked.result?.value;
+                for(let i=0;i<40&&!socket;i++)await wait(200);if(!socket)throw Error('No Live WebSocket created');row.socket=true;
+                for(const packet of packets){socket.send(JSON.stringify({serverContent:packet}));await wait(140);}await wait(3500);
+                if(live&&row.requests.length)for(let i=0;i<90&&!row.results.length;i++)await wait(1000);
+                row.pass=expected?row.requests.length>0:row.requests.length===0;
+                if(live)row.pass=row.pass&&row.results.some(x=>x.http===200&&x.sent===true);
+              }catch(e){row.errors.push(String(e));row.pass=false;}
+              await c.close();console.log('CASE',JSON.stringify(row));return row.pass;
             }
             try{
-              const a=await runCase('full-request',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true);
-              const b=await runCase('mixed-input-output',[{inputTranscription:{text:'請送兩條毛巾到305房'},outputTranscription:{text:'我正在確認您的需求。'}}],true);
-              const c=await runCase('fragmented-request',['請送','兩條','毛','巾','到305','房'].map(text=>({inputTranscription:{text}})),true);
-              const d=await runCase('ordinary-chat',[{inputTranscription:{text:'你好，今天星期幾？'}}],false);
-              if(a&&b&&c&&d)await runCase('live-transcript-to-line',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true,true);
-            }finally{report.pass=report.cases.every(r=>r.pass)&&report.cases.some(r=>r.name==='live-transcript-to-line');fs.writeFileSync('report.json',JSON.stringify(report,null,2));console.log('DIAGNOSTIC_SUMMARY',JSON.stringify(report));await browser.close();}
+              const a=await run('full',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true);
+              const b=await run('mixed',[{inputTranscription:{text:'請送兩條毛巾到305房'},outputTranscription:{text:'我正在確認您的需求。'}}],true);
+              const c=await run('fragments',['請送','兩條','毛','巾','到305','房'].map(text=>({inputTranscription:{text}})),true);
+              const e=await run('ordinary',[{inputTranscription:{text:'你好，今天星期幾？'}}],false);
+              if(a&&b&&c&&e)await run('live-transcript-to-line',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true,true);
+            }finally{report.pass=report.cases.every(x=>x.pass)&&report.cases.some(x=>x.name==='live-transcript-to-line');fs.writeFileSync('report.json',JSON.stringify(report,null,2));console.log('DIAGNOSTIC_SUMMARY',JSON.stringify(report));await browser.close();}
             if(!report.pass)process.exitCode=1;
           })().catch(e=>{console.error(e);fs.writeFileSync('report.json',JSON.stringify(report,null,2));process.exitCode=1});
           JS
@@ -90,7 +77,5 @@ jobs:
         if: always()
         with:
           name: guest-ui-diagnostic
-          path: |
-            ${{ runner.temp }}/nubo-ui-test/report.json
-            ${{ runner.temp }}/nubo-ui-test/*.png
+          path: ${{ runner.temp }}/nubo-ui-test/report.json
           retention-days: 3
