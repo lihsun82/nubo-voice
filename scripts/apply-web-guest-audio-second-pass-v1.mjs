@@ -20,8 +20,8 @@ if (!s.includes(marker)) {
   if (!s.includes(startAnchor)) throw new Error("guest audio second pass: start reset anchor missing");
   s = s.replace(startAnchor, startPatch);
 
-  const base64Anchor = `      const base64 = toBase64(pcm);`;
-  const base64Patch = `${base64Anchor}\n      this.captureGuestAudioSecondPass(pcm, voiceDetected, now);`;
+  const base64Anchor = `    const base64 = toBase64(pcm);`;
+  const base64Patch = `${base64Anchor}\n    this.captureGuestAudioSecondPass(pcm, voiceDetected, now);`;
   if (!s.includes(base64Anchor)) throw new Error("guest audio second pass: PCM anchor missing");
   s = s.replace(base64Anchor, base64Patch);
 
