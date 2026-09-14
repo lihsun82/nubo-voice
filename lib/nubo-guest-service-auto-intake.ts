@@ -2,25 +2,24 @@
 
 import { classifyNuboGuestServiceTranscript } from "@/lib/nubo-guest-service-alert";
 
-type GuestIntakeState = {
+type ComplaintIntakeState = {
   active: boolean;
   startedAt: number;
   updatedAt: number;
   surname: string;
   roomNumber: string;
-  contact: string;
   issueParts: string[];
 };
 
-const STORAGE_KEY = "nubo_guest_service_intake_v2";
-const LAST_SENT_KEY = "nubo_guest_service_last_sent_v2";
+const STORAGE_KEY = "nubo_complaint_intake_v3";
+const LAST_SENT_KEY = "nubo_complaint_last_sent_v3";
 const INTAKE_TTL_MS = 20 * 60_000;
 const LOCAL_DUPLICATE_MS = 3 * 60_000;
-const COMPLETE_UTTERANCE_QUIET_MS = 2_200;
+const COMPLETE_UTTERANCE_QUIET_MS = 1_000;
 
 let pendingSendTimer: number | null = null;
 
-function emptyState(): GuestIntakeState {
+function emptyState(): ComplaintIntakeState {
   const now = Date.now();
   return {
     active: false,
@@ -28,15 +27,16 @@ function emptyState(): GuestIntakeState {
     updatedAt: now,
     surname: "",
     roomNumber: "",
-    contact: "",
     issueParts: [],
   };
 }
 
-function loadState(): GuestIntakeState {
+function loadState(): ComplaintIntakeState {
   if (typeof window === "undefined") return emptyState();
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null") as GuestIntakeState | null;
+    const parsed = JSON.parse(
+      window.localStorage.getItem(STORAGE_KEY) ?? "null",
+    ) as ComplaintIntakeState | null;
     if (!parsed || Date.now() - Number(parsed.updatedAt ?? 0) > INTAKE_TTL_MS) {
       return emptyState();
     }
@@ -50,7 +50,7 @@ function loadState(): GuestIntakeState {
   }
 }
 
-function saveState(state: GuestIntakeState) {
+function saveState(state: ComplaintIntakeState) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -61,7 +61,9 @@ function clearState() {
 }
 
 function compact(value: string) {
-  return value.replace(/[\s　，,。.!！?？、:：;；'"“”‘’（）()【】\[\]-]+/g, "").toLowerCase();
+  return value
+    .replace(/[\s　，,。.!！?？、:：;；'"“”‘’（）()【】\[\]-]+/g, "")
+    .toLowerCase();
 }
 
 function extractSurname(text: string) {
@@ -83,48 +85,40 @@ function extractRoom(text: string) {
   return "";
 }
 
-function normalizePhone(raw: string) {
-  const digits = raw.replace(/[^\d+]/g, "");
-  const numeric = digits.replace(/^\+/, "");
-  if (numeric.length < 8 || numeric.length > 15) return "";
-  return digits;
-}
-
-function extractContact(text: string) {
-  const phone = text.match(/(?:\+?886[-\s]?)?0?9\d(?:[-\s]?\d){7,8}|0\d{1,2}(?:[-\s]?\d){6,8}/u);
-  if (phone?.[0]) {
-    const normalized = normalizePhone(phone[0]);
-    if (normalized) return normalized;
-  }
-
-  const line = text.match(/(?:line|LINE|賴)(?:\s*(?:id|ID))?\s*(?:是|為|:|：)?\s*([A-Za-z0-9._-]{3,30})/u);
-  if (line?.[1]) return `LINE:${line[1]}`;
-
-  const generic = text.match(/(?:聯絡方式|聯絡電話|電話|手機)(?:\s*(?:是|為|:|：))?\s*([^，。！？\s]{4,40})/u);
-  if (generic?.[1]) return generic[1].trim();
-  return "";
-}
-
 function isMostlyIntakeMetadata(text: string) {
-  return /^(?:我姓|姓氏|姓|房號|房間|住在|住|電話|手機|聯絡方式|line|LINE|賴)/u.test(text.trim());
+  return /^(?:我姓|姓氏|姓|房號|房間|住在|住)/u.test(text.trim());
 }
 
 function isSubstantiveIssue(text: string) {
   const normalized = compact(text);
   if (!normalized) return false;
+
   if (
-    /^(?:尚未提供(?:客訴|抱怨|需求|內容)?|尚未提供客訴內容|尚未提供需求內容|未提供(?:客訴|抱怨|需求|內容)?|沒有提供(?:客訴|抱怨|需求|內容)?|待補(?:充)?|待確認|不知道|沒有|無|n\/?a)$/iu.test(
+    /^(?:尚未提供(?:客訴|抱怨|內容)?|未提供(?:客訴|抱怨|內容)?|沒有提供(?:客訴|抱怨|內容)?|待補(?:充)?|待確認|不知道|沒有|無|n\/?a)$/iu.test(
       normalized,
     )
   ) {
     return false;
   }
+
+  // 單純說「我要客訴／我要投訴」只是啟動客訴流程，不算客訴內容。
+  if (
+    /^(?:(?:我要|我想|我要來|想要|需要)?(?:客訴|投訴|抱怨|反映|反應))$/u.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+
   return normalized.length >= 2;
 }
 
-function addIssuePart(state: GuestIntakeState, text: string) {
+function addIssuePart(state: ComplaintIntakeState, text: string) {
   const cleaned = text.trim();
-  if (!cleaned || isMostlyIntakeMetadata(cleaned) || !isSubstantiveIssue(cleaned)) return;
+  if (!cleaned || isMostlyIntakeMetadata(cleaned) || !isSubstantiveIssue(cleaned)) {
+    return;
+  }
+
   const key = compact(cleaned);
   if (!key) return;
   if (state.issueParts.some((item) => compact(item) === key)) return;
@@ -132,15 +126,20 @@ function addIssuePart(state: GuestIntakeState, text: string) {
   state.issueParts = state.issueParts.slice(-8);
 }
 
-function fingerprint(state: GuestIntakeState) {
-  return compact([state.roomNumber, state.surname, state.contact, ...state.issueParts].join("|"));
+function fingerprint(state: ComplaintIntakeState) {
+  return compact([state.roomNumber, state.surname, ...state.issueParts].join("|"));
 }
 
 function recentlySent(fp: string) {
   if (typeof window === "undefined") return false;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(LAST_SENT_KEY) ?? "null") as { fingerprint?: string; at?: number } | null;
-    return Boolean(parsed?.fingerprint === fp && Date.now() - Number(parsed?.at ?? 0) < LOCAL_DUPLICATE_MS);
+    const parsed = JSON.parse(
+      window.localStorage.getItem(LAST_SENT_KEY) ?? "null",
+    ) as { fingerprint?: string; at?: number } | null;
+    return Boolean(
+      parsed?.fingerprint === fp &&
+        Date.now() - Number(parsed?.at ?? 0) < LOCAL_DUPLICATE_MS,
+    );
   } catch {
     return false;
   }
@@ -148,7 +147,10 @@ function recentlySent(fp: string) {
 
 function rememberSent(fp: string) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(LAST_SENT_KEY, JSON.stringify({ fingerprint: fp, at: Date.now() }));
+  window.localStorage.setItem(
+    LAST_SENT_KEY,
+    JSON.stringify({ fingerprint: fp, at: Date.now() }),
+  );
 }
 
 function cancelPendingSend() {
@@ -168,15 +170,13 @@ function scheduleCompletedIntakeSend() {
 
     if (
       !latest.active ||
-      !latest.surname ||
       !latest.roomNumber ||
-      !latest.contact ||
+      !latest.surname ||
       !isSubstantiveIssue(issue)
     ) {
       return;
     }
 
-    // 若剛剛又收到新的語音片段，重新等待完整句尾的安靜時間。
     const quietFor = Date.now() - latest.updatedAt;
     if (quietFor < COMPLETE_UTTERANCE_QUIET_MS) {
       scheduleCompletedIntakeSend();
@@ -195,16 +195,17 @@ function scheduleCompletedIntakeSend() {
       body: JSON.stringify({
         surname: latest.surname,
         roomNumber: latest.roomNumber,
-        contact: latest.contact,
         issue,
-        source: "deterministic-transcript-fallback-v3-complete-utterance",
+        source: "complaint-three-field-intake-v1",
       }),
       keepalive: true,
     })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(payload?.error ?? `客務通知寄送失敗：${response.status}`);
+          throw new Error(
+            payload?.error ?? `客訴通知寄送失敗：${response.status}`,
+          );
         }
 
         if (payload?.sent === true || payload?.duplicate === true) {
@@ -213,21 +214,26 @@ function scheduleCompletedIntakeSend() {
         }
       })
       .catch((error) => {
-        console.error("[guest-service-auto-intake] send failed", error);
+        console.error("[complaint-three-field-intake] send failed", error);
       });
   }, COMPLETE_UTTERANCE_QUIET_MS);
 }
 
-export async function processNuboGuestServiceTranscript(transcript: string): Promise<void> {
+export async function processNuboGuestServiceTranscript(
+  transcript: string,
+): Promise<void> {
   if (typeof window === "undefined") return;
   const text = transcript?.trim();
   if (!text) return;
 
   const classification = classifyNuboGuestServiceTranscript(text);
   const state = loadState();
+  const isComplaint =
+    classification.matched && classification.category === "complaint";
 
-  if (!state.active && !classification.matched) return;
-  if (!state.active && classification.matched) {
+  // 一般備品／房務／設備需求仍走即時 LINE；只有客訴進三欄收集流程。
+  if (!state.active && !isComplaint) return;
+  if (!state.active && isComplaint) {
     state.active = true;
     state.startedAt = Date.now();
   }
@@ -235,18 +241,16 @@ export async function processNuboGuestServiceTranscript(transcript: string): Pro
   state.updatedAt = Date.now();
   state.surname ||= extractSurname(text);
   state.roomNumber ||= extractRoom(text);
-  state.contact ||= extractContact(text);
 
-  if (classification.matched || state.active) addIssuePart(state, text);
+  if (isComplaint || state.active) addIssuePart(state, text);
   saveState(state);
 
   const issue = state.issueParts.join("；").trim();
-  if (!state.surname || !state.roomNumber || !state.contact || !isSubstantiveIssue(issue)) {
+  if (!state.roomNumber || !state.surname || !isSubstantiveIssue(issue)) {
     cancelPendingSend();
     return;
   }
 
-  // 不在第一個看似完整的轉錄片段立即寄信；等使用者完整說完，
-  // 並且連續安靜 2.2 秒後再做最後一次資料完整性檢查。
+  // 房號、姓氏、客訴內容三項齊全後，等這個語音回合穩定 1 秒再送 LINE。
   scheduleCompletedIntakeSend();
 }
