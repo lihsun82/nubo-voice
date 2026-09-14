@@ -1,0 +1,28 @@
+name: Production LINE E2E
+
+on:
+  push:
+    branches:
+      - diag/prod-line-e2e-20260914
+    paths:
+      - .github/workflows/prod-line-e2e.yml
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call production guest-service API
+        shell: bash
+        run: |
+          set -euo pipefail
+          body='{"roomNumber":"E2E","issue":"NUBO Production 客務通道驗證 2026-09-14 14:27：若看到此訊息，代表 Production API → LINE Relay → 群組全部正常。","source":"prod-line-e2e-20260914"}'
+          out=$(mktemp)
+          code=$(curl -sS --max-time 90 -o "$out" -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d "$body" \
+            https://nubo-cloud.onrender.com/api/notify/guest-service)
+          cat "$out"
+          echo
+          echo "HTTP_STATUS=$code"
+          test "$code" = "200"
+          grep -Eq '"(sent|duplicate)":true' "$out"
