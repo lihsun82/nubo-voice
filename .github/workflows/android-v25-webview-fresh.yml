@@ -4,17 +4,18 @@ on:
   push:
     branches: [fix/android-v25-webview-fresh]
     paths:
-      - "scripts/apply-nubo-webview-fresh-v25.py"
+      - "scripts/patch-stable3-apk-smali-v25.py"
       - ".github/workflows/android-v25-webview-fresh.yml"
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   build-v25:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -24,90 +25,95 @@ jobs:
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+      - run: sdkmanager "build-tools;35.0.0" "platform-tools"
 
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Download verified Stable3 Google Home + Native Wake APK
+        uses: actions/download-artifact@v4
         with:
-          gradle-version: "8.11.1"
+          name: AinuboX1-NUBO-STABLE-3.0-AUDIORECORD-NATIVE-WAKE
+          path: stable3
+          repository: lihsun82/nubo-voice
+          run-id: 31972445305
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install web dependencies
-        run: npm install --include=dev --no-audit --no-fund
+      - name: Download apktool
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar \
+            -o apktool.jar
+          java -jar apktool.jar --version
 
-      - name: Materialize signing key and launcher icon
+      - name: Materialize signing key
         run: |
           set -euo pipefail
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
-          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
-          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
-          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo >/dev/null
 
-      - name: Download official Google Home SDK 1.10.0
-        shell: bash
-        run: |
-          set -euxo pipefail
-          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
-          REPO="$RUNNER_TEMP/home-sdk-repo"
-          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
-          mkdir -p "$REPO"
-          unzip -q "$ZIP" -d "$REPO"
-          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
-          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
-
-      - name: Materialize Stable 3 + Google Home + Native Wake + fresh WebView V25
+      - name: Decode verified Stable3 and apply V25 WebView patch
         run: |
           set -euo pipefail
-          python3 scripts/apply-nubo-v28-build.py
-          python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-nubo-stable-3-audiorecord-wake.py
-          node scripts/apply-web-stable-2-native-wake.mjs
-          node scripts/apply-web-stable-2-shutdown.mjs
-          python3 scripts/apply-nubo-youtube-background-cloud-mic-v31.py
-          python3 scripts/apply-nubo-youtube-background-nosetup-v33.py
-          python3 scripts/apply-nubo-webview-fresh-v25.py
+          APK=$(find stable3 -name '*.apk' -print -quit)
+          test -n "$APK"
+          cp "$APK" stable3-original.apk
+          java -jar apktool.jar d -f stable3-original.apk -o decoded
+          python3 scripts/patch-stable3-apk-smali-v25.py
+          MAIN=$(find decoded -path '*/com/ainubo/nubo/MainActivity.smali' -print -quit)
+          test -n "$MAIN"
+          grep -q 'android-v25&v=' "$MAIN"
+          grep -q 'WebSettings;->setCacheMode(I)V' "$MAIN"
+          grep -q 'WebView;->clearCache(Z)V' "$MAIN"
+          grep -q 'WebView;->clearHistory()V' "$MAIN"
+          grep -q 'System;->currentTimeMillis()J' "$MAIN"
+          ! grep -q 'WebView;->restoreState(Landroid/os/Bundle;)' "$MAIN"
+          ! grep -q 'WebView;->saveState(Landroid/os/Bundle;)' "$MAIN"
 
-      - name: Verify V25 source contracts
+      - name: Rebuild patched APK
         run: |
           set -euo pipefail
-          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          NATIVE=android-nubo/app/src/main/java/com/ainubo/nubo/NuboNativeWakeService.java
-          HOME=android-nubo/app/src/googleHome/java/com/ainubo/nubo/googlehome/GoogleHomeGatewayImpl.kt
-          grep -q 'versionCode 3301' android-nubo/app/build.gradle
-          grep -q '22.2.3-googlehome-nativewake-webviewfresh' android-nubo/app/build.gradle
-          grep -q 'android-v25' "$MAIN"
-          grep -q 'System.currentTimeMillis()' "$MAIN"
-          grep -q 'LOAD_NO_CACHE' "$MAIN"
-          grep -q 'webView.clearCache(true)' "$MAIN"
-          ! grep -q 'webView.restoreState(savedInstanceState)' "$MAIN"
-          ! grep -q 'webView.saveState(outState)' "$MAIN"
-          grep -q 'NuboNativeWakeV3' "$NATIVE"
-          grep -q 'AudioRecord' "$NATIVE"
-          grep -q 'GoogleHomeGatewayImpl' "$HOME"
-          grep -q 'sdk", "1.10.0"' "$HOME"
-          grep -q 'launchYouTubeNoSetupV33' "$MAIN"
-          npm run typecheck
+          java -jar apktool.jar b decoded -o v25-unsigned.apk --use-aapt2
+          test -s v25-unsigned.apk
 
-      - name: Build signed V25 APK
-        run: gradle -p android-nubo clean assembleRelease -PnuboGoogleHome=true --stacktrace
-
-      - name: Verify signed/aligned V25 APK
+      - name: Zipalign and sign with original Ainubo certificate
         run: |
           set -euo pipefail
-          APK=android-nubo/app/build/outputs/apk/release/app-release.apk
-          test -f "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -P 16 -v 4 "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" > /tmp/nubo25.txt
-          grep -q "versionCode='3301'" /tmp/nubo25.txt
-          grep -q "versionName='22.2.3-googlehome-nativewake-webviewfresh'" /tmp/nubo25.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/nubo25-dex.txt
-          grep -q 'android-v25' /tmp/nubo25-dex.txt
-          grep -q 'NuboNativeWakeV3' /tmp/nubo25-dex.txt
-          grep -q 'GoogleHomeGatewayImpl' /tmp/nubo25-dex.txt
-          grep -q 'v33-background-nosetup' /tmp/nubo25-dex.txt
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/zipalign" -f -P 16 4 v25-unsigned.apk v25-aligned.apk
+          "$BT/apksigner" sign \
+            --ks android-nubo/ainubo-debug.jks \
+            --ks-pass pass:ainubo123 \
+            --key-pass pass:ainubo123 \
+            --ks-key-alias ainubo \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out AinuboX1-V22.2.3-V25-FRESH-WEBVIEW.apk \
+            v25-aligned.apk
+
+      - name: Verify installability and preserved Stable3 capabilities
+        run: |
+          set -euo pipefail
+          APK=AinuboX1-V22.2.3-V25-FRESH-WEBVIEW.apk
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          test -s "$APK"
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/sign.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$APK"
+          "$BT/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='3301'" /tmp/badging.txt
+          grep -q "versionName='22.2.3-googlehome-nativewake-webviewfresh'" /tmp/badging.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/v25-dex.txt
+          grep -q 'android-v25&v=' /tmp/v25-dex.txt
+          grep -q 'NUBO-V25/22.2.3' /tmp/v25-dex.txt
+          grep -q 'NuboNativeWakeV3' /tmp/v25-dex.txt
+          grep -q 'AudioRecord' /tmp/v25-dex.txt
+          grep -q 'GoogleHomeGatewayImpl' /tmp/v25-dex.txt
+          # Certificate must remain the same as the verified Stable3 source APK.
+          "$BT/apksigner" verify --print-certs stable3-original.apk | grep 'Signer #1 certificate SHA-256 digest' > /tmp/orig-cert.txt
+          "$BT/apksigner" verify --print-certs "$APK" | grep 'Signer #1 certificate SHA-256 digest' > /tmp/new-cert.txt
+          diff -u /tmp/orig-cert.txt /tmp/new-cert.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: AinuboX1-V22.2.3-V25-FRESH-WEBVIEW
-          path: android-nubo/app/build/outputs/apk/release/app-release.apk
+          path: AinuboX1-V22.2.3-V25-FRESH-WEBVIEW.apk
           if-no-files-found: error
