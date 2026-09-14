@@ -71,7 +71,9 @@ jobs:
       - name: Rebuild patched APK
         run: |
           set -euo pipefail
-          java -jar apktool.jar b decoded -o v25-unsigned.apk --use-aapt2
+          AAPT2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
+          test -x "$AAPT2"
+          java -jar apktool.jar b decoded -o v25-unsigned.apk --aapt "$AAPT2"
           test -s v25-unsigned.apk
 
       - name: Zipalign and sign with original Ainubo certificate
@@ -107,7 +109,6 @@ jobs:
           grep -q 'NuboNativeWakeV3' /tmp/v25-dex.txt
           grep -q 'AudioRecord' /tmp/v25-dex.txt
           grep -q 'GoogleHomeGatewayImpl' /tmp/v25-dex.txt
-          # Certificate must remain the same as the verified Stable3 source APK.
           "$BT/apksigner" verify --print-certs stable3-original.apk | grep 'Signer #1 certificate SHA-256 digest' > /tmp/orig-cert.txt
           "$BT/apksigner" verify --print-certs "$APK" | grep 'Signer #1 certificate SHA-256 digest' > /tmp/new-cert.txt
           diff -u /tmp/orig-cert.txt /tmp/new-cert.txt
