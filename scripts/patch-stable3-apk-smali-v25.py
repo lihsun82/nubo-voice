@@ -129,7 +129,7 @@ main.write_text(s)
 # Bump version in apktool metadata so Android accepts this as an upgrade.
 yml = root / "apktool.yml"
 y = yml.read_text()
-y, n1 = re.subn(r"versionCode: '?\d+'?", "versionCode: '3301'", y, count=1)
+y, n1 = re.subn(r"versionCode: '?\d+'?", "versionCode: 3301", y, count=1)
 y, n2 = re.subn(r"versionName: .+", "versionName: 22.2.3-googlehome-nativewake-webviewfresh", y, count=1)
 if n1 != 1 or n2 != 1:
     raise SystemExit(f"apktool version metadata patch failed: versionCode={n1} versionName={n2}")
