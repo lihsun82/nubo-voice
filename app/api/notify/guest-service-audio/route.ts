@@ -265,6 +265,24 @@ export async function POST(req: NextRequest) {
     const forwardedPayload = await forwarded.json().catch(() => ({}));
 
     if (!forwarded.ok) {
+      if (forwarded.status === 409 && forwardedPayload?.complaint === true) {
+        console.info("[guest-service-audio] complaint intake required", {
+          roomNumber: decision.roomNumber || null,
+          missingFields: forwardedPayload?.missingFields ?? [],
+        });
+        return NextResponse.json({
+          ok: true,
+          analyzed: true,
+          sent: false,
+          requiresComplaintIntake: true,
+          missingFields: Array.isArray(forwardedPayload?.missingFields)
+            ? forwardedPayload.missingFields
+            : [],
+          decision,
+          model,
+        });
+      }
+
       throw new Error(
         forwardedPayload?.error ?? `客務通知轉送失敗：${forwarded.status}`,
       );
