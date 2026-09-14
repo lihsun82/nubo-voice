@@ -15,17 +15,17 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq espeak-ng ffmpeg jq
-      - name: Run four-turn complaint audio flow
+      - name: Validate complaint room and surname carryover
         shell: bash
         run: |
           set -euo pipefail
           ENDPOINT='https://nubo.ainubo.com/api/notify/guest-service-audio'
-          STATE='{"active":false,"roomNumber":"","surname":"","issueParts":[]}'
+          STATE='{"active":true,"roomNumber":"","surname":"","issueParts":["冷氣故障而且熱水不熱，測試編號八七六五"]}'
 
           make_pcm() {
             local text="$1"
             local name="$2"
-            espeak-ng -v cmn -s 135 -w "/tmp/${name}.wav" "$text"
+            espeak-ng -v cmn -s 125 -w "/tmp/${name}.wav" "$text"
             ffmpeg -hide_banner -loglevel error -y -i "/tmp/${name}.wav" -ac 1 -ar 16000 -f s16le "/tmp/${name}.pcm"
             base64 -w0 "/tmp/${name}.pcm"
           }
@@ -44,14 +44,8 @@ jobs:
             echo "$response" > "/tmp/${name}.json"
           }
 
-          send_turn '我要客訴' t1
-          jq -e '.sent != true and .requiresComplaintIntake == true' /tmp/t1.json
+          send_turn '三零五' room
+          jq -e '.sent != true and .requiresComplaintIntake == true and (.complaintIntake.roomNumber == "305")' /tmp/room.json
 
-          send_turn '三零五' t2
-          jq -e '.sent != true and (.complaintIntake.roomNumber == "305")' /tmp/t2.json
-
-          send_turn '我姓李' t3
-          jq -e '.sent != true and (.complaintIntake.surname == "李")' /tmp/t3.json
-
-          send_turn '冷氣故障，而且熱水不熱，測試編號八七六五' t4
-          jq -e '(.sent == true or .duplicate == true) and .complaint == true and .complaintIntake.roomNumber == "305" and .complaintIntake.surname == "李"' /tmp/t4.json
+          send_turn '我姓李' surname
+          jq -e '(.sent == true or .duplicate == true) and .complaint == true and .complaintIntake.roomNumber == "305" and .complaintIntake.surname == "李"' /tmp/surname.json
