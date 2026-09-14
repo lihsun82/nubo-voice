@@ -51,7 +51,8 @@ async function redisGet(key: string): Promise<string> {
       socket.write(encodeRedisCommand(["GET", key]));
     });
     socket.on("data", (chunk) => {
-      buffer = Buffer.concat([buffer, chunk]);
+      const bytes = typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk);
+      buffer = Buffer.concat([buffer, bytes]);
       const lineEnd = buffer.indexOf("\r\n");
       if (lineEnd < 0) return;
 
