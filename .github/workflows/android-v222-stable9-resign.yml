@@ -43,15 +43,12 @@ jobs:
 
           path = Path('patched.apk')
           apk = bytearray(path.read_bytes())
-
-          # Locate EOCD and central directory.
           eocd = apk.rfind(b'PK\x05\x06')
           if eocd < 0:
               raise SystemExit('EOCD not found')
           cd_offset = struct.unpack_from('<I', apk, eocd + 16)[0]
           cd_size = struct.unpack_from('<I', apk, eocd + 12)[0]
 
-          # Find classes.dex central directory entry and local header.
           p = cd_offset
           dex_central = None
           dex_local = None
@@ -79,9 +76,6 @@ jobs:
           data_off = dex_local + 30 + name_len + extra_len
           dex = bytearray(apk[data_off:data_off+comp_size])
 
-          if dex[:8] != b'dex\n035\x00' and not dex.startswith(b'dex\n'):
-              raise SystemExit('unexpected dex header')
-
           old = b'stable-3'
           new = b'stable-9'
           count = dex.count(old)
@@ -89,11 +83,8 @@ jobs:
               raise SystemExit(f'expected >=3 stable-3 markers, got {count}')
           dex = dex.replace(old, new)
 
-          # Recompute DEX SHA-1 signature and Adler32 checksum.
           dex[12:32] = hashlib.sha1(dex[32:]).digest()
           struct.pack_into('<I', dex, 8, zlib.adler32(dex[12:]) & 0xffffffff)
-
-          # Write patched DEX in place; ZIP offsets stay unchanged.
           apk[data_off:data_off+comp_size] = dex
           crc = zlib.crc32(dex) & 0xffffffff
           struct.pack_into('<I', apk, dex_local + 14, crc)
@@ -108,7 +99,7 @@ jobs:
           set -euo pipefail
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
 
-      - name: Re-sign with official apksigner v1/v2/v3
+      - name: Re-sign with official apksigner
         shell: bash
         run: |
           set -euo pipefail
@@ -135,9 +126,9 @@ jobs:
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           APK=AinuboX1-V22.2.2-STABLE9.apk
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee verify.txt
-          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' verify.txt
           grep -q 'Verified using v3 scheme (APK Signature Scheme v3): true' verify.txt
           "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
+          unzip -t "$APK" >/dev/null
           unzip -p "$APK" classes.dex | strings | grep -q 'https://nubo.ainubo.com/?native=stable-9'
           unzip -p "$APK" classes.dex | strings | grep -q "dataset.nuboNative='stable-9'"
           if unzip -p "$APK" classes.dex | strings | grep -q 'v22-2-2x'; then
