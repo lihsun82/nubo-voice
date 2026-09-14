@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const marker = 'NUBO_GUEST_LINE_FAST_ROUTE_V1';
+const marker = 'NUBO_GUEST_LINE_FAST_ROUTE_V2';
 const path = 'components/GeminiVoiceConsole.tsx';
 let source = fs.readFileSync(path, 'utf8');
 
@@ -17,12 +17,12 @@ if (!source.includes(marker)) {
   if (!source.includes(helperAnchor)) throw new Error('guest LINE fast route: helper anchor missing');
   source = source.replace(helperAnchor, `${helper}${helperAnchor}`);
 
-  const transcriptAnchor = '            const trimmedUserText = userText.trim();';
-  const transcriptPatch = `${transcriptAnchor}\n\n            scheduleNuboGuestLineFastRoute(trimmedUserText);`;
-  if (!source.includes(transcriptAnchor)) throw new Error('guest LINE fast route: transcript anchor missing');
-  source = source.replace(transcriptAnchor, transcriptPatch);
+  const eagerAnchor = '          const modelText = serverContent?.outputTranscription?.text;';
+  const eagerCall = `${eagerAnchor}\n\n          // ${marker}: process user transcription before modelText can win the if/else branch.\n          if (typeof userText === \"string\" && userText.trim()) {\n            scheduleNuboGuestLineFastRoute(userText.trim());\n          }`;
+  if (!source.includes(eagerAnchor)) throw new Error('guest LINE fast route: eager transcript anchor missing');
+  source = source.replace(eagerAnchor, eagerCall);
 
   fs.writeFileSync(path, source);
 }
 
-console.log('Applied deterministic guest-service LINE fast route');
+console.log('Applied deterministic guest-service LINE fast route v2');
