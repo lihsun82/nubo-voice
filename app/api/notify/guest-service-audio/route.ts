@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 const MAX_PCM_BASE64_CHARS = 900_000;
 const MIN_PCM_BYTES = 16_000;
 const DEFAULT_SAMPLE_RATE = 16_000;
+const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 type AudioDecision = {
   guestService: boolean;
@@ -22,6 +23,59 @@ function clampConfidence(value: unknown) {
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function fetchErrorCode(error: unknown) {
+  if (!error || typeof error !== "object") return "";
+  const cause = (error as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object") return "";
+  const code = (cause as { code?: unknown }).code;
+  return typeof code === "string" ? code : "";
+}
+
+async function fetchWithTransientRetry(
+  url: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+  attempts = 3,
+) {
+  let lastError: unknown = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        ...init,
+        cache: "no-store",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (attempt < attempts && TRANSIENT_STATUSES.has(response.status)) {
+        await response.arrayBuffer().catch(() => undefined);
+        console.warn("[guest-service-audio] transient HTTP retry", {
+          attempt,
+          status: response.status,
+        });
+        await sleep(350 * attempt);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts) throw error;
+      console.warn("[guest-service-audio] transient network retry", {
+        attempt,
+        code: fetchErrorCode(error) || null,
+      });
+      await sleep(350 * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("fetch failed after retry");
 }
 
 function pcm16ToWav(pcm: Buffer, sampleRate: number) {
@@ -101,13 +155,14 @@ async function analyzeGuestAudio(wavBase64: string) {
     '{"guestService":true,"confidence":0.0,"roomNumber":"","issue":"","urgency":"normal"}',
   ].join("\n");
 
-  const response = await fetch(
+  const response = await fetchWithTransientRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": apiKey,
+        Connection: "close",
       },
       body: JSON.stringify({
         contents: [
@@ -130,9 +185,9 @@ async function analyzeGuestAudio(wavBase64: string) {
           thinkingConfig: { thinkingLevel: "LOW" },
         },
       }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
     },
+    30_000,
+    3,
   );
 
   const payload = await response.json().catch(() => ({}));
@@ -172,6 +227,14 @@ export async function POST(req: NextRequest) {
     const wav = pcm16ToWav(pcm, sampleRate);
     const { decision, model } = await analyzeGuestAudio(wav.toString("base64"));
 
+    console.info("[guest-service-audio] decision", {
+      guestService: decision.guestService,
+      confidence: decision.confidence,
+      roomNumber: decision.roomNumber || null,
+      urgency: decision.urgency,
+      model,
+    });
+
     if (!decision.guestService || decision.confidence < 0.55) {
       return NextResponse.json({
         ok: true,
@@ -183,18 +246,22 @@ export async function POST(req: NextRequest) {
     }
 
     const issue = decision.issue || "旅客提出需要現場人員處理的客務需求，請現場確認。";
-    const forwardUrl = new URL("/api/notify/guest-service", req.url);
-    const forwarded = await fetch(forwardUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        roomNumber: decision.roomNumber,
-        issue,
-        source: "raw-audio-semantic-second-pass-v1",
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(70_000),
-    });
+    const port = clean(process.env.PORT) || "10000";
+    const forwardUrl = `http://127.0.0.1:${port}/api/notify/guest-service`;
+    const forwarded = await fetchWithTransientRetry(
+      forwardUrl,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomNumber: decision.roomNumber,
+          issue,
+          source: "raw-audio-semantic-second-pass-v2-internal-forward",
+        }),
+      },
+      70_000,
+      2,
+    );
     const forwardedPayload = await forwarded.json().catch(() => ({}));
 
     if (!forwarded.ok) {
@@ -208,6 +275,7 @@ export async function POST(req: NextRequest) {
       roomNumber: decision.roomNumber || null,
       urgency: decision.urgency,
       model,
+      forwardedInternally: true,
     });
 
     return NextResponse.json({
