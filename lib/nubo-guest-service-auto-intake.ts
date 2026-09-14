@@ -60,33 +60,142 @@ function clearState() {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
+export function activateNuboComplaintIntake(seed?: {
+  roomNumber?: string;
+  surname?: string;
+}) {
+  if (typeof window === "undefined") return;
+  const state = loadState();
+  const now = Date.now();
+  state.active = true;
+  if (!state.startedAt) state.startedAt = now;
+  state.updatedAt = now;
+  if (seed?.roomNumber && !state.roomNumber) state.roomNumber = seed.roomNumber.trim();
+  if (seed?.surname && !state.surname) state.surname = seed.surname.trim();
+  saveState(state);
+}
+
 function compact(value: string) {
   return value
     .replace(/[\s　，,。.!！?？、:：;；'"“”‘’（）()【】\[\]-]+/g, "")
     .toLowerCase();
 }
 
-function extractSurname(text: string) {
-  const explicit = text.match(/(?:我姓|姓氏(?:是|為)?|姓)\s*([\p{Script=Han}])/u);
-  if (explicit?.[1]) return explicit[1];
-  const title = text.match(/([\p{Script=Han}])\s*(?:先生|小姐|女士)/u);
-  return title?.[1] ?? "";
+const ROOM_DIGITS: Record<string, string> = {
+  零: "0",
+  〇: "0",
+  一: "1",
+  二: "2",
+  兩: "2",
+  三: "3",
+  四: "4",
+  五: "5",
+  六: "6",
+  七: "7",
+  八: "8",
+  九: "9",
+};
+
+function chineseInteger(value: string) {
+  const raw = value.replace(/[\s　]/g, "");
+  if (/^\d+$/.test(raw)) return Number(raw);
+  if (/^[零〇一二兩三四五六七八九]{2,4}$/u.test(raw)) {
+    return Number([...raw].map((char) => ROOM_DIGITS[char] ?? "").join(""));
+  }
+  const hundred = raw.match(/^([一二兩三四五六七八九])百(?:([一二兩三四五六七八九])?十)?([一二兩三四五六七八九])?$/u);
+  if (hundred) {
+    const h = Number(ROOM_DIGITS[hundred[1]]);
+    const t = hundred[2] ? Number(ROOM_DIGITS[hundred[2]]) : 0;
+    const o = hundred[3] ? Number(ROOM_DIGITS[hundred[3]]) : 0;
+    return h * 100 + t * 10 + o;
+  }
+  const ten = raw.match(/^([一二兩三四五六七八九])?十([一二兩三四五六七八九])?$/u);
+  if (ten) {
+    const t = ten[1] ? Number(ROOM_DIGITS[ten[1]]) : 1;
+    const o = ten[2] ? Number(ROOM_DIGITS[ten[2]]) : 0;
+    return t * 10 + o;
+  }
+  if (raw.length === 1 && raw in ROOM_DIGITS) return Number(ROOM_DIGITS[raw]);
+  return Number.NaN;
 }
 
-function extractRoom(text: string) {
-  const patterns = [
-    /(?:房號|房間|住在|住)\s*(?:是|為)?\s*([A-Za-z]?\d{2,4})\s*(?:號?房)?/iu,
-    /([A-Za-z]?\d{2,4})\s*(?:號?房|房間)/iu,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) return match[1].toUpperCase();
+function normalizeRoomToken(value: string) {
+  const raw = value.replace(/[\s　]/g, "").toUpperCase();
+  const alphaNumeric = raw.match(/^([A-Z]?)(\d{2,4})$/u);
+  if (alphaNumeric) return `${alphaNumeric[1]}${alphaNumeric[2]}`;
+  const numeric = chineseInteger(raw);
+  if (Number.isFinite(numeric) && numeric >= 10 && numeric <= 9999) {
+    return String(numeric);
   }
+  return "";
+}
+
+function extractSurname(text: string, allowBare: boolean) {
+  const explicit = text.match(/(?:我姓|姓氏(?:是|為)?|姓)\s*([\p{Script=Han}]{1,2})/u);
+  if (explicit?.[1]) return explicit[1];
+  const title = text.match(/([\p{Script=Han}]{1,2})\s*(?:先生|小姐|女士)/u);
+  if (title?.[1]) return title[1];
+  if (allowBare) {
+    const bare = text.trim().match(/^([\p{Script=Han}]{1,2})$/u);
+    if (bare?.[1] && !/^(好的|可以|不要|不用|謝謝|沒事|不是)$/u.test(bare[1])) {
+      return bare[1];
+    }
+  }
+  return "";
+}
+
+function extractRoom(text: string, allowBare: boolean) {
+  const floorRoom = text.match(
+    /([零〇一二兩三四五六七八九十百\d]{1,4})\s*樓\s*([零〇一二兩三四五六七八九十\d]{1,3})\s*(?:號?房|房間)?/u,
+  );
+  if (floorRoom) {
+    const floor = chineseInteger(floorRoom[1]);
+    const room = chineseInteger(floorRoom[2]);
+    if (Number.isFinite(floor) && Number.isFinite(room) && floor > 0 && room >= 0 && room < 100) {
+      return `${floor}${String(room).padStart(2, "0")}`;
+    }
+  }
+
+  const explicit = text.match(
+    /(?:房號|房間|住在|住)\s*(?:是|為)?\s*([A-Za-z]?\d{2,4}|[零〇一二兩三四五六七八九十百]{2,6})\s*(?:號?房)?/iu,
+  );
+  if (explicit?.[1]) {
+    const normalized = normalizeRoomToken(explicit[1]);
+    if (normalized) return normalized;
+  }
+
+  const suffixed = text.match(
+    /([A-Za-z]?\d{2,4}|[零〇一二兩三四五六七八九十百]{2,6})\s*(?:號?房|房間)/iu,
+  );
+  if (suffixed?.[1]) {
+    const normalized = normalizeRoomToken(suffixed[1]);
+    if (normalized) return normalized;
+  }
+
+  if (allowBare) {
+    const bare = text.trim().match(
+      /^(?:房號(?:是|為)?\s*)?([A-Za-z]?\d{2,4}|[零〇一二兩三四五六七八九十百]{2,6})(?:\s*號?房)?$/iu,
+    );
+    if (bare?.[1]) {
+      const normalized = normalizeRoomToken(bare[1]);
+      if (normalized) return normalized;
+    }
+  }
+
   return "";
 }
 
 function isMostlyIntakeMetadata(text: string) {
   return /^(?:我姓|姓氏|姓|房號|房間|住在|住)/u.test(text.trim());
+}
+
+function isBareMetadataReply(text: string, roomCandidate: string, surnameCandidate: string) {
+  const raw = text.trim();
+  if (roomCandidate && /^(?:房號(?:是|為)?\s*)?(?:[A-Za-z]?\d{2,4}|[零〇一二兩三四五六七八九十百]{2,6})(?:\s*號?房)?$/iu.test(raw)) {
+    return true;
+  }
+  if (surnameCandidate && /^[\p{Script=Han}]{1,2}$/u.test(raw)) return true;
+  return false;
 }
 
 function isSubstantiveIssue(text: string) {
@@ -196,7 +305,7 @@ function scheduleCompletedIntakeSend() {
         surname: latest.surname,
         roomNumber: latest.roomNumber,
         issue,
-        source: "complaint-three-field-intake-v1",
+        source: "complaint-three-field-intake-v2-carryover",
       }),
       keepalive: true,
     })
@@ -237,11 +346,21 @@ export async function processNuboGuestServiceTranscript(
     state.startedAt = Date.now();
   }
 
-  state.updatedAt = Date.now();
-  state.surname ||= extractSurname(text);
-  state.roomNumber ||= extractRoom(text);
+  const roomCandidate = !state.roomNumber
+    ? extractRoom(text, state.active)
+    : "";
+  if (roomCandidate) state.roomNumber = roomCandidate;
 
-  if (isComplaint || state.active) addIssuePart(state, text);
+  const surnameCandidate = !state.surname
+    ? extractSurname(text, state.active && Boolean(state.roomNumber))
+    : "";
+  if (surnameCandidate) state.surname = surnameCandidate;
+
+  state.updatedAt = Date.now();
+
+  const metadataOnly = isMostlyIntakeMetadata(text) ||
+    isBareMetadataReply(text, roomCandidate, surnameCandidate);
+  if ((isComplaint || state.active) && !metadataOnly) addIssuePart(state, text);
   saveState(state);
 
   const issue = state.issueParts.join("；").trim();
