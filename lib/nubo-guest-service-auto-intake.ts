@@ -101,7 +101,6 @@ function isSubstantiveIssue(text: string) {
     return false;
   }
 
-  // 單純說「我要客訴／我要投訴」只是啟動客訴流程，不算客訴內容。
   if (
     /^(?:(?:我要|我想|我要來|想要|需要)?(?:客訴|投訴|抱怨|反映|反應))$/u.test(
       normalized,
@@ -193,6 +192,7 @@ function scheduleCompletedIntakeSend() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        complaint: true,
         surname: latest.surname,
         roomNumber: latest.roomNumber,
         issue,
@@ -231,7 +231,6 @@ export async function processNuboGuestServiceTranscript(
   const isComplaint =
     classification.matched && classification.category === "complaint";
 
-  // 一般備品／房務／設備需求仍走即時 LINE；只有客訴進三欄收集流程。
   if (!state.active && !isComplaint) return;
   if (!state.active && isComplaint) {
     state.active = true;
@@ -251,6 +250,5 @@ export async function processNuboGuestServiceTranscript(
     return;
   }
 
-  // 房號、姓氏、客訴內容三項齊全後，等這個語音回合穩定 1 秒再送 LINE。
   scheduleCompletedIntakeSend();
 }
