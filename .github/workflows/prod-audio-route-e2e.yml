@@ -1,0 +1,36 @@
+name: Production Guest Audio Route E2E
+
+on:
+  push:
+    branches:
+      - diag/prod-line-e2e-20260914
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call production guest-service audio API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > payload.json
+          import base64, json
+          # 2 seconds of 16 kHz mono PCM16 silence: enough to exercise the
+          # complete raw-audio analysis route without generating a guest alert.
+          pcm = b'\x00\x00' * (16000 * 2)
+          print(json.dumps({
+              'pcmBase64': base64.b64encode(pcm).decode(),
+              'sampleRate': 16000,
+              'source': 'prod-audio-route-e2e-20260914',
+          }))
+          PY
+          out=$(mktemp)
+          code=$(curl -sS --max-time 90 -o "$out" -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            --data-binary @payload.json \
+            https://nubo-cloud.onrender.com/api/notify/guest-service-audio)
+          cat "$out"
+          echo
+          echo "HTTP_STATUS=$code"
+          test "$code" = "200"
+          grep -q '"ok":true' "$out"
