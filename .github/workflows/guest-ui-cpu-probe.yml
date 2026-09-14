@@ -1,0 +1,55 @@
+name: Guest UI main-thread probe
+on:
+  push:
+    branches: [diagnostic/guest-ui-20260914]
+    paths: [.github/workflows/guest-ui-cpu-probe.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser
+        run: |
+          mkdir -p "$RUNNER_TEMP/probe"
+          cd "$RUNNER_TEMP/probe"
+          npm install playwright@1.55.1 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Profile a read-only production page
+        run: |
+          cd "$RUNNER_TEMP/probe"
+          cat > probe.cjs <<'JS'
+          const {chromium}=require('playwright'); const fs=require('fs');
+          const wait=ms=>new Promise(r=>setTimeout(r,ms));
+          const bound=(p,ms=8000)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error('TIMEOUT')),ms))]);
+          (async()=>{
+            const b=await chromium.launch(); const report={console:[],errors:[],frames:[]};
+            const c=await b.newContext({viewport:{width:412,height:915},isMobile:true,hasTouch:true,reducedMotion:'reduce',userAgent:'Mozilla/5.0 (Linux; Android 16; NUBO-Diagnostic) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NUBO-Stable/3.0'});
+            const p=await c.newPage(); const d=await c.newCDPSession(p);
+            await d.send('Debugger.enable'); await d.send('Profiler.enable'); await d.send('Profiler.start');
+            p.on('pageerror',e=>report.errors.push(e.message)); p.on('console',m=>{if(report.console.length<15&&m.type()==='error')report.console.push(m.text().slice(0,160))});
+            await p.route('**/api/**',r=>r.request().method()==='GET'&&!r.request().url().includes('gemini-token')?r.continue():r.fulfill({status:200,json:{ok:true}}));
+            d.on('Debugger.paused',async ev=>{report.frames=ev.callFrames.slice(0,8).map(f=>({name:f.functionName,url:f.url,location:f.location}));
+              try{const f=ev.callFrames[0];const s=await d.send('Debugger.getScriptSource',{scriptId:f.location.scriptId});const line=s.scriptSource.split('\n')[f.location.lineNumber]||'';report.pausedSource=line.slice(Math.max(0,f.location.columnNumber-600),f.location.columnNumber+1200);}catch(e){report.errors.push(String(e))}
+              fs.writeFileSync('paused.json',JSON.stringify(report,null,2));
+            });
+            try{const r=await p.goto('https://nubo.ainubo.com/?native=stable-9&probe=cpu',{waitUntil:'domcontentloaded',timeout:60000});report.status=r.status(); await wait(2500);
+              report.click=await bound(p.getByRole('button',{name:'啟動NUBO',exact:true}).dispatchEvent('click'),5000).then(()=>true).catch(e=>String(e));
+              await bound(d.send('Debugger.pause')).catch(e=>report.errors.push('pause:'+e)); await wait(800);
+              const profile=await bound(d.send('Profiler.stop')).catch(()=>null);
+              if(profile){const counts=new Map();for(const i of profile.profile.samples||[])counts.set(i,(counts.get(i)||0)+1);report.cpu=profile.profile.nodes.filter(n=>counts.has(n.id)).sort((a,b)=>counts.get(b.id)-counts.get(a.id)).slice(0,12).map(n=>({count:counts.get(n.id),frame:n.callFrame}));}
+            }catch(e){report.errors.push(String(e));}
+            finally{fs.writeFileSync('report.json',JSON.stringify(report,null,2));console.log('PROBE',JSON.stringify(report));await bound(d.send('Debugger.resume')).catch(()=>{});await b.close();}
+          })().catch(console.error);
+          JS
+          node probe.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guest-ui-cpu-probe
+          path: ${{ runner.temp }}/probe/*.json
+          retention-days: 3
