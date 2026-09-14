@@ -1,0 +1,31 @@
+name: Railway Production LINE E2E
+
+on:
+  push:
+    branches: [diag/prod-line-e2e-20260914]
+    paths:
+      - ".github/workflows/railway-prod-line-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call Railway production guest-service API
+        shell: bash
+        run: |
+          set -euo pipefail
+          body='{"roomNumber":"E2E-RW","issue":"NUBO Railway Production LINE 通道驗證：若看到此訊息，代表 nubo.ainubo.com → LINE 群組已正式打通。","source":"railway-prod-line-e2e-20260914"}'
+          out=$(mktemp)
+          code=$(curl -sS --max-time 120 -o "$out" -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -d "$body" \
+            https://nubo.ainubo.com/api/notify/guest-service)
+          cat "$out"
+          echo
+          echo "HTTP_STATUS=$code"
+          test "$code" = "200"
+          grep -Eq '"(sent|duplicate)":true' "$out"
