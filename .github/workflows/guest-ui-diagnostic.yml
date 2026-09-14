@@ -8,7 +8,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -19,96 +19,71 @@ jobs:
           cd "$RUNNER_TEMP/nubo-ui-test"
           npm install playwright@1.55.1 --no-audit --no-fund
           npx playwright install --with-deps chromium
-      - name: Test actual production JavaScript with simulated Live transcription
+      - name: Test actual production transcription callbacks without microphone or AI calls
         env:
           TEST_DIR: ${{ runner.temp }}/nubo-ui-test
         run: |
           cd "$TEST_DIR"
           cat > probe.cjs <<'JS'
           const {chromium} = require('playwright');
-          const fs = require('node:fs');
-          const assert = require('node:assert/strict');
-          const base = 'https://nubo.ainubo.com';
-          const id = 'UI-' + Date.now().toString(36);
-          const report = {id, note:'Automated transcription simulation in the actual production page; NOT a physical-microphone test.', cases:[]};
-          const delay = ms => new Promise(r=>setTimeout(r,ms));
+          const fs=require('node:fs');
+          const base='https://nubo.ainubo.com';
+          const id='UI-'+Date.now().toString(36);
+          const report={id,note:'Production JavaScript with simulated Live input transcription; no real microphone/AI call. At most ONE labelled test LINE push.',cases:[]};
+          const delay=ms=>new Promise(r=>setTimeout(r,ms));
+          const bounded=(p,ms)=>Promise.race([p,new Promise((_,j)=>setTimeout(()=>j(Error('bounded operation timeout '+ms)),ms))]);
           (async()=>{
-            const browser = await chromium.launch({args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream','--autoplay-policy=no-user-gesture-required']});
-            let liveAttempted = false;
-            async function runCase(name, packets, shouldSend, live=false) {
-              const row={name, requests:[], results:[], errors:[], socketOpened:false}; report.cases.push(row);
-              const context=await browser.newContext({viewport:{width:412,height:915},permissions:['microphone'],userAgent:'Mozilla/5.0 (Linux; Android 16; NUBO-Diagnostic) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NUBO-Stable/3.0'});
-              const page=await context.newPage(); let socket=null;
-              page.on('pageerror', e=>row.errors.push(e.message.slice(0,220)));
-              await page.routeWebSocket(/generativelanguage\.googleapis\.com/, ws=>{
-                socket=ws; row.socketOpened=true;
-                ws.onMessage(raw=>{
-                  try {const p=JSON.parse(String(raw)); if(p.setup){ws.send(JSON.stringify({setupComplete:{}}));}}
-                  catch {}
-                });
-              });
+            const browser=await chromium.launch({args:['--disable-gpu','--autoplay-policy=no-user-gesture-required']});
+            let liveAttempted=false;
+            async function runCase(name,packets,shouldSend,live=false){
+              const row={name,requests:[],results:[],errors:[],console:[],navigations:[],socketOpened:false};report.cases.push(row);
+              const ctx=await browser.newContext({viewport:{width:412,height:915},userAgent:'Mozilla/5.0 (Linux; Android 16; NUBO-Diagnostic) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36 NUBO-Stable/3.0'});
+              const page=await ctx.newPage();page.setDefaultTimeout(6000);let socket=null;
+              page.on('pageerror',e=>row.errors.push(e.message.slice(0,200)));
+              page.on('crash',()=>row.errors.push('renderer-crash'));
+              page.on('framenavigated',f=>{if(f===page.mainFrame()) row.navigations.push(new URL(f.url()).pathname)});
+              page.on('console',m=>{if(['error','warning'].includes(m.type())&&row.console.length<12)row.console.push(m.text().slice(0,200))});
+              await page.routeWebSocket(/generativelanguage\.googleapis\.com/,ws=>{socket=ws;row.socketOpened=true;ws.onMessage(()=>{});});
               await page.route('**/api/**',async route=>{
-                const req=route.request(); const u=new URL(req.url());
-                if(u.pathname==='/api/gemini-token') {
-                  return route.fulfill({status:200,json:{token:'diagnostic-not-real',model:'gemini-diagnostic',ok:true}});
-                }
-                if(u.pathname==='/api/notify/guest-service' && req.method()==='POST') {
-                  const payload=req.postDataJSON();
-                  row.requests.push({issue:payload.issue,roomNumber:payload.roomNumber,source:payload.source||'tool-call'});
-                  if(live && !liveAttempted) {
-                    liveAttempted=true;
-                    const post={...payload,roomNumber:'TEST',surname:'',contact:'',issue:'[自動驗證 '+id+'，無需配送] '+String(payload.issue||''),source:'production-browser-transcript-simulation'};
-                    try {
-                      const res=await route.fetch({postData:JSON.stringify(post),timeout:95000,maxRetries:0});
-                      const b=await res.json().catch(()=>({}));
-                      row.results.push({httpStatus:res.status(),ok:b.ok,sent:b.sent,duplicate:b.duplicate,error:b.error,channel:b.channel});
-                      return route.fulfill({response:res});
-                    } catch(e) {
-                      row.results.push({error:String(e).slice(0,300)});
-                      return route.fulfill({status:502,json:{ok:false,sent:false,error:'Diagnostic request failed'}});
-                    }
+                const req=route.request(),u=new URL(req.url());
+                if(u.pathname==='/api/gemini-token')return route.fulfill({status:200,json:{token:'diagnostic-not-real',model:'gemini-diagnostic',ok:true}});
+                if(u.pathname==='/api/notify/guest-service'&&req.method()==='POST'){
+                  const p=req.postDataJSON();row.requests.push({issue:p.issue,roomNumber:p.roomNumber,source:p.source||'tool-call'});
+                  if(live&&!liveAttempted){liveAttempted=true;const post={...p,roomNumber:'TEST',surname:'',contact:'',issue:'[自動驗證 '+id+'，無需配送] '+String(p.issue||''),source:'production-browser-transcript-simulation'};
+                    try{const res=await route.fetch({postData:JSON.stringify(post),timeout:90000,maxRetries:0});const b=await res.json().catch(()=>({}));row.results.push({httpStatus:res.status(),ok:b.ok,sent:b.sent,duplicate:b.duplicate,error:b.error,channel:b.channel});return route.fulfill({response:res});}
+                    catch(e){row.results.push({error:String(e).slice(0,200)});return route.fulfill({status:502,json:{ok:false,sent:false,error:'Diagnostic send failed'}});}
                   }
                   return route.fulfill({status:200,json:{ok:true,sent:true,channel:'line',diagnosticMock:true}});
                 }
-                // Prevent unrelated tools, cloud token requests and side effects during this test.
+                if(req.method()==='GET')return route.continue();
                 return route.fulfill({status:200,json:{ok:true,enabled:false,items:[],tasks:[],entries:[]}});
               });
-              try {
-                const res=await page.goto(base+'/?native=stable-9&diagnostic='+id+'-'+name,{waitUntil:'domcontentloaded',timeout:95000});
-                row.pageStatus=res.status();
-                await page.waitForTimeout(2500);
-                if(!socket) {
-                  const button=page.getByRole('button',{name:/啟動\s*NUBO|啟動語音/}).first();
-                  await button.click({timeout:20000});
-                }
-                for(let i=0;i<60&&!socket;i++) await delay(250);
-                assert(socket,'Live WebSocket not created by page');
-                await delay(1200);
-                for(const p of packets) {socket.send(JSON.stringify({serverContent:p}));await delay(140);}
-                await delay(live?100000:3500);
-                row.footer=await page.locator('body').innerText().then(s=>(s.match(/NUBO Web UI[^\n]*/)||[])[0]||'not-found');
-                row.requestCount=row.requests.length;
-                row.pass=shouldSend ? row.requestCount>0 : row.requestCount===0;
-                if(live) row.pass=row.pass&&row.results.some(r=>r.httpStatus===200&&r.sent===true);
-              } catch(e) {row.pass=false; row.errors.push(String(e).slice(0,400));}
-              await page.screenshot({path:name+'.png',fullPage:false}).catch(()=>{});
-              await context.close(); console.log('CASE',JSON.stringify(row));
-              return row.pass;
+              try{
+                const res=await page.goto(base+'/?native=stable-9&diagnostic='+id+'-'+name,{waitUntil:'domcontentloaded',timeout:65000});row.pageStatus=res.status();
+                const html=await res.text();row.rootContainsFastRoute=html.includes('guest-line');row.rootBytes=html.length;
+                await delay(1200);await page.screenshot({path:name+'-before.png',timeout:3000}).catch(e=>row.errors.push('before-screenshot: '+e.name));
+                if(!socket) await bounded(page.getByRole('button',{name:/啟動\s*NUBO|啟動語音/}).first().dispatchEvent('click'),8000);
+                for(let i=0;i<40&&!socket;i++)await delay(200);
+                if(!socket)throw Error('Live WebSocket not created');
+                // Deliberately do NOT send setupComplete: avoid microphone/audio code.
+                // The existing onmessage transcription handler is tested as shipped.
+                for(const p of packets){socket.send(JSON.stringify({serverContent:p}));await delay(140);}
+                await delay(3500);
+                if(live&&row.requests.length)for(let i=0;i<90&&!row.results.length;i++)await delay(1000);
+                row.requestCount=row.requests.length;row.pass=shouldSend?row.requestCount>0:row.requestCount===0;
+                if(live)row.pass=row.pass&&row.results.some(r=>r.httpStatus===200&&r.sent===true);
+              }catch(e){row.pass=false;row.errors.push(String(e).slice(0,500));}
+              await page.screenshot({path:name+'-after.png',timeout:2000}).catch(()=>{});await ctx.close();console.log('CASE',JSON.stringify(row));return row.pass;
             }
-            try {
-              const full=await runCase('full-request',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true);
-              const mixed=await runCase('mixed-input-output',[{inputTranscription:{text:'請送兩條毛巾到305房'},outputTranscription:{text:'我正在確認您的需求。'}}],true);
-              const fragments=await runCase('fragmented-request',['請送','兩條','毛','巾','到305','房'].map(text=>({inputTranscription:{text}})),true);
-              const ordinary=await runCase('ordinary-chat',[{inputTranscription:{text:'你好，今天星期幾？'}}],false);
-              if(full&&mixed&&fragments&&ordinary) await runCase('live-transcript-to-line',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true,true);
-            } finally {
-              report.pass=report.cases.every(x=>x.pass)&&report.cases.some(x=>x.name==='live-transcript-to-line');
-              fs.writeFileSync('report.json',JSON.stringify(report,null,2));
-              console.log('DIAGNOSTIC_SUMMARY',JSON.stringify(report));
-              await browser.close();
-            }
-            if(!report.pass) process.exitCode=1;
-          })().catch(e=>{console.error(e);fs.writeFileSync('report.json',JSON.stringify(report,null,2));process.exitCode=1;});
+            try{
+              const a=await runCase('full-request',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true);
+              const b=await runCase('mixed-input-output',[{inputTranscription:{text:'請送兩條毛巾到305房'},outputTranscription:{text:'我正在確認您的需求。'}}],true);
+              const c=await runCase('fragmented-request',['請送','兩條','毛','巾','到305','房'].map(text=>({inputTranscription:{text}})),true);
+              const d=await runCase('ordinary-chat',[{inputTranscription:{text:'你好，今天星期幾？'}}],false);
+              if(a&&b&&c&&d)await runCase('live-transcript-to-line',[{inputTranscription:{text:'請送兩條毛巾到305房'}}],true,true);
+            }finally{report.pass=report.cases.every(r=>r.pass)&&report.cases.some(r=>r.name==='live-transcript-to-line');fs.writeFileSync('report.json',JSON.stringify(report,null,2));console.log('DIAGNOSTIC_SUMMARY',JSON.stringify(report));await browser.close();}
+            if(!report.pass)process.exitCode=1;
+          })().catch(e=>{console.error(e);fs.writeFileSync('report.json',JSON.stringify(report,null,2));process.exitCode=1});
           JS
           node probe.cjs
       - uses: actions/upload-artifact@v4
