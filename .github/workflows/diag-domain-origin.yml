@@ -1,0 +1,37 @@
+name: Diagnostic Domain vs Origin
+
+on:
+  push:
+    branches: [diag/prod-line-e2e-20260914]
+    paths:
+      - ".github/workflows/diag-domain-origin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare custom domain and Render origin
+        shell: bash
+        run: |
+          set -euo pipefail
+          stamp=$(date +%s)
+          for label in custom origin; do
+            if [ "$label" = custom ]; then
+              url="https://nubo.ainubo.com/?probe=$stamp"
+            else
+              url="https://nubo-cloud.onrender.com/?probe=$stamp"
+            fi
+            echo "===== $label $url ====="
+            curl -sS -D "$label.headers" -o "$label.html" --max-time 60 "$url"
+            awk 'BEGIN{IGNORECASE=1} /^HTTP\// || /^server:/ || /^cf-cache-status:/ || /^cf-ray:/ || /^cache-control:/ || /^age:/ || /^content-type:/ || /^content-length:/ {print}' "$label.headers"
+            echo "bytes=$(wc -c < "$label.html")"
+            echo "sha256=$(sha256sum "$label.html" | awk '{print $1}')"
+            grep -o 'NUBO Web UI V[0-9.]*' "$label.html" | head -1 || true
+          done
+          echo "===== diff summary ====="
+          sha256sum custom.html origin.html
+          cmp -s custom.html origin.html && echo "HTML_IDENTICAL=true" || echo "HTML_IDENTICAL=false"
