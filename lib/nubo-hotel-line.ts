@@ -1,4 +1,11 @@
-import { pushLineText } from "@/lib/line-messaging";
+import {
+  pushLineText,
+  pushLineTextWithToken,
+} from "@/lib/line-messaging";
+import {
+  getLineBridgeCredentials,
+  isLineCredentialBridgeConfigured,
+} from "@/lib/nubo-line-credential-bridge";
 
 function splitTargets(raw: string) {
   return raw
@@ -29,20 +36,31 @@ function getRelayConfig() {
 
 export function getHotelLineStatus() {
   const accessTokenConfigured = Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim());
+  const bridgeConfigured = isLineCredentialBridgeConfigured();
   const relay = getRelayConfig();
   const relayConfigured = Boolean(relay.url && relay.secret);
+  const directTargetCount = getHotelLineTargetIds().length;
   return {
     accessTokenConfigured,
+    bridgeConfigured,
     relayConfigured,
-    deliveryReady: accessTokenConfigured || relayConfigured,
-    deliveryMode: accessTokenConfigured ? "direct" : relayConfigured ? "relay" : "none",
-    targetCount: getHotelLineTargetIds().length,
+    deliveryReady: accessTokenConfigured || bridgeConfigured || relayConfigured,
+    deliveryMode: accessTokenConfigured
+      ? "direct"
+      : bridgeConfigured
+        ? "private-bridge-direct"
+        : relayConfigured
+          ? "relay"
+          : "none",
+    targetCount: directTargetCount || (bridgeConfigured ? 1 : 0),
     targetSource:
       process.env.NUBO_HOTEL_LINE_TARGET_IDS?.trim() || process.env.NUBO_HOTEL_LINE_TARGET_ID?.trim()
         ? "nubo-hotel"
         : process.env.LINE_TARGET_IDS?.trim() || process.env.LINE_TARGET_ID?.trim()
           ? "revenue-radar-compatible"
-          : "none",
+          : bridgeConfigured
+            ? "private-credential-bridge"
+            : "none",
   };
 }
 
@@ -86,9 +104,6 @@ async function pushViaRelay(text: string) {
     throw new Error("LINE客務 Relay 尚未設定");
   }
 
-  // Render Free relay sleeps after idle. The first request is allowed to wake it;
-  // if the edge times out / returns a transient gateway status, retry once with a
-  // longer window. Do not retry application-level 500 errors from LINE itself.
   const attempts = [22_000, 60_000];
   let lastError: Error | null = null;
 
@@ -128,10 +143,27 @@ async function pushViaRelay(text: string) {
   throw lastError ?? new Error("LINE客務 Relay 發送失敗");
 }
 
+async function summarizePushResults(
+  targetCount: number,
+  results: PromiseSettledResult<string>[],
+  via: "direct" | "private-bridge-direct",
+) {
+  const succeeded = results.filter((result) => result.status === "fulfilled").length;
+  const failed = results.length - succeeded;
+  if (!succeeded) {
+    const firstFailure = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    throw firstFailure?.reason instanceof Error
+      ? firstFailure.reason
+      : new Error("LINE客務群組推送失敗");
+  }
+  return { targetCount, succeeded, failed, via };
+}
+
 export async function pushHotelLineText(text: string) {
   const accessTokenConfigured = Boolean(process.env.LINE_CHANNEL_ACCESS_TOKEN?.trim());
 
-  // Preferred path when this service owns a LINE Messaging API token.
   if (accessTokenConfigured) {
     const targets = getHotelLineTargetIds();
     if (!targets.length) {
@@ -146,23 +178,39 @@ export async function pushHotelLineText(text: string) {
         return target;
       }),
     );
-
-    const succeeded = results.filter((result) => result.status === "fulfilled").length;
-    const failed = results.length - succeeded;
-    if (!succeeded) {
-      const firstFailure = results.find(
-        (result): result is PromiseRejectedResult => result.status === "rejected",
-      );
-      throw firstFailure?.reason instanceof Error
-        ? firstFailure.reason
-        : new Error("LINE客務群組推送失敗");
-    }
-
-    return { targetCount: targets.length, succeeded, failed, via: "direct" as const };
+    return summarizePushResults(targets.length, results, "direct");
   }
 
-  // NUBO production intentionally does not duplicate the Revenue Radar bot token.
-  // When the token is absent, send through the authenticated relay that already
-  // owns the same LINE bot credentials used by the room-price crawler.
+  // Preferred production path when LINE credentials live in the dedicated
+  // webhook service. Credentials are mirrored over Render's private network to
+  // a private Key Value store, so each guest alert can go straight from NUBO to
+  // LINE without traversing the Free relay's public edge (which can return 429).
+  const bridged = await getLineBridgeCredentials();
+  if (bridged?.accessToken && bridged.targetIds.length) {
+    try {
+      const results = await Promise.allSettled(
+        bridged.targetIds.map(async (target) => {
+          await pushLineTextWithToken(bridged.accessToken, target, text);
+          return target;
+        }),
+      );
+      const result = await summarizePushResults(
+        bridged.targetIds.length,
+        results,
+        "private-bridge-direct",
+      );
+      console.info("[LINE hotel] direct bridge delivery succeeded", {
+        targetCount: result.targetCount,
+        succeeded: result.succeeded,
+        failed: result.failed,
+      });
+      return result;
+    } catch (error) {
+      console.warn("[LINE hotel] direct bridge delivery failed; falling back to relay", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return pushViaRelay(text);
 }
