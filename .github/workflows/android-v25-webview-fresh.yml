@@ -71,9 +71,7 @@ jobs:
       - name: Rebuild patched APK
         run: |
           set -euo pipefail
-          AAPT2="$ANDROID_HOME/build-tools/35.0.0/aapt2"
-          test -x "$AAPT2"
-          java -jar apktool.jar b decoded -o v25-unsigned.apk --aapt "$AAPT2"
+          java -jar apktool.jar b decoded -o v25-unsigned.apk
           test -s v25-unsigned.apk
 
       - name: Zipalign and sign with original Ainubo certificate
