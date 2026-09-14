@@ -1,0 +1,57 @@
+name: Test Complaint Audio E2E 20260914
+
+on:
+  push:
+    branches: [test/complaint-audio-e2e-20260914]
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install speech tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq espeak-ng ffmpeg jq
+      - name: Run four-turn complaint audio flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENDPOINT='https://nubo.ainubo.com/api/notify/guest-service-audio'
+          STATE='{"active":false,"roomNumber":"","surname":"","issueParts":[]}'
+
+          make_pcm() {
+            local text="$1"
+            local name="$2"
+            espeak-ng -v cmn -s 135 -w "/tmp/${name}.wav" "$text"
+            ffmpeg -hide_banner -loglevel error -y -i "/tmp/${name}.wav" -ac 1 -ar 16000 -f s16le "/tmp/${name}.pcm"
+            base64 -w0 "/tmp/${name}.pcm"
+          }
+
+          send_turn() {
+            local text="$1"
+            local name="$2"
+            local audio
+            audio="$(make_pcm "$text" "$name")"
+            local body
+            body="$(jq -cn --arg pcm "$audio" --argjson state "$STATE" '{pcmBase64:$pcm,sampleRate:16000,source:"github-actions-complaint-e2e",complaintIntake:$state}')"
+            local response
+            response="$(curl -fsS --retry 2 --retry-delay 1 -H 'Content-Type: application/json' -d "$body" "$ENDPOINT")"
+            echo "TURN $name => $response"
+            STATE="$(echo "$response" | jq -c '.complaintIntake // $state' --argjson state "$STATE")"
+            echo "$response" > "/tmp/${name}.json"
+          }
+
+          send_turn '我要客訴' t1
+          jq -e '.sent != true and .requiresComplaintIntake == true' /tmp/t1.json
+
+          send_turn '三零五' t2
+          jq -e '.sent != true and (.complaintIntake.roomNumber == "305")' /tmp/t2.json
+
+          send_turn '我姓李' t3
+          jq -e '.sent != true and (.complaintIntake.surname == "李")' /tmp/t3.json
+
+          send_turn '冷氣故障，而且熱水不熱，測試編號八七六五' t4
+          jq -e '(.sent == true or .duplicate == true) and .complaint == true and .complaintIntake.roomNumber == "305" and .complaintIntake.surname == "李"' /tmp/t4.json
