@@ -32,7 +32,17 @@ function patchBrowserTools() {
 function patchRawAudio() {
   const path = "lib/browser-audio.ts";
   let source = fs.readFileSync(path, "utf8");
-  if (source.includes(marker)) return;
+
+  // The authoritative complaint-audio patch intentionally consumes/replaces this
+  // temporary lock block so raw audio can collect the missing complaint fields.
+  // On a second patch pass (CI typecheck -> build) that authoritative marker is the
+  // canonical proof that this step has already been applied and superseded.
+  if (
+    source.includes(marker) ||
+    source.includes("NUBO_COMPLAINT_AUDIO_AUTHORITATIVE_V1")
+  ) {
+    return;
+  }
 
   const anchor = "    if (totalBytes < NUBO_GUEST_AUDIO_MIN_BYTES || chunks.length === 0) return;";
   if (!source.includes(anchor)) {
