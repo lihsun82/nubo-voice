@@ -28,8 +28,10 @@ function patchBrowserAudio() {
   const analysisFieldPatch = `${analysisFieldAnchor}\n  private guestAudioAnalysisInFlight = false;`;
   source = replaceOnce(source, analysisFieldAnchor, analysisFieldPatch, "analysis field");
 
-  const processAnchor = `      const threshold = Math.max(0.02, this.noiseFloor * 2.6);\n      const now = Date.now();`;
-  const processPatch = `${processAnchor}\n\n      // Never forward assistant playback/echo back into Gemini Live or the guest-alert\n      // second pass. Reset VAD and all guest buffers so an assistant sentence cannot\n      // survive until turnComplete and become a phantom LINE notification.\n      if (isNuboAssistantCaptureBlocked(now)) {\n        this.hotFrames = 0;\n        this.lastVoiceAt = now;\n        this.preRoll = [];\n        this.guestAudioPreRoll = [];\n        this.guestAudioChunks = [];\n        this.guestAudioBytes = 0;\n        this.guestAudioActive = false;\n        this.guestAudioLastVoiceAt = 0;\n        resetNativeSenseBuffer();\n        resetWebSenseBuffer();\n        return;\n      }`;
+  // Mobile Pure PCM moves all microphone processing into handlePcmInput(), so gate
+  // capture there before PCM reaches either Gemini Live or the raw guest detector.
+  const processAnchor = `    const threshold = Math.max(0.02, this.noiseFloor * 2.6);\n    const now = Date.now();`;
+  const processPatch = `${processAnchor}\n\n    // Never forward assistant playback/echo back into Gemini Live or the guest-alert\n    // second pass. Reset VAD and all guest buffers so an assistant sentence cannot\n    // survive until turnComplete and become a phantom LINE notification.\n    if (isNuboAssistantCaptureBlocked(now)) {\n      this.hotFrames = 0;\n      this.lastVoiceAt = now;\n      this.preRoll = [];\n      this.guestAudioPreRoll = [];\n      this.guestAudioChunks = [];\n      this.guestAudioBytes = 0;\n      this.guestAudioActive = false;\n      this.guestAudioLastVoiceAt = 0;\n      resetNativeSenseBuffer();\n      resetWebSenseBuffer();\n      return;\n    }`;
   source = replaceOnce(source, processAnchor, processPatch, "microphone playback gate");
 
   const flushAnchor = `  flushGuestAudioSecondPass() {`;
