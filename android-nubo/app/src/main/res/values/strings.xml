@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- AinuboX1 V12 launcher build trigger -->
+    <!-- PR verification build -->
     <string name="app_name">AinuboX1</string>
 </resources>
