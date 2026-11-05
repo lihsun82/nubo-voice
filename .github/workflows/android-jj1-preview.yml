@@ -1,122 +1,117 @@
-name: NUBO JJ1 isolated test APK (Stable-3 voice + Google Home)
+name: NUBO JJ1 isolated Stable-3 APK
 
 on:
   push:
     branches: [fix/jj1-webview-layout-lite]
     paths:
-      - "components/NuboEnergyOrb.tsx"
-      - "components/NuboSpaceBackground.tsx"
-      - "components/NuboJj1Profile.tsx"
-      - "app/jj1-profile.css"
-      - "app/layout.tsx"
-      - "scripts/apply-nubo-jj1-build.py"
+      - "scripts/patch-jj1-stable3-smali.py"
       - ".github/workflows/android-jj1-preview.yml"
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
-  jj1-preview:
+  patch-jj1:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
-      - name: Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK (current action, no removed legacy tools package)
+      - name: Setup Android SDK (supported tools only)
         uses: android-actions/setup-android@v4
         with:
           packages: 'platform-tools'
 
-      - name: Install Android 35 platform and build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - run: sdkmanager "build-tools;35.0.0"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Download verified Stable-3 native wake + Google Home binary
+        uses: actions/download-artifact@v4
         with:
-          gradle-version: "8.11.1"
+          name: AinuboX1-NUBO-STABLE-3.0-AUDIORECORD-NATIVE-WAKE
+          path: stable3
+          repository: lihsun82/nubo-voice
+          run-id: 31972445305
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install web dependencies
-        run: npm install --include=dev --no-audit --no-fund
+      - name: Download apktool
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar \
+            -o apktool.jar
+          java -jar apktool.jar --version
 
-      - name: Materialize current Ainubo signing key and launcher icon
+      - name: Materialize original Ainubo signing certificate
         run: |
           set -euo pipefail
           base64 --decode android-nubo/ainubo-debug.jks.b64 > android-nubo/ainubo-debug.jks
-          mkdir -p android-nubo/app/src/main/res/drawable-nodpi
-          rm -f android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.png
-          base64 --decode android-nubo/assets/ainubox1_uploaded_logo_v3.jpg.b64 > android-nubo/app/src/main/res/drawable-nodpi/ainubox1_launcher_uploaded.jpg
+          keytool -list -keystore android-nubo/ainubo-debug.jks -storepass ainubo123 -alias ainubo >/dev/null
 
-      - name: Download official Google Home SDK
-        shell: bash
+      - name: Decode verified Stable-3 and apply JJ1 patch
         run: |
           set -euo pipefail
-          ZIP="$RUNNER_TEMP/home.android.sdk_1_10_0.zip"
-          REPO="$RUNNER_TEMP/home-sdk-repo"
-          curl -L --fail --retry 3 'https://storage.googleapis.com/home_sdk_android/home.android.sdk_1_10_0.zip' -o "$ZIP"
-          mkdir -p "$REPO"
-          unzip -q "$ZIP" -d "$REPO"
-          test -f "$REPO/com/google/android/gms/play-services-home/17.1.0/play-services-home-17.1.0.aar"
-          echo "NUBO_HOME_SDK_REPO=$REPO" >> "$GITHUB_ENV"
-
-      - name: Materialize verified Stable-3 derived Google Home + Native Wake architecture
-        run: |
-          set -euo pipefail
-          python3 scripts/apply-nubo-v28-build.py
-          python3 scripts/apply-google-home-v29.py
-          python3 scripts/apply-nubo-stable-3-audiorecord-wake.py
-          node scripts/apply-web-stable-2-native-wake.mjs
-          node scripts/apply-web-stable-2-shutdown.mjs
-          python3 scripts/apply-nubo-youtube-background-cloud-mic-v31.py
-          python3 scripts/apply-nubo-youtube-background-nosetup-v33.py
-          python3 scripts/apply-nubo-jj1-build.py
-
-      - name: Static regression and scope checks
-        run: |
-          set -euo pipefail
-          MAIN=android-nubo/app/src/main/java/com/ainubo/nubo/MainActivity.java
-          GRADLE=android-nubo/app/build.gradle
+          APK=$(find stable3 -name '*.apk' -print -quit)
+          test -n "$APK"
+          cp "$APK" stable3-original.apk
+          java -jar apktool.jar d -f stable3-original.apk -o decoded
+          python3 scripts/patch-jj1-stable3-smali.py
+          MAIN=$(find decoded -path '*/com/ainubo/nubo/MainActivity.smali' -print -quit)
+          test -n "$MAIN"
           grep -Fq 'NUBO-JJ1/1' "$MAIN"
-          grep -Fq 'isTrustedNuboUri(Uri.parse(url))' "$MAIN"
-          grep -Fq 'nubo-jj1-native-style' "$MAIN"
-          grep -Fq 'googleHomeControl' "$MAIN"
-          grep -Fq 'dispatchBackgroundPcmFromService' "$MAIN"
-          grep -Fq 'versionCode 3302' "$GRADLE"
-          grep -Fq 'applicationIdSuffix ".jj1test"' "$GRADLE"
-          grep -Fq 'particleCount: 900' components/NuboEnergyOrb.tsx
-          grep -Fq 'const count = jj1 ? 56' components/NuboSpaceBackground.tsx
-          npm run typecheck
+          grep -RFl 'nubo-jj1-native-style' decoded/smali*/com/ainubo/nubo | head -1
+          grep -Fq 'com.ainubo.nubo.jj1test' decoded/AndroidManifest.xml
 
-      - name: Build independently installable JJ1 APK
-        run: gradle -p android-nubo clean assembleDebug -PnuboGoogleHome=true --stacktrace
-
-      - name: Verify APK identity, signing, and preserved voice integration
+      - name: Repack and align JJ1 test APK
         run: |
           set -euo pipefail
-          APK=android-nubo/app/build/outputs/apk/debug/app-debug.apk
+          java -jar apktool.jar b decoded -o jj1-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -P 16 4 jj1-unsigned.apk jj1-aligned.apk
+
+      - name: Sign JJ1 APK with existing authorized certificate
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" sign \
+            --ks android-nubo/ainubo-debug.jks \
+            --ks-pass pass:ainubo123 \
+            --key-pass pass:ainubo123 \
+            --ks-key-alias ainubo \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out AinuboX1-JJ1-STABLE3-TEST-3.3.1.apk \
+            jj1-aligned.apk
+
+      - name: Verify test package and untouched integration binaries
+        run: |
+          set -euo pipefail
+          APK=AinuboX1-JJ1-STABLE3-TEST-3.3.1.apk
           BT="$ANDROID_HOME/build-tools/35.0.0"
           test -s "$APK"
           "$BT/apksigner" verify --verbose --print-certs "$APK"
-          "$BT/aapt" dump badging "$APK" | tee /tmp/jj1-badging.txt
+          "$BT/zipalign" -c -P 16 -v 4 "$APK"
+          "$BT/aapt" dump badging "$APK" > /tmp/jj1-badging.txt
           grep -Fq "package: name='com.ainubo.nubo.jj1test'" /tmp/jj1-badging.txt
           grep -Fq "versionCode='3302'" /tmp/jj1-badging.txt
-          grep -Fq "3.3.1-jj1-preview" /tmp/jj1-badging.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/jj1-dex.txt
           grep -Fq 'NUBO-JJ1/1' /tmp/jj1-dex.txt
           grep -Fq 'nubo-jj1-native-style' /tmp/jj1-dex.txt
           grep -Fq 'NuboNativeWakeV3' /tmp/jj1-dex.txt
           grep -Fq 'GoogleHomeGatewayImpl' /tmp/jj1-dex.txt
-          cp "$APK" "AinuboX1-JJ1-STABLE3-TEST-3.3.1.apk"
+          "$BT/apksigner" verify --print-certs stable3-original.apk | grep 'Signer #1 certificate SHA-256 digest' > /tmp/original-certificate.txt
+          "$BT/apksigner" verify --print-certs "$APK" | grep 'Signer #1 certificate SHA-256 digest' > /tmp/jj1-certificate.txt
+          diff -u /tmp/original-certificate.txt /tmp/jj1-certificate.txt
 
-      - name: Upload test APK (never release to production)
+      - name: Upload standalone installable APK
         uses: actions/upload-artifact@v4
         with:
           name: AinuboX1-JJ1-STABLE3-TEST-3.3.1
           path: AinuboX1-JJ1-STABLE3-TEST-3.3.1.apk
-          retention-days: 30
           if-no-files-found: error
+          retention-days: 30
