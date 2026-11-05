@@ -34,10 +34,12 @@ export function NuboSpaceBackground() {
     let stars: Star[] = [];
     let visible = document.visibilityState === "visible";
     const reducedMotion = isReducedMotion();
+    const jj1 = /\\bNUBO-JJ1\\/1\\b/i.test(navigator.userAgent);
+    let lastJj1Paint = 0;
 
     const createStars = () => {
       const coarse = window.matchMedia("(pointer: coarse)").matches;
-      const count = reducedMotion ? 64 : coarse ? 190 : 340;
+      const count = jj1 ? 56 : reducedMotion ? 64 : coarse ? 190 : 340;
       stars = Array.from({ length: count }, (_, index) => ({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -52,7 +54,7 @@ export function NuboSpaceBackground() {
     const resize = () => {
       width = window.innerWidth;
       height = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      dpr = jj1 ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.max(1, Math.floor(width * dpr));
       canvas.height = Math.max(1, Math.floor(height * dpr));
       canvas.style.width = `${width}px`;
@@ -64,6 +66,12 @@ export function NuboSpaceBackground() {
     const draw = (time: number) => {
       frame = 0;
       if (!visible) return;
+      // Limit actual canvas repaints, not just CSS animations, on JJ1.
+      if (jj1 && time - lastJj1Paint < 1000 / 12) {
+        frame = window.requestAnimationFrame(draw);
+        return;
+      }
+      lastJj1Paint = time;
 
       context.clearRect(0, 0, width, height);
 
