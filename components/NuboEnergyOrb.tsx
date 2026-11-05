@@ -86,7 +86,7 @@ function phasePower(phase: NuboVoicePhase) {
 
 function getRenderProfile(): RenderProfile {
   // JJ1-only low-power profile; all other devices keep their current behavior.
-  if (/\\bNUBO-JJ1\\/1\\b/i.test(navigator.userAgent)) {
+  if (/\bNUBO-JJ1\/1\b/i.test(navigator.userAgent)) {
     return { particleCount: 900, frameInterval: 1000 / 18, dpr: 1 };
   }
 
