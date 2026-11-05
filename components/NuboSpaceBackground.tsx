@@ -34,7 +34,7 @@ export function NuboSpaceBackground() {
     let stars: Star[] = [];
     let visible = document.visibilityState === "visible";
     const reducedMotion = isReducedMotion();
-    const jj1 = /\\bNUBO-JJ1\\/1\\b/i.test(navigator.userAgent);
+    const jj1 = /\bNUBO-JJ1\/1\b/i.test(navigator.userAgent);
     let lastJj1Paint = 0;
 
     const createStars = () => {
