@@ -29,8 +29,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Use preinstalled Android SDK (avoid deprecated sdkmanager tools package)
+        run: |
+          set -euo pipefail
+          test -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          command -v sdkmanager
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
