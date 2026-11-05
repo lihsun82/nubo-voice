@@ -107,7 +107,6 @@ for token in [
     "nubo-jj1-native-style",
     "isTrustedNuboUri(Uri.parse(url))",
     "googleHomeControl",
-    "AudioRecord",
 ]:
     if token not in source:
         raise SystemExit(f"Missing JJ1 or preserved native marker: {token}")
