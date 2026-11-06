@@ -22,6 +22,7 @@ import {
 } from "@/lib/nubo-voice-profile";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
+export const NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY = "nubo_openai_voice_access_v1";
 
 type RealtimeEvent = {
   type?: string;
@@ -144,6 +145,24 @@ export function OpenAIRealtimeVoiceConsole({
   const [ecoMode, setEcoMode] = useState<NuboEcoMode>("active");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
+  const [accessCodeDraft, setAccessCodeDraft] = useState("");
+  const [accessReady, setAccessReady] = useState(false);
+
+  useEffect(() => {
+    setAccessReady(Boolean(window.sessionStorage.getItem(NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY)));
+  }, []);
+
+  const saveVoiceAccess = () => {
+    const code = accessCodeDraft.trim();
+    if (code.length < 20) {
+      setError("請輸入 Railway 設定的至少20字元 OpenAI 語音授權碼。");
+      return;
+    }
+    window.sessionStorage.setItem(NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY, code);
+    setAccessCodeDraft("");
+    setAccessReady(true);
+    setError("");
+  };
 
   useEffect(() => {
     if (state === "idle") notifyNuboVoicePhase("idle");
@@ -343,6 +362,13 @@ export function OpenAIRealtimeVoiceConsole({
       return;
     }
 
+    const accessCode = window.sessionStorage.getItem(NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY)?.trim() || "";
+    if (accessCode.length < 20) {
+      setAccessReady(false);
+      setError("請先在下方輸入 OpenAI 語音授權碼（非 API Key）。");
+      return;
+    }
+
     connectGuardRef.current = true;
     const epoch = connectionEpochRef.current + 1;
     connectionEpochRef.current = epoch;
@@ -356,10 +382,14 @@ export function OpenAIRealtimeVoiceConsole({
     try {
       const tokenResponse = await fetch(
         `/api/realtime-token?voice=${encodeURIComponent(profile.voice)}`,
-        { cache: "no-store" },
+        { cache: "no-store", headers: { "X-Nubo-Voice-Access": accessCode } },
       );
       const tokenPayload = await tokenResponse.json();
       if (!tokenResponse.ok) {
+        if (tokenResponse.status === 401) {
+          window.sessionStorage.removeItem(NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY);
+          setAccessReady(false);
+        }
         throw new Error(tokenPayload.error ?? "即時語音憑證建立失敗");
       }
       if (connectionEpochRef.current !== epoch) return;
@@ -479,7 +509,7 @@ export function OpenAIRealtimeVoiceConsole({
       )}`;
       const session = {
         type: "realtime",
-        model: "gpt-realtime-2",
+        model: "gpt-realtime-2.1-mini",
         instructions,
         output_modalities: ["audio"],
         truncation: {
@@ -567,6 +597,21 @@ export function OpenAIRealtimeVoiceConsole({
         <strong>{stateLabel[0]}</strong>
         <span>{stateLabel[1]}</span>
       </div>
+      {!accessReady ? (
+        <div className="voice-transcript">
+          <label htmlFor="nubo-openai-access">OpenAI 語音私人授權碼（不是 API Key）</label>
+          <input
+            id="nubo-openai-access"
+            type="password"
+            autoComplete="off"
+            value={accessCodeDraft}
+            onChange={(event) => setAccessCodeDraft(event.target.value)}
+            placeholder="輸入 Railway 設定的至少20字元授權碼"
+            style={{ display: "block", width: "100%", padding: 10, marginTop: 8, marginBottom: 8 }}
+          />
+          <button className="secondary" type="button" onClick={saveVoiceAccess}>本次使用授權</button>
+        </div>
+      ) : null}
       <div className="actions">
         <button
           className="primary"

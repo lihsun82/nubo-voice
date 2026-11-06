@@ -1,10 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const OPENAI_REALTIME_CALL_URL = "https://api.openai.com/v1/realtime/calls";
-const DEFAULT_REALTIME_MODEL = "gpt-realtime";
+// The legacy Realtime model is scheduled for retirement in January 2027.
+const DEFAULT_REALTIME_MODEL = "gpt-realtime-2.1-mini";
+const REALTIME_MODEL_ALLOWLIST = new Set([
+  "gpt-realtime-2.1-mini",
+  "gpt-realtime-2.1",
+]);
+
+function getRealtimeModel() {
+  const model = process.env.NUBO_OPENAI_REALTIME_MODEL?.trim() || DEFAULT_REALTIME_MODEL;
+  return REALTIME_MODEL_ALLOWLIST.has(model) ? model : DEFAULT_REALTIME_MODEL;
+}
+
+/**
+ * Paid NUBO voice access is owner-only. Never mint Realtime client tokens
+ * for unauthenticated visitors on the public nubo.ainubo.com website.
+ * Configure a private high-entropy (20+ characters) owner access code on
+ * Railway, and enter it once per browser session in the OpenAI voice screen.
+ */
+function authorizeOwner(request: NextRequest): NextResponse | null {
+  const expected = process.env.NUBO_OPENAI_VOICE_ACCESS_CODE?.trim() || "";
+  if (expected.length < 20) {
+    return NextResponse.json(
+      { error: "OpenAI 語音安全鎖尚未設定：請在 Railway 設定至少20字元的 NUBO_OPENAI_VOICE_ACCESS_CODE。", code: "voice_access_not_configured" },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
+  const provided = request.headers.get("x-nubo-voice-access")?.trim() || "";
+  const lhs = Buffer.from(provided, "utf8");
+  const rhs = Buffer.from(expected, "utf8");
+  if (lhs.length !== rhs.length || !timingSafeEqual(lhs, rhs)) {
+    return NextResponse.json(
+      { error: "OpenAI 語音授權碼不正確，請重新輸入。", code: "voice_access_denied" },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  return null;
+}
 const DEFAULT_OPENAI_VOICE = "shimmer";
 const DEFAULT_SPEECH_SPEED = 1;
 const LEO_REALTIME_VOICES = new Set([
@@ -67,7 +105,7 @@ function buildRealtimeSession(rawSession: string) {
   const source = parseSessionSource(rawSession);
   const session: UnknownRecord = {
     type: "realtime",
-    model: DEFAULT_REALTIME_MODEL,
+    model: getRealtimeModel(),
     output_modalities: ["audio"],
     audio: {
       output: {
@@ -118,6 +156,9 @@ function serviceError(status: number, fallback: string, payload?: unknown) {
 }
 
 export async function GET(request: NextRequest) {
+  const unauthorized = authorizeOwner(request);
+  if (unauthorized) return unauthorized;
+
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -147,7 +188,7 @@ export async function GET(request: NextRequest) {
     body: JSON.stringify({
       session: {
         type: "realtime",
-        model: DEFAULT_REALTIME_MODEL,
+        model: getRealtimeModel(),
         output_modalities: ["audio"],
         audio: {
           output: {
@@ -170,6 +211,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const unauthorized = authorizeOwner(request);
+    if (unauthorized) return unauthorized;
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
