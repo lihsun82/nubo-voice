@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { NuboDirectOpenGuard } from "@/components/NuboDirectOpenGuard";
 import { NuboPublicBrandingGuard } from "@/components/NuboPublicBrandingGuard";
 import { NuboSpaceBackground } from "@/components/NuboSpaceBackground";
+import { NuboJj1Profile } from "@/components/NuboJj1Profile";
 import { PwaInstallPrompt } from "@/components/PwaInstallPrompt";
 import "./globals.css";
 import "./task-center.css";
@@ -19,6 +20,7 @@ import "./white-tech-v15-6-17.css";
 import "./white-gold-v15-6-18.css";
 import "./molecular-orb-v15-6-26.css";
 import "./dark-dna-orb-v15-6-28.css";
+import "./jj1-profile.css";
 
 export const metadata: Metadata = {
   title: {
@@ -54,6 +56,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="zh-Hant-TW">
       <body>
+        <NuboJj1Profile />
         <NuboSpaceBackground />
         <NuboDirectOpenGuard />
         <NuboPublicBrandingGuard />
