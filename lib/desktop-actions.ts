@@ -141,8 +141,15 @@ export function openWebsite(target: string) {
 }
 
 export async function showNuboWindow() {
+  // On a cloud Linux server, we cannot focus a browser on the visitor's
+  // device. Ask the browser client to perform a same-page focus instead.
   if (process.platform !== "win32") {
-    throw new Error("目前自動喚出NUBO網頁只支援Windows版NUBO");
+    return {
+      shown: false,
+      action: "client" as const,
+      clientAction: "focus_current_nubo" as const,
+      url: getNuboPublicUrl(),
+    };
   }
 
   const url = getNuboPublicUrl();

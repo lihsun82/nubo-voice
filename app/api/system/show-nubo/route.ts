@@ -10,7 +10,12 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       ...result,
-      message: result.action === "focused" ? "已喚出NUBO網頁" : "已開啟NUBO網頁",
+      message:
+        result.action === "focused"
+          ? "已喚出NUBO網頁"
+          : result.action === "opened"
+            ? "已開啟NUBO網頁"
+            : "請在目前裝置的網頁端處理NUBO喚出指令",
     });
   } catch (error) {
     return NextResponse.json(

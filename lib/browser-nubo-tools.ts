@@ -919,7 +919,7 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "show_nubo",
-    description: "把NUBO網頁喚出到桌面；若找不到已開啟的NUBO視窗則重新開啟。",
+    description: "喚出目前裝置的NUBO頁面。Windows桌面版可聚焦或開啟視窗；網頁及Android WebView版嘗試聚焦當前NUBO頁面，背景切換可能受瀏覽器限制。",
     parameters: { type: "OBJECT", properties: {} },
   },
   {
@@ -1060,6 +1060,37 @@ function post(url: string, body: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * Focus the NUBO page on the device that actually requested it.
+ * The cloud server must never try to control its own desktop.
+ * Browsers cannot promise to foreground a hidden tab or another app.
+ */
+export async function showNuboOnCurrentDevice() {
+  const result = await post("/api/system/show-nubo", {});
+  if (result?.clientAction !== "focus_current_nubo") return result;
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return result;
+  }
+
+  try {
+    window.focus();
+  } catch {
+    // Browsers may prevent programmatic focus without a direct user gesture.
+  }
+
+  const visible = document.visibilityState === "visible";
+  return {
+    ...result,
+    shown: visible,
+    action: visible ? "web_visible" : "web_focus_restricted",
+    url: window.location.origin,
+    message: visible
+      ? "NUBO網頁已在目前裝置顯示，可繼續使用語音服務。"
+      : "已收到喚出NUBO指令，但瀏覽器不允許自動切換背景分頁或其他App。請手動返回NUBO網頁。",
+  };
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
@@ -1333,7 +1364,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       { target },
     );
   }
-  if (name === "show_nubo") return post("/api/system/show-nubo", {});
+  if (name === "show_nubo") return showNuboOnCurrentDevice();
   if (name === "close_webpage") return post("/api/system/browser-window", { action: "close", target: normalizeTarget(args.target || "browser") });
   if (name === "open_desktop_app") return post("/api/system/open-app", { app: args.app });
   if (name === "close_desktop_app") return post("/api/system/open-app", { action: "close", app: args.app });

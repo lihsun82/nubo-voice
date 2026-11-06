@@ -1183,7 +1183,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       <NuboQuestionHistory />
       <div className="capabilities">
         <div className="capability"><b>應用程式控制</b><small>開啟LINE與固定白名單Windows應用程式。</small></div>
-        <div className="capability"><b>NUBO喚醒</b><small>呼叫nubo時會把NUBO網頁帶回桌面。</small></div>
+        <div className="capability"><b>NUBO喚醒</b><small>網頁版與Android APP可喚出目前NUBO頁面；瀏覽器背景切換需依系統權限。</small></div>
         <div className="capability"><b>研究與Gmail</b><small>查找資料時只顯示處理狀態，不播放等待語音。</small></div>
       </div>
     </section>
