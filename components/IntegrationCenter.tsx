@@ -110,8 +110,8 @@ export function IntegrationCenter() {
 
   const testNuboWake = async () => {
     try {
-      const result = await postAction("/api/system/show-nubo", {});
-      setMessage(result.message ?? "已喚出NUBO網頁");
+      const result = await showNuboOnCurrentDevice();
+      setMessage(result.message ?? "已收到NUBO喚出指令");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "喚出NUBO網頁失敗");
     }
