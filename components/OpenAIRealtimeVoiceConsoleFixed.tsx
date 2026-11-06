@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { OpenAIRealtimeVoiceConsole } from "@/components/OpenAIRealtimeVoiceConsole";
+import { OpenAIRealtimeVoiceConsole, NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY } from "@/components/OpenAIRealtimeVoiceConsole";
 import {
   NUBO_LANGUAGE_MODE_EVENT,
   buildNuboLanguageInstruction,
@@ -84,7 +84,7 @@ function normalizeSession(session: string) {
       typeof payload.instructions === "string" ? payload.instructions.trim() : "";
     payload.instructions = buildInstructions(tuning);
     payload.type = "realtime";
-    payload.model = "gpt-realtime";
+    payload.model = "gpt-realtime-2.1-mini";
     return JSON.stringify(payload);
   } catch {
     throw new Error("高擬人語音設定格式不正確，請重新整理後再試。");
@@ -318,9 +318,11 @@ export function OpenAIRealtimeVoiceConsoleFixed({
       proxyForm.append("sdp", sdp);
       if (normalizedSession) proxyForm.append("session", normalizedSession);
 
+      const accessCode = window.sessionStorage.getItem(NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY)?.trim() || "";
       const response = await nativeFetch(NUBO_REALTIME_PROXY_URL, {
         method: "POST",
         body: proxyForm,
+        headers: { "X-Nubo-Voice-Access": accessCode },
         cache: "no-store",
       });
 
