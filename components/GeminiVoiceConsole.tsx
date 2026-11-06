@@ -911,7 +911,19 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         playbackRef.current = null;
         socketRef.current = null;
         if (!closingRef.current) {
-          scheduleReconnect("即時語音連線被重置");
+          // The previous generic message concealed Google's close code/reason.
+          // Never include tokens, request URLs or credentials in the UI.
+          const detail = event.reason?.trim().slice(0, 180);
+          const reason = `Gemini Live 連線中斷（代碼 ${event.code}${detail ? `：${detail}` : ""}）`;
+          if ([1002, 1003, 1007, 1008].includes(event.code)) {
+            // Protocol, unsupported payload and policy/quota failures are not
+            // repaired by repeatedly reconnecting with the same settings.
+            setError(`${reason}。請檢查 Gemini Live 模型、API 權限與配額。`);
+            setState("error");
+            setTranscript("即時語音設定或存取限制，已停止無效重連。");
+          } else {
+            scheduleReconnect(reason);
+          }
         }
       };
     } catch (cause) {

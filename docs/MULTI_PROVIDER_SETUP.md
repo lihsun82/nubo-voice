@@ -19,7 +19,7 @@ NUBO_VOICE_PROVIDER=gemini
 
 GEMINI_API_KEY=貼上Google AI Studio建立的金鑰
 GEMINI_TEXT_MODEL=gemini-3.5-flash
-GEMINI_LIVE_MODEL=gemini-3.1-flash-live-preview
+GEMINI_LIVE_MODEL=gemini-3.8-live
 
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3:4b

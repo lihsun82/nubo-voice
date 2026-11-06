@@ -48,7 +48,7 @@ async function createGeminiAuthToken(): Promise<GeminiTokenCache> {
     throw new Error("GEMINI_API_KEY 尚未設定");
   }
 
-  const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview";
+  const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.8-live";
   const now = Date.now();
   const uses = getTokenUses();
   const newSessionMs = getNewSessionMs();
