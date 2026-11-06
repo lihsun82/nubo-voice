@@ -1364,7 +1364,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       { target },
     );
   }
-  if (name === "show_nubo") return post("/api/system/show-nubo", {});
+  if (name === "show_nubo") return showNuboOnCurrentDevice();
   if (name === "close_webpage") return post("/api/system/browser-window", { action: "close", target: normalizeTarget(args.target || "browser") });
   if (name === "open_desktop_app") return post("/api/system/open-app", { app: args.app });
   if (name === "close_desktop_app") return post("/api/system/open-app", { action: "close", app: args.app });
