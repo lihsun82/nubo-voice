@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { showNuboOnCurrentDevice } from "@/lib/browser-nubo-tools";
 
 type GmailStatus = {
   configured: boolean;
