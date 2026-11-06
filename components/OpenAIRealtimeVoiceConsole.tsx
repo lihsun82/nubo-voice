@@ -52,12 +52,59 @@ function extractClientSecret(payload: unknown) {
   return typeof candidate === "string" ? candidate : "";
 }
 
+/**
+ * Gemini tool declarations use uppercase schema type names (OBJECT/STRING).
+ * OpenAI Realtime expects ordinary JSON Schema (object/string/etc).
+ * Normalize the shared allowlisted tool definitions without changing the
+ * business-layer approval checks or exposing additional operations.
+ */
+function toRealtimeJsonSchema(input: unknown): Record<string, unknown> {
+  const source =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : {};
+
+  const type =
+    typeof source.type === "string"
+      ? source.type.toLowerCase()
+      : source.properties
+        ? "object"
+        : "string";
+  const schema: Record<string, unknown> = {
+    type: source.nullable === true ? [type, "null"] : type,
+  };
+
+  if (typeof source.description === "string") {
+    schema.description = source.description;
+  }
+  if (Array.isArray(source.enum)) {
+    schema.enum = source.enum;
+  }
+  if (Array.isArray(source.required)) {
+    schema.required = source.required;
+  }
+  if (source.properties && typeof source.properties === "object") {
+    schema.properties = Object.fromEntries(
+      Object.entries(source.properties as Record<string, unknown>).map(
+        ([name, definition]) => [name, toRealtimeJsonSchema(definition)],
+      ),
+    );
+  }
+  if (source.items) {
+    schema.items = toRealtimeJsonSchema(source.items);
+  }
+  if (typeof source.additionalProperties === "boolean") {
+    schema.additionalProperties = source.additionalProperties;
+  }
+  return schema;
+}
+
 function toRealtimeTools() {
   return geminiFunctionDeclarations.map((declaration) => ({
-    type: "function",
+    type: "function" as const,
     name: declaration.name,
     description: declaration.description,
-    parameters: declaration.parameters,
+    parameters: toRealtimeJsonSchema(declaration.parameters),
   }));
 }
 
@@ -391,6 +438,26 @@ export function OpenAIRealtimeVoiceConsole({
 
       const channel = peer.createDataChannel("oai-events");
       channelRef.current = channel;
+
+      // The cloud /api/realtime-token proxy intentionally constructs a minimal
+      // session and does not carry browser-provided tools. Register them over
+      // the authenticated Realtime data channel as soon as it opens.
+      // This gives OpenAI voice the same show_nubo/web/Android tools as Gemini.
+      channel.addEventListener("open", () => {
+        if (closingRef.current || connectionEpochRef.current !== epoch) return;
+        const registered = sendEvent({
+          type: "session.update",
+          session: {
+            type: "realtime",
+            tools: toRealtimeTools(),
+            tool_choice: "auto",
+          },
+        });
+        if (!registered) {
+          setError("NUBO 語音工具註冊失敗，請重新啟動語音。");
+        }
+      });
+
       channel.onmessage = (message) => {
         if (connectionEpochRef.current !== epoch) return;
         try {
