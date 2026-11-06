@@ -257,6 +257,7 @@ export const geminiSystemInstruction = `
 11. 使用者在播放期間指定另一首歌時，立即再次呼叫open_youtube，不詢問確認。
 12. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
 13. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
+13A. 使用者要求喚出NUBO、返回NUBO網頁或叫NUBO出來時，呼叫show_nubo；Windows版與網頁版都支援此工具。若網頁瀏覽器限制背景聚焦或工具回傳shown=false，不可宣稱已經自動切換到前景。
 14. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
 15. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
 16. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
