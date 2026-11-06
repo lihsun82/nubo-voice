@@ -919,7 +919,7 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "show_nubo",
-    description: "把NUBO網頁喚出到桌面；若找不到已開啟的NUBO視窗則重新開啟。",
+    description: "喚出目前裝置的NUBO頁面。Windows桌面版可聚焦或開啟視窗；網頁及Android WebView版嘗試聚焦當前NUBO頁面，背景切換可能受瀏覽器限制。",
     parameters: { type: "OBJECT", properties: {} },
   },
   {
