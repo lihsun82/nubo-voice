@@ -1062,6 +1062,37 @@ function post(url: string, body: Record<string, unknown>) {
   });
 }
 
+/**
+ * Focus the NUBO page on the device that actually requested it.
+ * The cloud server must never try to control its own desktop.
+ * Browsers cannot promise to foreground a hidden tab or another app.
+ */
+export async function showNuboOnCurrentDevice() {
+  const result = await post("/api/system/show-nubo", {});
+  if (result?.clientAction !== "focus_current_nubo") return result;
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return result;
+  }
+
+  try {
+    window.focus();
+  } catch {
+    // Browsers may prevent programmatic focus without a direct user gesture.
+  }
+
+  const visible = document.visibilityState === "visible";
+  return {
+    ...result,
+    shown: visible,
+    action: visible ? "web_visible" : "web_focus_restricted",
+    url: window.location.origin,
+    message: visible
+      ? "NUBO網頁已在目前裝置顯示，可繼續使用語音服務。"
+      : "已收到喚出NUBO指令，但瀏覽器不允許自動切換背景分頁或其他App。請手動返回NUBO網頁。",
+  };
+}
+
 export async function executeNuboBrowserTool(call: FunctionCall) {
   const name = call.name ?? "";
   const args = call.args ?? {};
