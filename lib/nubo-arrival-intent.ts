@@ -1,4 +1,4 @@
-export type NuboArrivalIntent = "checkin" | "booking";
+export type NuboArrivalIntent = "checkin" | "booking" | "lodging";
 
 const CHECK_IN_PATTERNS: RegExp[] = [
   /入住|入住房間|辦理入住|办理入住|登記入住|登记入住|住店/u,
@@ -40,8 +40,14 @@ const BOOKING_PATTERNS: RegExp[] = [
   /oda rezervasyonu|oda ayırtmak/iu,
 ];
 
+const LODGING_PATTERNS: RegExp[] = [
+  /(?:我要|我想|想要|需要|打算|準備|准备|可以|能不能).{0,8}(?:住宿|住一晚|住幾晚|住几晚)/u,
+  /(?:住宿|住一晚).{0,6}(?:有沒有|有没有|可以嗎|可以吗|怎麼辦|怎么办)/u,
+  /\b(?:i|we) (?:want|need|would like) to stay\b|\blooking for (?:a place|somewhere) to stay\b/iu,
+];
+
 const CANCELLATION_PATTERNS: RegExp[] = [
-  /取消.{0,8}(?:入住|訂房|订房|預訂|预订|預約|预约)|不(?:想|要|用|打算).{0,6}(?:入住|訂房|订房)/u,
+  /取消.{0,8}(?:入住|住宿|訂房|订房|預訂|预订|預約|预约)|不(?:想|要|用|打算).{0,6}(?:入住|住宿|訂房|订房)/u,
   /\b(?:cancel|cancellation|cancelar|annuler|stornieren|annuleren)\b/iu,
   /キャンセル|취소|ยกเลิก|hủy|huỷ|batalkan|отмен|إلغاء|रद्द/u,
 ];
@@ -56,5 +62,6 @@ export function classifyNuboArrivalIntent(value: string): NuboArrivalIntent | nu
   if (!text || isNuboArrivalCancellation(text)) return null;
   if (CHECK_IN_PATTERNS.some((pattern) => pattern.test(text))) return "checkin";
   if (BOOKING_PATTERNS.some((pattern) => pattern.test(text))) return "booking";
+  if (LODGING_PATTERNS.some((pattern) => pattern.test(text))) return "lodging";
   return null;
 }

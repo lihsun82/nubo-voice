@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   question: z.string().trim().min(2).max(1200),
+  mode: z.enum(["current", "local"]).optional(),
 });
 
 type NewsItem = {
@@ -170,11 +171,11 @@ function extractOutputText(payload: any) {
   return chunks.join("\n").trim();
 }
 
-async function fallbackWebSearch(question: string, typhoon: boolean, now: string) {
+async function fallbackWebSearch(question: string, typhoon: boolean, now: string, local = false) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return "";
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3600);
+  const timer = setTimeout(() => controller.abort(), local ? 7_500 : 3_600);
   try {
     const tool = typhoon
       ? {
@@ -204,7 +205,9 @@ async function fallbackWebSearch(question: string, typhoon: boolean, now: string
       },
       body: JSON.stringify({
         model: process.env.NUBO_CURRENT_INFO_MODEL || "gpt-5-nano",
-        input: `台灣時間 ${now}。先搜尋再用繁體中文用 2 到 4 句直接回答：${question}`,
+        input: local
+          ? `台灣時間 ${now}。請先搜尋台中市北區一中商圈、一中街、錦新街的可靠公開資料，再用繁體中文直接回答：${question}。店家、交通、學校、醫院及旅遊地點只說查到的真實名稱和位置；營業狀態、路線與班次要以近期來源為準，查不到就明說。回答保持精簡。`
+          : `台灣時間 ${now}。先搜尋再用繁體中文用 2 到 4 句直接回答：${question}`,
         tools: [tool],
         tool_choice: "required",
         store: false,
@@ -229,6 +232,7 @@ export async function POST(request: Request) {
   }
 
   const question = parsed.data.question;
+  const local = parsed.data.mode === "local";
   const typhoon = isTyphoonQuestion(question);
   const disaster = isDisasterQuestion(question);
   const now = new Intl.DateTimeFormat("zh-TW", {
@@ -242,6 +246,20 @@ export async function POST(request: Request) {
   }).format(new Date());
 
   const startedAt = Date.now();
+  if (local) {
+    const result = await fallbackWebSearch(question, false, now, true);
+    if (result) {
+      return NextResponse.json({
+        ok: true, fastCurrentInfo: true, category: "local",
+        sourceMode: "web-search", result, elapsedMs: Date.now() - startedAt,
+      });
+    }
+    return NextResponse.json({
+      ok: false, fastCurrentInfo: true, category: "local",
+      error: "目前無法查到可驗證的一中商圈資料，請勿猜測店家或路線。",
+    }, { status: 503 });
+  }
+
   const [cwa, news] = await Promise.all([
     typhoon || disaster
       ? fetchCwaDirect().catch(() => ({ configured: false, summaries: [] as string[] }))

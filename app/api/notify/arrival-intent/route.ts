@@ -5,7 +5,8 @@ import { pushHotelLineText } from "@/lib/nubo-hotel-line";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const COOLDOWN_MS = 45_000;
+const COOLDOWN_MS = 5 * 60_000;
+const LEGACY_COOLDOWN_MS = 8_000;
 const SOURCE_WINDOW_MS = 10 * 60_000;
 const SOURCE_MAX_ALERTS = 12;
 const recent = new Map<string, number>();
@@ -55,10 +56,13 @@ export async function POST(request: NextRequest) {
   const transcript = String(body.transcript ?? "").trim().slice(0, 500);
   const source = body.source === "model" ? "model" : "transcript";
   const modelIntent: NuboArrivalIntent | null =
-    body.intent === "checkin" || body.intent === "booking" ? body.intent : null;
+    body.intent === "checkin" || body.intent === "booking" || body.intent === "lodging" ? body.intent : null;
   const deviceId = /^[\w-]{8,80}$/.test(String(body.deviceId ?? ""))
     ? String(body.deviceId)
     : "unidentified";
+  const utteranceId = /^[\w-]{8,80}$/.test(String(body.utteranceId ?? ""))
+    ? String(body.utteranceId)
+    : "";
   if (!transcript || isNuboArrivalCancellation(transcript)) {
     return NextResponse.json({ ok: true, sent: false, reason: "no_arrival_request" });
   }
@@ -71,12 +75,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, sent: false, reason: "no_arrival_request" });
   }
 
-  const key = `${deviceId}:${intent}`;
+  // A new spoken request gets a new ID, even when it has the same intent.
+  // Older cached PWA clients use a short fallback window until refreshed.
+  const key = utteranceId ? `${deviceId}:${utteranceId}` : `${deviceId}:${intent}`;
+  const cooldownMs = utteranceId ? COOLDOWN_MS : LEGACY_COOLDOWN_MS;
   const now = Date.now();
   for (const [oldKey, at] of recent) {
     if (now - at > COOLDOWN_MS * 2) recent.delete(oldKey);
   }
-  if (now - (recent.get(key) ?? 0) < COOLDOWN_MS) {
+  if (now - (recent.get(key) ?? 0) < cooldownMs) {
+    console.info("[arrival-alert] duplicate utterance suppressed", { intent, source });
     return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
   }
 
@@ -89,7 +97,7 @@ export async function POST(request: NextRequest) {
   sourceWindows.set(sourceId, bucket && now - bucket.startedAt < SOURCE_WINDOW_MS
     ? { startedAt: bucket.startedAt, count: bucket.count + 1 }
     : { startedAt: now, count: 1 });
-  const label = intent === "checkin" ? "辦理入住" : "訂房";
+  const label = intent === "checkin" ? "辦理入住" : intent === "booking" ? "訂房" : "住宿需求";
   const message = [
     "🛎️ NUBO 旅客到店需求",
     `時間：${taipeiTime()}（台灣時間）`,
@@ -102,6 +110,7 @@ export async function POST(request: NextRequest) {
   if (active) {
     try {
       await active;
+      console.info("[arrival-alert] concurrent utterance suppressed", { intent, source });
       return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
     } catch {
       // A concurrent delivery failed; this request may retry it.
