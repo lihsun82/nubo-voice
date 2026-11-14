@@ -34,10 +34,12 @@ export function NuboSpaceBackground() {
     let stars: Star[] = [];
     let visible = document.visibilityState === "visible";
     const reducedMotion = isReducedMotion();
+    const touchTablet = window.matchMedia("(pointer: coarse)").matches;
+    let lastPaint = 0;
 
     const createStars = () => {
       const coarse = window.matchMedia("(pointer: coarse)").matches;
-      const count = reducedMotion ? 64 : coarse ? 190 : 340;
+      const count = touchTablet ? 56 : reducedMotion ? 64 : coarse ? 190 : 340;
       stars = Array.from({ length: count }, (_, index) => ({
         x: Math.random() * width,
         y: Math.random() * height,
@@ -52,7 +54,7 @@ export function NuboSpaceBackground() {
     const resize = () => {
       width = window.innerWidth;
       height = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      dpr = touchTablet ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.max(1, Math.floor(width * dpr));
       canvas.height = Math.max(1, Math.floor(height * dpr));
       canvas.style.width = `${width}px`;
@@ -64,6 +66,11 @@ export function NuboSpaceBackground() {
     const draw = (time: number) => {
       frame = 0;
       if (!visible) return;
+      if (touchTablet && time - lastPaint < 1000 / (reducedMotion ? 6 : 12)) {
+        frame = window.requestAnimationFrame(draw);
+        return;
+      }
+      lastPaint = time;
 
       context.clearRect(0, 0, width, height);
 
