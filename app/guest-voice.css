@@ -1,0 +1,55 @@
+/* Guest PWA: one voice action on small and large tablets. */
+.nubo-guest-shell {
+  width: min(760px, calc(100% - 32px));
+  min-height: 100svh;
+  justify-content: center;
+  gap: 16px;
+  padding-block: 24px;
+}
+.nubo-guest-header { text-align: center; }
+.nubo-guest-header h1 { margin: 0; font-size: clamp(42px, 7vw, 76px); }
+.nubo-guest-header p { margin: 12px 0 0; color: var(--muted); }
+.nubo-guest-shell .nubo-guest-console {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+}
+.nubo-guest-shell .orb-wrap { min-height: 0; }
+.nubo-guest-shell .nubo-energy-orb {
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+  width: min(100%, 560px) !important;
+  height: auto !important;
+  max-width: 560px !important;
+  margin-inline: auto !important;
+  filter: none !important;
+}
+.nubo-guest-shell .nubo-energy-orb canvas {
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 560 / 620 !important;
+  filter: none !important;
+}
+.nubo-guest-shell .status { min-height: 30px; }
+.nubo-guest-shell .actions { margin-top: 14px; }
+.nubo-guest-shell .nubo-guest-talk-button {
+  min-width: min(100%, 240px);
+  min-height: 56px;
+  font-size: 18px;
+}
+@media (pointer: coarse) {
+  .nubo-space-grid, .nubo-space-horizon { animation: none !important; }
+  body::after { animation: none !important; }
+}
+.nubo-guest-music-runtime {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  pointer-events: none;
+}
