@@ -9,6 +9,8 @@ const COOLDOWN_MS = 45_000;
 const SOURCE_WINDOW_MS = 10 * 60_000;
 const SOURCE_MAX_ALERTS = 12;
 const recent = new Map<string, number>();
+type LineDelivery = Awaited<ReturnType<typeof pushHotelLineText>>;
+const inFlight = new Map<string, Promise<LineDelivery>>();
 const sourceWindows = new Map<string, { startedAt: number; count: number }>();
 
 function taipeiTime() {
@@ -20,19 +22,33 @@ function taipeiTime() {
   }).format(new Date());
 }
 
-export async function POST(request: NextRequest) {
+function isAllowedOrigin(request: NextRequest) {
+  if (request.headers.get("sec-fetch-site") === "cross-site") return false;
   const origin = request.headers.get("origin");
-  if (origin) {
-    try {
-      if (new URL(origin).host !== request.nextUrl.host) {
-        return NextResponse.json({ ok: false, sent: false }, { status: 403 });
-      }
-    } catch {
-      return NextResponse.json({ ok: false, sent: false }, { status: 403 });
-    }
+  if (!origin) return true;
+
+  try {
+    const source = new URL(origin);
+    // Railway/Next may rewrite nextUrl.host to an internal deployment host.
+    // Match the browser-facing host used by the existing proxy, and include
+    // the public guest PWA domain even when that forwarding header is absent.
+    const publicHosts = [
+      request.headers.get("x-forwarded-host")?.split(",")[0]?.trim(),
+      request.headers.get("host")?.split(",")[0]?.trim(),
+      request.nextUrl.host,
+    ].filter((host): host is string => Boolean(host));
+    return source.origin === "https://nubo.ainubo.com" ||
+      (source.protocol === "https:" || source.hostname === "localhost" || source.hostname === "127.0.0.1") &&
+      publicHosts.some((host) => host.toLowerCase() === source.host.toLowerCase());
+  } catch {
+    return false;
   }
-  if (request.headers.get("sec-fetch-site") === "cross-site") {
-    return NextResponse.json({ ok: false, sent: false }, { status: 403 });
+}
+
+export async function POST(request: NextRequest) {
+  if (!isAllowedOrigin(request)) {
+    console.warn("[arrival-alert] rejected cross-origin request");
+    return NextResponse.json({ ok: false, sent: false, error: "invalid_origin" }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -70,7 +86,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, sent: false, error: "通知頻率過高" }, { status: 429 });
   }
 
-  recent.set(key, now);
   sourceWindows.set(sourceId, bucket && now - bucket.startedAt < SOURCE_WINDOW_MS
     ? { startedAt: bucket.startedAt, count: bucket.count + 1 }
     : { startedAt: now, count: 1 });
@@ -83,17 +98,40 @@ export async function POST(request: NextRequest) {
     "請現場人員主動協助旅客。",
   ].join("\n");
 
+  const active = inFlight.get(key);
+  if (active) {
+    try {
+      await active;
+      return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
+    } catch {
+      // A concurrent delivery failed; this request may retry it.
+    }
+  }
+
+  const delivery = pushHotelLineText(message);
+  inFlight.set(key, delivery);
   try {
-    const result = await pushHotelLineText(message);
+    const result = await delivery;
+    recent.set(key, Date.now());
+    console.info("[arrival-alert] delivered", {
+      intent, via: result.via, succeeded: result.succeeded,
+    });
     return NextResponse.json({
       ok: true, sent: true, intent,
       channel: "line", targetCount: result.succeeded,
     });
-  } catch {
-    recent.delete(key);
+  } catch (error) {
+    const relayStatus = error instanceof Error
+      ? error.message.match(/Relay 發送失敗：(\d{3})/)?.[1] ?? null
+      : null;
+    console.warn("[arrival-alert] delivery failed", {
+      intent, relayStatus, errorName: error instanceof Error ? error.name : "unknown",
+    });
     return NextResponse.json(
       { ok: false, sent: false, error: "LINE 群組通知未送達" },
       { status: 502 },
     );
+  } finally {
+    if (inFlight.get(key) === delivery) inFlight.delete(key);
   }
 }
