@@ -16,7 +16,7 @@ export default function HomePage() {
       <NuboMusicSoundEnhancer />
       <NuboInlineMusicPlayer />
       <header className="nubo-guest-header">
-        <h1>NUBO</h1>
+        <h1>AINUBO 新寶智慧酒店</h1>
         <p>您好，請點「開始對話」，直接說出您的需求。</p>
       </header>
       <NuboVoiceConsole />
