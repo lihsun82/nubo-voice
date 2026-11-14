@@ -23,16 +23,16 @@ import "./guest-voice.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "NUBO 智能語音",
-    template: "%s | NUBO",
+    default: "AINUBO 新寶智慧酒店",
+    template: "%s | AINUBO 新寶智慧酒店",
   },
   description: "AINUBO Hotel 智慧旅館管家與自動化控制中心",
-  applicationName: "NUBO",
+  applicationName: "AINUBO 新寶智慧酒店",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "NUBO",
+    title: "AINUBO 新寶智慧酒店",
   },
   formatDetection: {
     telephone: false,
