@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_LOCATION =
   process.env.NUBO_DEFAULT_LOCATION ||
-  "台南";
+  "台中市北區";
 
 const schema = z.object({
   location:
