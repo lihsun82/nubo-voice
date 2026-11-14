@@ -46,9 +46,14 @@ const CANCELLATION_PATTERNS: RegExp[] = [
   /キャンセル|취소|ยกเลิก|hủy|huỷ|batalkan|отмен|إلغاء|रद्द/u,
 ];
 
+export function isNuboArrivalCancellation(value: string) {
+  const text = value.normalize("NFKC").trim().toLowerCase();
+  return CANCELLATION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function classifyNuboArrivalIntent(value: string): NuboArrivalIntent | null {
   const text = value.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g, " ");
-  if (!text || CANCELLATION_PATTERNS.some((pattern) => pattern.test(text))) return null;
+  if (!text || isNuboArrivalCancellation(text)) return null;
   if (CHECK_IN_PATTERNS.some((pattern) => pattern.test(text))) return "checkin";
   if (BOOKING_PATTERNS.some((pattern) => pattern.test(text))) return "booking";
   return null;
