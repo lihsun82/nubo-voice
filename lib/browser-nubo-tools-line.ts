@@ -195,7 +195,9 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 
   if (call.name === "notify_arrival_intent") {
     const args = call.args ?? {};
-    const intent = args.intent === "booking" ? "booking" : "checkin";
+    const intent = args.intent === "booking" || args.intent === "lodging"
+      ? args.intent
+      : "checkin";
     return sendNuboArrivalIntent(String(args.transcript ?? ""), intent, "model");
   }
 
@@ -274,7 +276,7 @@ export const geminiSystemInstruction = `
 20. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
 21. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
 22. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
-23. 旅客以任何語言說想辦理入住、詢問怎麼入住，或想訂房、預訂房間時，立即呼叫notify_arrival_intent，intent填checkin或booking，transcript保留旅客原話。不需先取得姓氏、房號或聯絡方式；取消或否定入住／訂房時不可通報。此工具與客訴建檔分開，成功後簡短告知已通知現場人員。
+23. 旅客以任何語言說想辦理入住、詢問怎麼入住、想訂房、預訂房間，或想住宿時，立即呼叫notify_arrival_intent，intent填checkin、booking或lodging，transcript保留旅客原話。不需先取得姓氏、房號或聯絡方式；取消或否定入住／訂房時不可通報。此工具與客訴建檔分開，成功後簡短告知已通知現場人員。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
@@ -402,11 +404,11 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "notify_arrival_intent",
-    description: "旅客以任何語言表達辦理入住、詢問入住方式、訂房或預訂房間時，立即通知現場LINE群組。取消或否定需求不可呼叫。",
+    description: "旅客以任何語言表達辦理入住、詢問入住方式、訂房、預訂房間或想住宿時，立即通知現場LINE群組。取消或否定需求不可呼叫。",
     parameters: {
       type: "OBJECT",
       properties: {
-        intent: { type: "STRING", enum: ["checkin", "booking"] },
+        intent: { type: "STRING", enum: ["checkin", "booking", "lodging"] },
         transcript: { type: "STRING", description: "旅客的原話，保留原語言。" },
       },
       required: ["intent", "transcript"],
