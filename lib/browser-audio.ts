@@ -324,7 +324,7 @@ export class PcmPlaybackQueue {
   private setPlaybackActive(active: boolean) {
     if (this.playbackActive === active) return;
     this.playbackActive = active;
-    if (!active) this.outputTailUntil = Date.now() + 250;
+    if (!active) this.outputTailUntil = Date.now() + 120;
     dispatchPlaybackState(active);
   }
 
