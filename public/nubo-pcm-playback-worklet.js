@@ -10,6 +10,8 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     this.fadeFrames = 96; // ~4 ms at 24 kHz; short enough to be inaudible, long enough to de-click.
     this.fadeInRemaining = 0;
     this.lastSample = 0;
+    this.processedFrames = 0;
+    this.lastDrainFrame = -1;
 
     this.port.onmessage = (event) => {
       const data = event.data || {};
@@ -21,6 +23,7 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
         this.wasActive = false;
         this.fadeInRemaining = 0;
         this.lastSample = 0;
+        this.lastDrainFrame = -1;
         return;
       }
 
@@ -39,10 +42,16 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     const output = outputs?.[0]?.[0];
     if (!output) return true;
     output.fill(0);
+    this.processedFrames += output.length;
 
     if (!this.started) {
       if (this.queuedFrames < this.startThresholdFrames) return true;
       this.started = true;
+      if (this.lastDrainFrame >= 0) {
+        const gapFrames = this.processedFrames - this.lastDrainFrame;
+        if (gapFrames < 28800) this.port.postMessage({ type: "rebuffer", gapFrames });
+        this.lastDrainFrame = -1;
+      }
       this.fadeInRemaining = this.fadeFrames;
       this.lastSample = 0;
     }
@@ -97,6 +106,7 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
       this.fadeInRemaining = 0;
       if (this.wasActive) {
         this.wasActive = false;
+        this.lastDrainFrame = this.processedFrames;
         this.port.postMessage({ type: "drained" });
       }
     }
