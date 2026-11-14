@@ -4,6 +4,7 @@ import { NuboSmartNoiseRuntime } from "@/components/NuboSmartNoiseRuntime";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
 import { NuboGuestMusicSlot } from "@/components/NuboGuestMusicSlot";
 import { NuboGuestConfigRuntime } from "@/components/NuboGuestConfigRuntime";
+import { NuboNearbyResults } from "@/components/NuboNearbyResults";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default function HomePage() {
         <p>您好，請點「開始對話」，直接說出您的需求。</p>
       </header>
       <NuboVoiceConsole />
+      <NuboNearbyResults />
     </main>
   );
 }
