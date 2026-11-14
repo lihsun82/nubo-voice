@@ -4,17 +4,20 @@ import { NuboInlineMusicPlayer } from "@/components/NuboInlineMusicPlayer";
 import { NuboMusicSoundEnhancer } from "@/components/NuboMusicSoundEnhancer";
 import { NuboSmartNoiseRuntime } from "@/components/NuboSmartNoiseRuntime";
 import { NuboVoiceConsole } from "@/components/NuboVoiceConsole";
-import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
+import { readGuestConfig } from "@/lib/nubo-guest-config-server";
+import { NuboGuestConfigRuntime } from "@/components/NuboGuestConfigRuntime";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const config = await readGuestConfig();
   return (
     <main className="shell nubo-guest-shell">
+      <NuboGuestConfigRuntime />
       <NuboSmartNoiseRuntime />
       <NuboAudioPrimeGuard />
       <NuboMultilingualRuntime />
-      {NUBO_GUEST_MUSIC_ENABLED ? (
+      {config.musicEnabled ? (
         <>
           <NuboMusicSoundEnhancer />
           <NuboInlineMusicPlayer />
