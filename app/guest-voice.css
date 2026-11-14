@@ -7,7 +7,7 @@
   padding-block: 24px;
 }
 .nubo-guest-header { text-align: center; }
-.nubo-guest-header h1 { margin: 0; font-size: clamp(42px, 7vw, 76px); }
+.nubo-guest-header h1 { margin: 0; font-size: clamp(28px, 4.5vw, 54px); line-height: 1.18; text-wrap: balance; }
 .nubo-guest-header p { margin: 12px 0 0; color: var(--muted); }
 .nubo-guest-shell .nubo-guest-console {
   background: transparent !important;
