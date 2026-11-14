@@ -576,6 +576,9 @@ export function GeminiVoiceConsole() {
             microphoneRef.current = microphone;
             await microphone.start((data) => {
               if (socket.readyState !== WebSocket.OPEN) return;
+              // The tablet speaker is close to its microphone. Do not send NUBO's
+              // own voice back to Gemini and trigger an accidental interruption.
+              if (playbackRef.current?.isAssistantOutputActive()) return;
               socket.send(
                 JSON.stringify({
                   realtimeInput: {
