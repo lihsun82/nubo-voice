@@ -14,6 +14,7 @@ import {
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -117,6 +118,7 @@ export function GeminiVoiceConsole() {
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
+  const callTonePendingRef = useRef(false);
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -483,6 +485,7 @@ export function GeminiVoiceConsole() {
   };
 
   const disconnect = async () => {
+    callTonePendingRef.current = false;
     window.localStorage.removeItem(
       NUBO_AUTO_RESUME_STORAGE_KEY,
     );
@@ -989,7 +992,8 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         if (
           silentUntilWakeRef.current ||
           ecoSleepingRef.current ||
-          resumeInProgress
+          resumeInProgress ||
+          callTonePendingRef.current
         ) {
           return;
         }
@@ -1137,6 +1141,26 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     };
   }, []);
 
+  const startWithCallTones = async () => {
+    if (callTonePendingRef.current) return;
+    callTonePendingRef.current = true;
+    clearReconnectTimer();
+    setState("connecting");
+    setError("");
+
+    try {
+      await playNuboCallTones();
+      if (!callTonePendingRef.current || document.visibilityState !== "visible") {
+        setState("idle");
+        return;
+      }
+      const socket = socketRef.current;
+      if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+      await connect(false);
+    } finally {
+      callTonePendingRef.current = false;
+    }
+  };
 
   return (
     <section className="console nubo-guest-console" aria-live="polite">
@@ -1146,7 +1170,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       </div>
       <div className="actions">
         <button className="primary nubo-guest-talk-button" type="button"
-          onClick={() => void (state === "connected" ? disconnect() : connect())}
+          onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
           disabled={state === "connecting"}
           aria-label={state === "connected" ? "結束對話" : "開始對話"}>
           {state === "connecting" ? "連線中…" : state === "connected" ? "結束對話" : "開始對話"}
