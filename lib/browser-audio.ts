@@ -430,7 +430,7 @@ export class PcmPlaybackQueue {
     const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
     const channel = audioBuffer.getChannelData(0);
     for (let i = 0; i < sampleCount; i += 1) {
-      channel[i] = view.getInt16(i * 2, true) / 0x8000;
+      channel[i] = (view.getInt16(i * 2, true) / 0x8000) * 0.7;
     }
 
     // Publish the actual NUBO output level so the hologram can brighten and
