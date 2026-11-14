@@ -93,7 +93,7 @@ function calculateRms(input: Float32Array) {
   return Math.sqrt(sum / Math.max(1, input.length));
 }
 
-function dispatchVoiceLevel(level: number, source: "input" | "output") {
+function dispatchVoiceLevel(level: number, source: "input" | "output" = "output") {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent("nubo:voice-level", {
