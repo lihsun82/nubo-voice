@@ -46,16 +46,26 @@ export function NuboGuestConfigRuntime() {
   useEffect(() => {
     let disposed = false;
     let busy = false;
+    let retryAfter = 0;
 
     const poll = async () => {
-      if (disposed || busy || document.visibilityState !== "visible") return;
+      if (disposed || busy || document.visibilityState !== "visible" || Date.now() < retryAfter) return;
       busy = true;
       try {
         const response = await fetch("/api/guest-config", {
           cache: "no-store",
           credentials: "same-origin",
         });
-        if (!response.ok) return;
+        if (response.status === 401 || response.status === 403) {
+          // Unpaired guest tablets do not need to retry every two seconds.
+          retryAfter = Date.now() + 30_000;
+          return;
+        }
+        if (!response.ok) {
+          retryAfter = Date.now() + 10_000;
+          return;
+        }
+        retryAfter = 0;
         const config = await response.json() as NuboGuestRuntimeConfig;
         if (!disposed && Number.isFinite(config.revision) &&
             config.revision !== getNuboGuestConfigSnapshot().revision) {
@@ -63,6 +73,7 @@ export function NuboGuestConfigRuntime() {
         }
       } catch {
         // Keep the last working settings if the network is briefly unavailable.
+        retryAfter = Date.now() + 10_000;
       } finally {
         busy = false;
       }
