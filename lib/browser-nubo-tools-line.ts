@@ -206,6 +206,13 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return runVoiceResearchWithTimeout(args.question, args.title);
   }
 
+  if (call.name === "get_weather" && !String(call.args?.location ?? "").trim()) {
+    return executeBaseTool({
+      ...call,
+      args: { ...call.args, location: "台中市北區" },
+    });
+  }
+
   if (call.name === "open_website") {
     return forceDirectMobileOpen(
       resolveWebsiteMobileResult(call),
