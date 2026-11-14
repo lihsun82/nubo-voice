@@ -379,8 +379,9 @@ export function GeminiVoiceConsole() {
     };
 
     let restartDelayMs = 1_000;
-    recognition.onerror = (event: { error?: string }) => {
-      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event?.error ?? "")) {
+    recognition.onerror = (event: unknown) => {
+      const errorName = (event as { error?: string } | null)?.error ?? "";
+      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(errorName)) {
         ecoRecognitionRef.current = null;
         setTranscript("待命中；此瀏覽器無法持續監聽喚醒詞，請按「開始對話」。");
         return;
