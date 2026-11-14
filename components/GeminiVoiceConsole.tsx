@@ -15,7 +15,7 @@ import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
-import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
+import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -208,7 +208,7 @@ export function GeminiVoiceConsole() {
 
       if (text) {
         if (ecoSleepingRef.current) {
-          if (includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+          if (includesVoiceCommand(text, getNuboGuestConfigSnapshot().wakeWords || NUBO_WAKE_WORDS)) {
             wakeFromEco();
           }
           return;
@@ -220,7 +220,7 @@ export function GeminiVoiceConsole() {
         }
 
         if (silentUntilWakeRef.current) {
-          if (includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+          if (includesVoiceCommand(text, getNuboGuestConfigSnapshot().wakeWords || NUBO_WAKE_WORDS)) {
             exitSilentUntilWake();
           } else {
             stopNuboOutput();
@@ -372,7 +372,7 @@ export function GeminiVoiceConsole() {
     recognition.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const text = event.results[i]?.[0]?.transcript?.trim();
-        if (text && includesVoiceCommand(text, NUBO_WAKE_WORDS)) {
+        if (text && includesVoiceCommand(text, getNuboGuestConfigSnapshot().wakeWords || NUBO_WAKE_WORDS)) {
           wakeFromEco();
           return;
         }
@@ -570,10 +570,10 @@ export function GeminiVoiceConsole() {
             setup: {
               model: `models/${tokenData.model}`,
               generationConfig: { responseModalities: ["AUDIO"] },
-              systemInstruction: { parts: [{ text: NUBO_GUEST_MUSIC_ENABLED
+              systemInstruction: { parts: [{ text: getNuboGuestConfigSnapshot().musicEnabled
                 ? geminiSystemInstruction
                 : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${geminiSystemInstruction}` }] },
-              tools: [{ functionDeclarations: NUBO_GUEST_MUSIC_ENABLED
+              tools: [{ functionDeclarations: getNuboGuestConfigSnapshot().musicEnabled
                 ? geminiFunctionDeclarations
                 : geminiFunctionDeclarations.filter((tool) => tool.name !== "open_youtube" && tool.name !== "control_youtube") }],
               inputAudioTranscription: {},
@@ -653,7 +653,7 @@ export function GeminiVoiceConsole() {
               trimmedUserText,
             );
 
-            const fastYouTubeQuery = NUBO_GUEST_MUSIC_ENABLED
+            const fastYouTubeQuery = getNuboGuestConfigSnapshot().musicEnabled
               ? extractYouTubeFastRouteQuery(trimmedUserText)
               : null;
 
@@ -983,7 +983,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       if (ecoSleepingRef.current || closingRef.current) return;
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
-      if (Date.now() - lastInteractionAtRef.current >= NUBO_ECO_IDLE_MS) {
+      if (Date.now() - lastInteractionAtRef.current >= (getNuboGuestConfigSnapshot().idleSeconds * 1000 || NUBO_ECO_IDLE_MS)) {
         void enterEcoSleep();
       }
     }, 1000);
@@ -1207,7 +1207,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           {state === "connecting" ? "連線中…" : state === "connected" ? "結束對話" : "開始對話"}
         </button>
       </div>
-      {NUBO_GUEST_MUSIC_ENABLED && mobileYoutube ? (
+      {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
           {"開啟："}{mobileYoutube.title}
