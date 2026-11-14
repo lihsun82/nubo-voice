@@ -314,7 +314,6 @@ export class PcmPlaybackQueue {
   private foregroundListenersAttached = false;
   private retired = false;
   private playbackActive = false;
-  private outputTailUntil = 0;
   private playbackTailTimer: number | null = null;
 
   constructor() {
@@ -324,12 +323,7 @@ export class PcmPlaybackQueue {
   private setPlaybackActive(active: boolean) {
     if (this.playbackActive === active) return;
     this.playbackActive = active;
-    if (!active) this.outputTailUntil = Date.now() + 120;
     dispatchPlaybackState(active);
-  }
-
-  isAssistantOutputActive() {
-    return this.playbackActive || Date.now() < this.outputTailUntil;
   }
 
   private clearPlaybackTailTimer() {
