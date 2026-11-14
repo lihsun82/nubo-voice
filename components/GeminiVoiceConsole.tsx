@@ -574,11 +574,12 @@ export function GeminiVoiceConsole() {
             noteVoiceInteraction();
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
+            const tabletSpeakerGuard = window.matchMedia("(pointer: coarse)").matches;
             await microphone.start((data) => {
               if (socket.readyState !== WebSocket.OPEN) return;
               // The tablet speaker is close to its microphone. Do not send NUBO's
               // own voice back to Gemini and trigger an accidental interruption.
-              if (playbackRef.current?.isAssistantOutputActive()) return;
+              if (tabletSpeakerGuard && playbackRef.current?.isAssistantOutputActive()) return;
               socket.send(
                 JSON.stringify({
                   realtimeInput: {
