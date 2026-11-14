@@ -7,6 +7,7 @@ import {
 } from "@/lib/browser-nubo-tools";
 import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
+import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -192,6 +193,12 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return sendGuestServiceAlert(call.args ?? {});
   }
 
+  if (call.name === "notify_arrival_intent") {
+    const args = call.args ?? {};
+    const intent = args.intent === "booking" ? "booking" : "checkin";
+    return sendNuboArrivalIntent(String(args.transcript ?? ""), intent, "model");
+  }
+
   if (call.name === "research_now") {
     const args = call.args ?? {};
     return runVoiceResearchWithTimeout(args.question, args.title);
@@ -246,7 +253,7 @@ export const geminiSystemInstruction = `
 快速路由：
 1. 一般聊天、常識、簡單建議直接回答，不得呼叫research_now。
 2. 只有使用者明確要求查詢、搜尋、最新、查證、比較、來源、研究或深入分析，且確實需要外部即時資料時，才能呼叫research_now。
-3. 語音辨識很短、不完整、非繁體中文或像錯誤外語片段時，說「我剛剛沒聽清楚，請再說一次」，不得呼叫工具。
+3. 語音辨識很短、不完整或無法理解時，請旅客再說一次。可理解的外語入住與訂房需求必須正常處理。
 4. 時間與相對日期用get_current_time；天氣用get_weather；附近店家用search_nearby；條件完整的旅行規劃用travel_plan。
 5. 旅館房價與競品行情用hotel_market_report；明確要求重新抓取才用hotel_market_refresh。
 6. 單純開啟Facebook、IG、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，用open_mobile_app，不得用open_desktop_app。
@@ -267,6 +274,7 @@ export const geminiSystemInstruction = `
 20. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
 21. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
 22. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
+23. 旅客以任何語言說想辦理入住、詢問怎麼入住，或想訂房、預訂房間時，立即呼叫notify_arrival_intent，intent填checkin或booking，transcript保留旅客原話。不需先取得姓氏、房號或聯絡方式；取消或否定入住／訂房時不可通報。此工具與客訴建檔分開，成功後簡短告知已通知現場人員。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
@@ -390,6 +398,18 @@ export const geminiFunctionDeclarations = [
         },
       },
       required: ["surname", "roomNumber", "contact", "issue"],
+    },
+  },
+  {
+    name: "notify_arrival_intent",
+    description: "旅客以任何語言表達辦理入住、詢問入住方式、訂房或預訂房間時，立即通知現場LINE群組。取消或否定需求不可呼叫。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        intent: { type: "STRING", enum: ["checkin", "booking"] },
+        transcript: { type: "STRING", description: "旅客的原話，保留原語言。" },
+      },
+      required: ["intent", "transcript"],
     },
   },
   {

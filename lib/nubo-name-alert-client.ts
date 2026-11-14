@@ -1,3 +1,5 @@
+import { queueNuboArrivalTranscript } from "@/lib/nubo-arrival-alert-client";
+
 let pendingTranscript = "";
 let debounceTimer: number | null = null;
 let sending = false;
@@ -64,6 +66,7 @@ export async function sendTranscriptToNameAlert(
   const text = transcript?.trim();
   if (!text || typeof window === "undefined") return;
 
+  queueNuboArrivalTranscript(text);
   pendingTranscript = text;
 
   if (debounceTimer !== null) {
