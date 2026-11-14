@@ -602,18 +602,17 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
-                recordIncomingAudioChunk();
                 noteVoiceInteraction();
+                recordIncomingAudioChunk();
                 markSpeaking();
                 await playbackRef.current?.enqueue(part.inlineData.data, 24000);
               }
             }
           }
 
-          if (serverContent?.turnComplete) finishIncomingAudioTurn();
-
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
+          if (serverContent?.turnComplete) finishIncomingAudioTurn();
           if (typeof modelText === "string" && modelText.trim()) {
             noteVoiceInteraction();
             setTranscript(modelText.trim());
