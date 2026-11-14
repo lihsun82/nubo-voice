@@ -13,7 +13,7 @@ import {
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
-import { NuboQuestionHistory, recordNuboQuestion } from "@/components/NuboQuestionHistory";
+import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
@@ -1130,69 +1130,28 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     };
   }, []);
 
-  const stateLabel = {
-    idle: [
-      "NUBO待命",
-      "智慧服務已就緒",
-    ],
-    connecting: [
-      "NUBO正在連線",
-      "正在啟動語音服務",
-    ],
-    connected: [
-      "NUBO正在聆聽",
-      "行動控制與自動化服務已啟用",
-    ],
-    error: [
-      "NUBO尚未連線",
-      "系統已切換為安全待命狀態",
-    ],
-  }[state];
 
   return (
-    <section className="console" aria-live="polite">
-      <div className="orb-wrap">
-        <NuboEnergyOrb />
-      </div>
+    <section className="console nubo-guest-console" aria-live="polite">
+      <div className="orb-wrap"><NuboEnergyOrb /></div>
       <div className="status">
-        <strong>{stateLabel[0]}</strong>
-        <span>{stateLabel[1]}</span>
+        <strong>{state === "connected" ? "正在聆聽" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
       </div>
       <div className="actions">
-        <button className="primary" onClick={() => void connect()} disabled={state === "connecting" || state === "connected"}>
-          {state === "connecting" ? "連線中…" : "啟動NUBO"}
-        </button>
-        <button className="secondary" onClick={() => void disconnect()} disabled={state === "idle"}>
-          結束對話
+        <button className="primary nubo-guest-talk-button" type="button"
+          onClick={() => void (state === "connected" ? disconnect() : connect())}
+          disabled={state === "connecting"}
+          aria-label={state === "connected" ? "結束對話" : "開始對話"}>
+          {state === "connecting" ? "連線中…" : state === "connected" ? "結束對話" : "開始對話"}
         </button>
       </div>
       {mobileYoutube ? (
-        <a
-          className="primary mobile-youtube-action"
-          href={mobileYoutube.playerUrl}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => setMobileYoutube(null)}
-        >
-          {"開啟："}
-          {mobileYoutube.title}
+        <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
+          target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
+          {"開啟："}{mobileYoutube.title}
         </a>
       ) : null}
-      {transcript ? <div className="voice-transcript">{transcript}</div> : null}
-      {error ? <div className="error">{error}</div> : null}
-      <NuboQuestionHistory />
-      <div className="capabilities">
-        <div className="capability"><b>應用程式控制</b><small>開啟LINE與固定白名單Windows應用程式。</small></div>
-        <div className="capability"><b>NUBO喚醒</b><small>網頁版與Android APP可喚出目前NUBO頁面；瀏覽器背景切換需依系統權限。</small></div>
-        <div className="capability"><b>研究與Gmail</b><small>查找資料時只顯示處理狀態，不播放等待語音。</small></div>
-      </div>
+      {error ? <div className="error" role="alert">{error}</div> : null}
     </section>
   );
 }
-
-
-
-
-
-
-

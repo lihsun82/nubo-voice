@@ -88,8 +88,17 @@ function getRenderProfile(): RenderProfile {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
-  const mobile = window.matchMedia("(pointer: coarse)").matches;
+  const touchTablet = window.matchMedia("(pointer: coarse)").matches;
   const cores = navigator.hardwareConcurrency || 8;
+
+  // Installed guest Web Apps run on low-power tablets.
+  if (touchTablet) {
+    return {
+      particleCount: reducedMotion ? 450 : 900,
+      frameInterval: 1000 / (reducedMotion ? 12 : 18),
+      dpr: 1,
+    };
+  }
 
   if (reducedMotion) {
     return { particleCount: 1200, frameInterval: 1000 / 20, dpr: 1 };
@@ -97,14 +106,6 @@ function getRenderProfile(): RenderProfile {
 
   if (cores <= 4) {
     return { particleCount: 2700, frameInterval: 1000 / 25, dpr: Math.min(window.devicePixelRatio || 1, 1.05) };
-  }
-
-  if (mobile) {
-    return {
-      particleCount: 4700,
-      frameInterval: 1000 / 30,
-      dpr: Math.min(window.devicePixelRatio || 1, 1.18),
-    };
   }
 
   return {
