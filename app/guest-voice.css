@@ -22,7 +22,7 @@
   left: auto !important;
   right: auto !important;
   transform: none !important;
-  width: min(100%, 560px) !important;
+  width: min(100%, 62svh, 560px) !important;
   height: auto !important;
   max-width: 560px !important;
   margin-inline: auto !important;
@@ -44,12 +44,4 @@
 @media (pointer: coarse) {
   .nubo-space-grid, .nubo-space-horizon { animation: none !important; }
   body::after { animation: none !important; }
-}
-.nubo-guest-music-runtime {
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  pointer-events: none;
 }
