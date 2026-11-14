@@ -19,6 +19,12 @@ import type { NuboGuestRuntimeConfig } from "@/lib/nubo-guest-features";
 
 type AdminConfig = NuboGuestRuntimeConfig & { updatedAt: string };
 type AdminSession = { authenticated: boolean; email: string | null; clientId: string | null; configured: boolean };
+type LineStatus = {
+  state: "ready" | "delivered" | "quota_exhausted" | "failed";
+  at: string | null;
+  retryAfterSeconds: number;
+  deliveryMode: string;
+};
 type GoogleIdentity = {
   accounts: { id: {
     initialize: (value: { client_id: string; callback: (response: { credential: string }) => void }) => void;
@@ -57,6 +63,7 @@ export default function AdminPage() {
   const googleButton = useRef<HTMLDivElement>(null);
   const [session, setSession] = useState<AdminSession | null>(null);
   const [config, setConfig] = useState<AdminConfig | null>(null);
+  const [lineStatus, setLineStatus] = useState<LineStatus | null>(null);
   const [profile, setProfile] = useState<NuboVoiceProfile>(NUBO_DEFAULT_VOICE_PROFILE);
   const [tuning, setTuning] = useState<NuboVoiceTuning>(NUBO_DEFAULT_VOICE_TUNING);
   const [idle, setIdle] = useState(30);
@@ -130,6 +137,18 @@ export default function AdminPage() {
     return () => { active = false; };
   }, [session?.clientId, session?.authenticated]);
 
+  useEffect(() => {
+    if (!session?.authenticated) return;
+    let active = true;
+    const refresh = async () => {
+      const response = await fetch("/api/notify/arrival-intent", { cache: "no-store" });
+      if (response.ok && active) setLineStatus(await response.json() as LineStatus);
+    };
+    void refresh().catch(() => undefined);
+    const timer = window.setInterval(() => void refresh().catch(() => undefined), 10_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session?.authenticated]);
+
   const save = async (patch: Record<string, unknown>) => {
     setBusy(true);
     setMessage("");
@@ -176,6 +195,7 @@ export default function AdminPage() {
     });
     setSession((value) => value ? { ...value, authenticated: false, email: null } : value);
     setConfig(null);
+    setLineStatus(null);
   };
 
   const voices = profile.engine === "gemini" ? NUBO_GEMINI_VOICES : NUBO_OPENAI_VOICES;
@@ -203,6 +223,19 @@ export default function AdminPage() {
                 <span>已登入：{session.email}</span>
                 <button type="button" style={button} onClick={() => void logout()}>登出</button>
               </div>
+            </section>
+            <section style={card}>
+              <h2>LINE 群組通知</h2>
+              <p>{lineStatus?.state === "quota_exhausted"
+                ? "LINE 已達本月訊息額度；目前入住、訂房通知無法送達。請到 LINE 官方帳號後台提高方案或加購額度。"
+                : lineStatus?.state === "delivered"
+                  ? "最近一次通知已送達 LINE。"
+                  : lineStatus?.state === "failed"
+                    ? "最近一次 LINE 通知失敗，請檢查 LINE 帳號與 Relay。"
+                    : "尚無近期通知結果。"}</p>
+              {lineStatus?.at ? <small>最後結果：{new Date(lineStatus.at).toLocaleString("zh-TW")}</small> : null}
+              {lineStatus?.state === "quota_exhausted" && lineStatus.retryAfterSeconds > 0
+                ? <small>為避免重複發送，暫停嘗試 {lineStatus.retryAfterSeconds} 秒。</small> : null}
             </section>
             <section style={card}>
               <h2>配對旅客平板</h2>
