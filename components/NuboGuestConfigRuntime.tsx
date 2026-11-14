@@ -32,6 +32,7 @@ function applyLocalOverride(key: string, backupKey: string, value: unknown | nul
 
 function syncGuestConfig(value: NuboGuestRuntimeConfig) {
   setNuboGuestConfigSnapshot(value);
+  window.dispatchEvent(new Event("nubo:guest-config"));
   const revision = String(value.revision);
   if (window.sessionStorage.getItem(SEEN_KEY) === revision) return;
   window.sessionStorage.setItem(SEEN_KEY, revision);
