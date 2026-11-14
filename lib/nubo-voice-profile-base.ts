@@ -74,7 +74,7 @@ export const NUBO_VOICE_PROFILE_EVENT = "nubo-voice-profile-change";
 
 export const NUBO_DEFAULT_VOICE_PROFILE: NuboVoiceProfile = {
   engine: "gemini",
-  voice: "Achird",
+  voice: "Leda",
   personality: "professional",
 };
 
@@ -235,8 +235,11 @@ export function readNuboVoiceProfile(): NuboVoiceProfile {
 
   try {
     const raw = window.localStorage.getItem(NUBO_VOICE_PROFILE_STORAGE_KEY);
-    if (!raw) return NUBO_DEFAULT_VOICE_PROFILE;
-    return normalizeNuboVoiceProfile(JSON.parse(raw));
+    const saved = raw
+      ? normalizeNuboVoiceProfile(JSON.parse(raw))
+      : NUBO_DEFAULT_VOICE_PROFILE;
+    // Fixed guest voice; preserve saved personality and the separate tuning data.
+    return { ...saved, engine: "gemini", voice: "Leda" };
   } catch {
     return NUBO_DEFAULT_VOICE_PROFILE;
   }
