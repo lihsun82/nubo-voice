@@ -23,7 +23,7 @@ const CHECK_IN_PATTERNS: RegExp[] = [
 
 const BOOKING_PATTERNS: RegExp[] = [
   /訂房|订房|訂(?:一|個|间|間)?房|订(?:一|个|间)?房|預訂房間|预订房间|預約房間|预约房间|訂酒店|订酒店/u,
-  /\bbook(?:ing)?\b|\breserv(?:e|ation|ations)\b|\broom reservation\b/iu,
+  /\bbook(?:ing)?\s+(?:a\s+|the\s+)?(?:hotel\s+)?room\b|\bmake\s+(?:a\s+)?booking\b|\bbooking\b|\breserv(?:e|ation|ations)\b|\broom reservation\b/iu,
   /(?:部屋|ホテル|宿泊).{0,5}予約|予約.{0,5}(?:部屋|ホテル|宿泊)/u,
   /(?:객실|호텔|숙박).{0,5}예약|예약.{0,5}(?:객실|호텔|숙박)/u,
   /จองห้องพัก|จองโรงแรม/u,
