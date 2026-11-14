@@ -254,10 +254,11 @@ export const geminiSystemInstruction = `
 
 快速路由：
 1. 一般聊天、常識、簡單建議直接回答，不得呼叫research_now。
-2. 只有使用者明確要求查詢、搜尋、最新、查證、比較、來源、研究或深入分析，且確實需要外部即時資料時，才能呼叫research_now。
-3. 語音辨識很短、不完整或無法理解時，請旅客再說一次。可理解的外語入住與訂房需求必須正常處理。
-4. 時間與相對日期用get_current_time；天氣用get_weather；附近店家用search_nearby；條件完整的旅行規劃用travel_plan。
-5. 旅館房價與競品行情用hotel_market_report；明確要求重新抓取才用hotel_market_refresh。
+2. 使用者詢問最近或可能變動的國際情勢、經濟、天氣災害、政治、選舉、藝文活動、展覽、演出、旅遊資訊時，應主動呼叫research_now查即時來源，不必等他說「幫我搜尋」。穩定常識與閒聊可直接回答。
+3. 語音辨識很短、不完整或無法理解時，請旅客再說一次。可理解的外語入住、訂房與住宿需求必須正常處理。
+4. 時間與相對日期用get_current_time；一般天氣用get_weather，颱風與災害警報用research_now；要開地圖或導航才用search_nearby；條件完整的旅行規劃用travel_plan。
+5. 只有旅館房價、競品與市場行情用hotel_market_report；一中商圈的一般店家、交通、學校、醫院與旅遊問題不可改查房價雷達，應用research_now取得當地即時資料。明確要求重新抓取行情才用hotel_market_refresh。
+5A. 「一中商圈」「一中街」「台中一中」「錦新街」都指台中市北區；問知名店家、餐飲、交通路線、學校、醫院、景點、營業時間或近期活動時，research_now的question要包含「台中市北區一中商圈」與旅客實際問題。回答只用查到的名稱、位置及日期，不要編造店名、營業狀態或班次。
 6. 單純開啟Facebook、IG、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，用open_mobile_app，不得用open_desktop_app。
 7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
 8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
@@ -276,7 +277,7 @@ export const geminiSystemInstruction = `
 20. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
 21. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
 22. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
-23. 旅客以任何語言說想辦理入住、詢問怎麼入住、想訂房、預訂房間，或想住宿時，立即呼叫notify_arrival_intent，intent填checkin、booking或lodging，transcript保留旅客原話。不需先取得姓氏、房號或聯絡方式；取消或否定入住／訂房時不可通報。此工具與客訴建檔分開，成功後簡短告知已通知現場人員。
+23. 旅客以任何語言說想辦理入住、詢問怎麼入住、想訂房、預訂房間，或想住宿時，立即呼叫notify_arrival_intent，intent填checkin、booking或lodging，transcript保留旅客原話。不需先取得姓氏、房號或聯絡方式；取消或否定入住／訂房／住宿時不可通報。此工具與客訴建檔分開，成功後簡短告知已通知現場人員。
 
 手機規則：
 - FB、IG、LINE與一般網站可直接開啟，不顯示二次點擊中介按鈕。
@@ -343,7 +344,7 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "只在使用者明確要求最新搜尋、查證、多來源比較、來源或深入研究時使用。禁止用於一般問答、聊天、播放歌曲或語音不清。",
+          "查詢需要近期資料的國際情勢、經濟、政治、文藝活動、災害與一中商圈店家、交通、學校、醫院及旅遊資訊。先查來源再回答；禁止用於穩定常識、閒聊、播放歌曲或語音不清。",
       };
     }
 
