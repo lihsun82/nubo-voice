@@ -328,15 +328,17 @@ export function GeminiVoiceConsole() {
   const startEcoWakeListener = () => {
     stopEcoWakeListener();
 
-    // Android/iOS speech recognizers emit system start/restart chimes in
-    // background/eco mode. Keep mobile eco truly silent: cloud voice stays
-    // stopped and the user taps the existing Start NUBO button to reconnect.
+    // Tablet PWA keeps a lightweight wake-word recognizer after cloud sleep.
+    // Phones retain tap-to-start because system recognition can chime on restart.
     const userAgent = window.navigator.userAgent;
     const isIpadOs =
       /Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1;
     const isMobileBrowser =
       /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent) || isIpadOs;
-    if (isMobileBrowser) return;
+    const isTablet = isIpadOs || /iPad|Tablet/i.test(userAgent) ||
+      (/Android/i.test(userAgent) && Math.min(window.screen.width, window.screen.height) >= 600);
+    if (isMobileBrowser && !isTablet) return;
+    if (document.visibilityState !== "visible") return;
 
     try {
       const nativeBridge = (window as typeof window & {
@@ -366,19 +368,31 @@ export function GeminiVoiceConsole() {
       }
     };
 
-    recognition.onerror = () => {
-      // System recognition may temporarily fail; onend retries while eco sleeping.
+    let restartDelayMs = 1_000;
+    recognition.onerror = (event: { error?: string }) => {
+      if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event?.error ?? "")) {
+        ecoRecognitionRef.current = null;
+        setTranscript("待命中；此瀏覽器無法持續監聽喚醒詞，請按「開始對話」。");
+        return;
+      }
+      restartDelayMs = Math.min(restartDelayMs * 2, 10_000);
     };
 
     recognition.onend = () => {
       if (!ecoSleepingRef.current || ecoRecognitionRef.current !== recognition) return;
       ecoRecognitionRestartRef.current = window.setTimeout(() => {
-        if (!ecoSleepingRef.current || ecoRecognitionRef.current !== recognition) return;
-        try { recognition.start(); } catch {}
-      }, 700);
+        if (!ecoSleepingRef.current || ecoRecognitionRef.current !== recognition || document.visibilityState !== "visible") return;
+        try { recognition.start(); } catch {
+          ecoRecognitionRef.current = null;
+          setTranscript("待命中；請按「開始對話」重新啟動語音。");
+        }
+      }, restartDelayMs);
     };
 
-    try { recognition.start(); } catch {}
+    try { recognition.start(); } catch {
+      ecoRecognitionRef.current = null;
+      setTranscript("待命中；請按「開始對話」重新啟動語音。");
+    }
   };
 
   const enterEcoSleep = async () => {
