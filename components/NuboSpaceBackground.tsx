@@ -121,7 +121,8 @@ export function NuboSpaceBackground() {
         }
       }
 
-      frame = window.requestAnimationFrame(draw);
+      // The animated voice orb is the focal point on tablets; keep the full-screen sky static.
+      if (!touchTablet) frame = window.requestAnimationFrame(draw);
     };
 
     const onVisibility = () => {
