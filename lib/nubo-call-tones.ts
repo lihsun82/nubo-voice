@@ -13,9 +13,9 @@ export async function playNuboCallTones() {
   let context: AudioContext | null = null;
 
   try {
-    context = ownsContext
-      ? new AudioContext({ latencyHint: "interactive" })
-      : primed;
+    context = primed && primed.state !== "closed"
+      ? primed
+      : new AudioContext({ latencyHint: "interactive" });
     await context.resume();
 
     if (context.state === "running") {
@@ -24,11 +24,12 @@ export async function playNuboCallTones() {
         const at = start + index * (TONE_MS + GAP_MS) / 1000;
         const gain = context.createGain();
         gain.gain.setValueAtTime(0, at);
-        gain.gain.linearRampToValueAtTime(0.12, at + 0.015);
-        gain.gain.setValueAtTime(0.12, at + (TONE_MS - 20) / 1000);
+        gain.gain.linearRampToValueAtTime(0.08, at + 0.015);
+        gain.gain.setValueAtTime(0.08, at + (TONE_MS - 20) / 1000);
         gain.gain.linearRampToValueAtTime(0, at + TONE_MS / 1000);
         gain.connect(context.destination);
 
+        let finished = 0;
         for (const frequency of [425, 480]) {
           const oscillator = context.createOscillator();
           oscillator.type = "sine";
@@ -36,7 +37,11 @@ export async function playNuboCallTones() {
           oscillator.connect(gain);
           oscillator.start(at);
           oscillator.stop(at + TONE_MS / 1000 + 0.01);
-          oscillator.onended = () => oscillator.disconnect();
+          oscillator.onended = () => {
+            oscillator.disconnect();
+            finished += 1;
+            if (finished === 2) gain.disconnect();
+          };
         }
       }
     }
