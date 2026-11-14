@@ -21,14 +21,14 @@ function hasExplicitResearchIntent(value: string) {
 }
 
 function hasLocalAreaInfoIntent(value: string) {
-  return /(一中商圈|一中街|台中一中|錦新街|台中市北區)/i.test(value) &&
+  return /(一中商圈|一中街|台中一中|錦新街|台中市北區|\byizhong\b|\byi[ -]?zhong\b|\btaichung north district\b)/i.test(value) &&
     !/(房價|競品行情|市場行情|天氣|氣溫|颱風)/i.test(value);
 }
 
 function hasCurrentAffairsIntent(value: string) {
   return /(最近|目前|現在|今天|昨日|昨天|本週|這週|近期|即時|剛剛|剛才|颱風|颱風警報|熱帶性低氣壓|豪雨|地震|國際時事|國際新聞|國際情勢|經濟|總體經濟|景氣|政治|選舉|政府|文藝|藝文|展覽|演出|文化活動|科技時事|科技新聞|AI新聞|人工智慧新聞|新機|新品|發表會|流行|趨勢|熱門|熱搜|股市|匯率|油價|金價|戰爭|衝突|外交|制裁|關稅|疫情|停班停課)/i.test(
     value,
-  );
+  ) || /\b(today|tonight|latest|recent|current|now|news|politics|election|economy|economic|inflation|exchange rate|stock market|typhoon|earthquake|weather alert|art exhibition|concert|festival|opening hours|travel advisory)\b/i.test(value);
 }
 
 export function shouldBlockVoiceResearch(questionValue: unknown) {
@@ -120,7 +120,9 @@ async function runFastCurrentInfo(question: string, mode: "current" | "local" = 
         timeout: true,
         fastCurrentInfo: true,
         reason:
-          "快速即時資料查詢超過5.2秒，已停止等待。請明確告知目前無法確認，不要用舊資料猜測。",
+          mode === "local"
+            ? "一中商圈資料查詢逾時，請明確告知目前無法確認，不要猜測店家或路線。"
+            : "快速即時資料查詢超過5.2秒，已停止等待。請明確告知目前無法確認，不要用舊資料猜測。",
       };
     }
 
