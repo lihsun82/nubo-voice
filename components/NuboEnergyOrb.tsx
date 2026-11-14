@@ -94,9 +94,9 @@ function getRenderProfile(): RenderProfile {
   // Installed guest Web Apps run on low-power tablets.
   if (touchTablet) {
     return {
-      particleCount: reducedMotion ? 450 : 900,
-      frameInterval: 1000 / (reducedMotion ? 12 : 18),
-      dpr: 1,
+      particleCount: reducedMotion ? 48 : 96,
+      frameInterval: 1000 / (reducedMotion ? 12 : 20),
+      dpr: 0.75,
     };
   }
 
@@ -1099,6 +1099,63 @@ function renderHologram(
   ctx.restore();
 }
 
+type TabletOrbParticle = { angle: number; radius: number; size: number; speed: number; phase: number };
+
+function drawTabletMolecularOrb(
+  ctx: CanvasRenderingContext2D,
+  particles: TabletOrbParticle[],
+  time: number,
+  phase: NuboVoicePhase,
+  audioLevel: number,
+) {
+  const t = time * 0.001;
+  const speaking = phase === "speaking";
+  const pulse = 1 + Math.sin(t * (speaking ? 4 : 1.7)) * (speaking ? 0.045 : 0.025);
+  const radius = 118 * pulse;
+  const cx = AVATAR_WIDTH / 2;
+  const cy = AVATAR_HEIGHT / 2 - 25;
+  ctx.clearRect(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
+
+  const halo = ctx.createRadialGradient(cx, cy, 55, cx, cy, 205);
+  halo.addColorStop(0, "rgba(28, 221, 243, 0.12)");
+  halo.addColorStop(0.65, "rgba(16, 130, 242, 0.10)");
+  halo.addColorStop(1, "rgba(16, 130, 242, 0)");
+  ctx.fillStyle = halo;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 205, 0, Math.PI * 2);
+  ctx.fill();
+
+  const core = ctx.createRadialGradient(cx - 35, cy - 42, 8, cx, cy, radius);
+  core.addColorStop(0, "rgba(244, 251, 255, 0.95)");
+  core.addColorStop(0.28, "rgba(112, 240, 251, 0.94)");
+  core.addColorStop(0.63, "rgba(34, 155, 241, 0.78)");
+  core.addColorStop(1, "rgba(79, 59, 217, 0.26)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let ring = 0; ring < 3; ring += 1) {
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, radius + 12 + ring * 11, (radius + 12 + ring * 11) * 0.82, t * 0.12 + ring * 1.05, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(102, 227, 253, ${0.36 - ring * 0.09})`;
+    ctx.lineWidth = ring === 0 ? 2 : 1;
+    ctx.stroke();
+  }
+
+  for (const particle of particles) {
+    const angle = particle.angle + t * particle.speed;
+    const orbit = particle.radius * (1 + Math.sin(t * 1.3 + particle.phase) * 0.035);
+    const x = cx + Math.cos(angle) * orbit;
+    const y = cy + Math.sin(angle) * orbit * 0.83;
+    const shimmer = 0.55 + Math.sin(t * 2.2 + particle.phase) * 0.25;
+    ctx.fillStyle = `rgba(173, 250, 255, ${shimmer})`;
+    ctx.beginPath();
+    ctx.arc(x, y, particle.size + (speaking ? audioLevel * 0.8 : 0), 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 export function NuboEnergyOrb() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -1111,7 +1168,17 @@ export function NuboEnergyOrb() {
     if (!canvas || !ctx) return;
 
     const profile = getRenderProfile();
-    const particles = createParticles(profile.particleCount);
+    const tabletMode = window.matchMedia("(pointer: coarse)").matches;
+    const particles = tabletMode ? [] : createParticles(profile.particleCount);
+    const orbParticles: TabletOrbParticle[] = tabletMode
+      ? Array.from({ length: profile.particleCount }, (_, index) => ({
+          angle: seededRandom(index + 3) * Math.PI * 2,
+          radius: 105 + seededRandom(index + 37) * 90,
+          size: 0.8 + seededRandom(index + 71) * 1.5,
+          speed: 0.09 + seededRandom(index + 113) * 0.28,
+          phase: seededRandom(index + 151) * Math.PI * 2,
+        }))
+      : [];
     let phase: NuboVoicePhase = "idle";
     let playbackActive = false;
     let audioLevel = 0;
@@ -1191,11 +1258,13 @@ export function NuboEnergyOrb() {
       if (transcript?.textContent) setGestureFromText(transcript.textContent);
     });
 
-    transcriptObserver.observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-    });
+    if (!tabletMode) {
+      transcriptObserver.observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    }
 
     const draw = (time: number) => {
       animationFrame = 0;
@@ -1212,14 +1281,18 @@ export function NuboEnergyOrb() {
 
       if (time - lastFrameAt >= effectiveFrameInterval) {
         lastFrameAt = time;
-        renderHologram(
-          ctx,
-          particles,
-          time,
-          playbackActive ? "speaking" : phase,
-          audioLevel,
-          gesture,
-        );
+        if (tabletMode) {
+          drawTabletMolecularOrb(ctx, orbParticles, time, playbackActive ? "speaking" : phase, audioLevel);
+        } else {
+          renderHologram(
+            ctx,
+            particles,
+            time,
+            playbackActive ? "speaking" : phase,
+            audioLevel,
+            gesture,
+          );
+        }
       }
 
       animationFrame = window.requestAnimationFrame(draw);
