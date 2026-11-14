@@ -45,3 +45,20 @@
   .nubo-space-grid, .nubo-space-horizon { animation: none !important; }
   body::after { animation: none !important; }
 }
+
+.nubo-nearby-results {
+  width: 100%;
+  max-height: min(32svh, 260px);
+  overflow-y: auto;
+  padding: 16px 20px;
+  border: 1px solid rgba(115, 188, 223, 0.38);
+  border-radius: 18px;
+  background: rgba(8, 26, 46, 0.88);
+  color: #eafaff;
+  text-align: left;
+}
+.nubo-nearby-results h2 { margin: 0 0 10px; font-size: clamp(16px, 2.5vw, 21px); }
+.nubo-nearby-results ol { margin: 0; padding-left: 1.5em; display: grid; gap: 8px; }
+.nubo-nearby-results li { padding-left: 3px; }
+.nubo-nearby-results strong { display: block; }
+.nubo-nearby-results span { display: block; color: #bbd8e5; font-size: 14px; line-height: 1.35; }
