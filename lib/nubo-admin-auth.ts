@@ -133,3 +133,33 @@ export async function getAdminSession(request: NextRequest) {
     return null;
   }
 }
+
+const DEVICE_COOKIE_NAME = "nubo_guest_device";
+const DEVICE_SESSION_MS = 180 * 24 * 60 * 60_000;
+
+export async function setGuestDeviceSession(response: NextResponse) {
+  const payload = Buffer.from(JSON.stringify({
+    id: randomBytes(16).toString("hex"),
+    expiresAt: Date.now() + DEVICE_SESSION_MS,
+  })).toString("base64url");
+  const mac = createHmac("sha256", await sessionSecret()).update(payload).digest("base64url");
+  response.cookies.set(DEVICE_COOKIE_NAME, payload + "." + mac, {
+    httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: DEVICE_SESSION_MS / 1000,
+  });
+}
+
+export async function hasGuestDeviceSession(request: NextRequest) {
+  const raw = request.cookies.get(DEVICE_COOKIE_NAME)?.value || "";
+  const parts = raw.split(".");
+  if (parts.length !== 2) return false;
+  const expected = createHmac("sha256", await sessionSecret()).update(parts[0]).digest();
+  const received = Buffer.from(parts[1], "base64url");
+  if (expected.length !== received.length || !timingSafeEqual(expected, received)) return false;
+  try {
+    const payload = decodeJwtPart(parts[0]);
+    return typeof payload.id === "string" && Boolean(payload.id) &&
+      typeof payload.expiresAt === "number" && payload.expiresAt > Date.now();
+  } catch {
+    return false;
+  }
+}
