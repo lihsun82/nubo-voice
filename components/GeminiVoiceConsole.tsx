@@ -252,6 +252,16 @@ export function GeminiVoiceConsole() {
   }, []);
 
   useEffect(() => {
+    const syncWakeWithVisibility = () => {
+      if (!ecoSleepingRef.current) return;
+      if (document.visibilityState === "visible") startEcoWakeListener();
+      else stopEcoWakeListener();
+    };
+    document.addEventListener("visibilitychange", syncWakeWithVisibility);
+    return () => document.removeEventListener("visibilitychange", syncWakeWithVisibility);
+  }, []);
+
+  useEffect(() => {
     const handleSenseEvent = (event: Event) => {
       const detail = (event as CustomEvent<{ type?: string; confidence?: number }>).detail;
       if (!detail?.type) return;
