@@ -1,3 +1,4 @@
+import { recordCaptureCallbackGap, recordPlaybackUnderrun } from "@/lib/nubo-voice-diagnostics";
 import {
   disableHardwareOutputForCaptureContext,
   preferMultimediaAudioContext,
@@ -143,6 +144,7 @@ export class MicrophonePcmStream {
   private captureDestination: MediaStreamAudioDestinationNode | null = null;
   private foregroundListenersAttached = false;
   private lastVoiceAt = Date.now();
+  private lastCaptureCallbackAt = 0;
   private ecoSleeping = false;
   private noiseFloor = 0.012;
   private hotFrames = 0;
@@ -178,6 +180,7 @@ export class MicrophonePcmStream {
     }
 
     this.lastVoiceAt = Date.now();
+    this.lastCaptureCallbackAt = 0;
     this.ecoSleeping = false;
     this.noiseFloor = 0.012;
     this.hotFrames = 0;
@@ -209,6 +212,8 @@ export class MicrophonePcmStream {
       const rms = calculateRms(input);
       const threshold = Math.max(0.02, this.noiseFloor * 2.6);
       const now = Date.now();
+      if (this.lastCaptureCallbackAt) recordCaptureCallbackGap(now - this.lastCaptureCallbackAt);
+      this.lastCaptureCallbackAt = now;
 
       if (rms < threshold * 0.8) {
         this.noiseFloor = this.noiseFloor * 0.985 + rms * 0.015;
@@ -430,6 +435,9 @@ export class PcmPlaybackQueue {
     // Buffer the first chunk against network jitter. Continuations should start
     // directly after the previous chunk instead of inserting a fresh lead gap.
     const queueDrained = this.sources.size === 0 || this.nextStart <= context.currentTime;
+    if (this.playbackActive && this.nextStart < context.currentTime) {
+      recordPlaybackUnderrun((context.currentTime - this.nextStart) * 1000);
+    }
     const lead = queueDrained ? this.initialBufferSeconds : this.continuationLeadSeconds;
     const startAt = Math.max(context.currentTime + lead, this.nextStart);
     source.start(startAt);
