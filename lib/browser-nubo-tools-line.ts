@@ -8,6 +8,7 @@ import {
 import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
+import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -158,6 +159,16 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
+  if (!NUBO_GUEST_MUSIC_ENABLED && (
+    call.name === "open_youtube" ||
+    call.name === "control_youtube" ||
+    (call.name === "open_mobile_app" &&
+      YOUTUBE_APP_NAMES.has(normalizeAppName(call.args?.app)) &&
+      Boolean(String(call.args?.query ?? "").trim()))
+  )) {
+    return { ok: false, disabled: true, reason: "旅客模式目前未開放音樂播放。" };
+  }
+
   if (call.name === "google_home_light") {
     const args = call.args ?? {};
     const action = args.action === "off" ? "off" : "on";
