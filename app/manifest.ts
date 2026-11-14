@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "NUBO 智能語音",
     short_name: "NUBO",
-    description: "NUBO 個人 AI 語音與自動化控制中心",
+    description: "AINUBO Hotel 旅客語音管家",
     start_url: "/?source=pwa",
     scope: "/",
     display: "standalone",
