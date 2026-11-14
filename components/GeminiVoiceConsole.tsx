@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
 import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
+import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
 import {
   executeNuboBrowserTool,
   geminiFunctionDeclarations,
@@ -516,6 +517,7 @@ export function GeminiVoiceConsole() {
       "true",
     );
     if (!isReconnect) {
+      startVoiceDiagnostics();
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
@@ -581,12 +583,14 @@ export function GeminiVoiceConsole() {
                   },
                 }),
               );
+              recordSocketBuffer(socket.bufferedAmount);
             });
             setState("connected");
           }
 
           const serverContent = message.serverContent;
           if (serverContent?.interrupted) {
+            recordServerInterruption();
             playbackRef.current?.interrupt();
             notifyNuboVoicePhase("listening");
           }
@@ -594,12 +598,15 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
+                recordIncomingAudioChunk();
                 noteVoiceInteraction();
                 markSpeaking();
                 await playbackRef.current?.enqueue(part.inlineData.data, 24000);
               }
             }
           }
+
+          if (serverContent?.turnComplete) finishIncomingAudioTurn();
 
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
@@ -911,6 +918,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         playbackRef.current = null;
         socketRef.current = null;
         if (!closingRef.current) {
+          recordUnexpectedDisconnect();
           // The previous generic message concealed Google's close code/reason.
           // Never include tokens, request URLs or credentials in the UI.
           const detail = event.reason?.trim().slice(0, 180);
