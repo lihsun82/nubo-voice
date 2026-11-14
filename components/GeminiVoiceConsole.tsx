@@ -15,6 +15,7 @@ import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
+import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -569,8 +570,12 @@ export function GeminiVoiceConsole() {
             setup: {
               model: `models/${tokenData.model}`,
               generationConfig: { responseModalities: ["AUDIO"] },
-              systemInstruction: { parts: [{ text: geminiSystemInstruction }] },
-              tools: [{ functionDeclarations: geminiFunctionDeclarations }],
+              systemInstruction: { parts: [{ text: NUBO_GUEST_MUSIC_ENABLED
+                ? geminiSystemInstruction
+                : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${geminiSystemInstruction}` }] },
+              tools: [{ functionDeclarations: NUBO_GUEST_MUSIC_ENABLED
+                ? geminiFunctionDeclarations
+                : geminiFunctionDeclarations.filter((tool) => tool.name !== "open_youtube" && tool.name !== "control_youtube") }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               contextWindowCompression: { slidingWindow: {} },
@@ -648,8 +653,9 @@ export function GeminiVoiceConsole() {
               trimmedUserText,
             );
 
-            const fastYouTubeQuery =
-              extractYouTubeFastRouteQuery(trimmedUserText);
+            const fastYouTubeQuery = NUBO_GUEST_MUSIC_ENABLED
+              ? extractYouTubeFastRouteQuery(trimmedUserText)
+              : null;
 
             if (fastYouTubeQuery) {
               if (youtubeFastRouteTimerRef.current !== null) {
@@ -1201,7 +1207,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           {state === "connecting" ? "連線中…" : state === "connected" ? "結束對話" : "開始對話"}
         </button>
       </div>
-      {mobileYoutube ? (
+      {NUBO_GUEST_MUSIC_ENABLED && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
           {"開啟："}{mobileYoutube.title}
