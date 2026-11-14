@@ -1,6 +1,6 @@
 "use client";
 
-import { classifyNuboArrivalIntent, type NuboArrivalIntent } from "@/lib/nubo-arrival-intent";
+import { classifyNuboArrivalIntent, isNuboArrivalCancellation, type NuboArrivalIntent } from "@/lib/nubo-arrival-intent";
 
 const DEVICE_KEY = "nubo_arrival_alert_device_v1";
 const DEBOUNCE_MS = 1000;
@@ -57,11 +57,18 @@ export async function sendNuboArrivalIntent(
 export function queueNuboArrivalTranscript(transcript: string) {
   if (typeof window === "undefined") return;
   const text = transcript.trim();
+  if (isNuboArrivalCancellation(text)) {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+    pendingTranscript = "";
+    return;
+  }
   const intent = classifyNuboArrivalIntent(text);
-  if (timer !== null) window.clearTimeout(timer);
-  timer = null;
-  pendingTranscript = intent ? text : "";
+  // Gemini may follow a complete phrase with shorter transcription revisions.
+  // Those revisions must not erase a recognized arrival request.
   if (!intent) return;
+  if (timer !== null) window.clearTimeout(timer);
+  pendingTranscript = text;
 
   timer = window.setTimeout(() => {
     timer = null;
