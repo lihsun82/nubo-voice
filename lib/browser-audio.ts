@@ -302,7 +302,10 @@ export class PcmPlaybackQueue {
   private context: AudioContext | null = null;
   private nextStart = 0;
   private sources = new Set<AudioBufferSourceNode>();
-  private readonly scheduleLeadSeconds = 0.08;
+  private readonly initialBufferSeconds = 0.22;
+  private readonly continuationLeadSeconds = 0.012;
+  private enqueueTail: Promise<void> = Promise.resolve();
+  private generation = 0;
   private foregroundListenersAttached = false;
   private retired = false;
   private playbackActive = false;
@@ -391,10 +394,19 @@ export class PcmPlaybackQueue {
     return this.context.state === "running";
   }
 
-  async enqueue(base64: string, sampleRate = 24000) {
-    if (this.retired) return;
+  enqueue(base64: string, sampleRate = 24000) {
+    const generation = this.generation;
+    const task = this.enqueueTail.then(() =>
+      this.enqueueChunk(base64, sampleRate, generation),
+    );
+    this.enqueueTail = task.catch(() => undefined);
+    return task;
+  }
+
+  private async enqueueChunk(base64: string, sampleRate: number, generation: number) {
+    if (this.retired || generation !== this.generation) return;
     const context = await this.ensureContext();
-    if (!context || this.retired || activePlaybackQueue !== this) return;
+    if (!context || this.retired || activePlaybackQueue !== this || generation !== this.generation) return;
 
     const bytes = fromBase64(base64);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -415,10 +427,11 @@ export class PcmPlaybackQueue {
     source.buffer = audioBuffer;
     source.connect(context.destination);
 
-    const startAt = Math.max(
-      context.currentTime + this.scheduleLeadSeconds,
-      this.nextStart,
-    );
+    // Buffer the first chunk against network jitter. Continuations should start
+    // directly after the previous chunk instead of inserting a fresh lead gap.
+    const queueDrained = this.sources.size === 0 || this.nextStart <= context.currentTime;
+    const lead = queueDrained ? this.initialBufferSeconds : this.continuationLeadSeconds;
+    const startAt = Math.max(context.currentTime + lead, this.nextStart);
     source.start(startAt);
     this.nextStart = startAt + audioBuffer.duration;
     this.clearPlaybackTailTimer();
@@ -444,6 +457,7 @@ export class PcmPlaybackQueue {
   }
 
   interrupt() {
+    this.generation += 1;
     this.clearPlaybackTailTimer();
     for (const source of this.sources) {
       try {
