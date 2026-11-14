@@ -2,6 +2,7 @@
 
 const RESEARCH_TIMEOUT_MS = 10_000;
 const CURRENT_INFO_TIMEOUT_MS = 5_200;
+const LOCAL_INFO_TIMEOUT_MS = 9_500;
 
 function normalize(value: unknown) {
   return String(value ?? "")
@@ -19,8 +20,13 @@ function hasExplicitResearchIntent(value: string) {
   );
 }
 
+function hasLocalAreaInfoIntent(value: string) {
+  return /(一中商圈|一中街|台中一中|錦新街|台中市北區)/i.test(value) &&
+    !/(房價|競品行情|市場行情|天氣|氣溫|颱風)/i.test(value);
+}
+
 function hasCurrentAffairsIntent(value: string) {
-  return /(最近|目前|現在|今天|昨日|昨天|本週|這週|近期|即時|剛剛|剛才|颱風|颱風警報|熱帶性低氣壓|豪雨|地震|國際時事|國際新聞|政治|選舉|政府|科技時事|科技新聞|AI新聞|人工智慧新聞|新機|新品|發表會|流行|趨勢|熱門|熱搜|股市|匯率|油價|金價|戰爭|衝突|外交|制裁|關稅|疫情|停班停課)/i.test(
+  return /(最近|目前|現在|今天|昨日|昨天|本週|這週|近期|即時|剛剛|剛才|颱風|颱風警報|熱帶性低氣壓|豪雨|地震|國際時事|國際新聞|國際情勢|經濟|總體經濟|景氣|政治|選舉|政府|文藝|藝文|展覽|演出|文化活動|科技時事|科技新聞|AI新聞|人工智慧新聞|新機|新品|發表會|流行|趨勢|熱門|熱搜|股市|匯率|油價|金價|戰爭|衝突|外交|制裁|關稅|疫情|停班停課)/i.test(
     value,
   );
 }
@@ -40,7 +46,8 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
     question.length <= 24 &&
     chineseCount === 0 &&
     !hasExplicitResearchIntent(question) &&
-    !hasCurrentAffairsIntent(question)
+    !hasCurrentAffairsIntent(question) &&
+    !hasLocalAreaInfoIntent(question)
   ) {
     return {
       blocked: true,
@@ -53,7 +60,8 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
     question.length <= 8 &&
     chineseCount <= 2 &&
     !hasExplicitResearchIntent(question) &&
-    !hasCurrentAffairsIntent(question)
+    !hasCurrentAffairsIntent(question) &&
+    !hasLocalAreaInfoIntent(question)
   ) {
     return {
       blocked: true,
@@ -64,7 +72,8 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
 
   if (
     !hasExplicitResearchIntent(question) &&
-    !hasCurrentAffairsIntent(question)
+    !hasCurrentAffairsIntent(question) &&
+    !hasLocalAreaInfoIntent(question)
   ) {
     return {
       blocked: true,
@@ -76,18 +85,18 @@ export function shouldBlockVoiceResearch(questionValue: unknown) {
   return { blocked: false, reason: "" };
 }
 
-async function runFastCurrentInfo(question: string) {
+async function runFastCurrentInfo(question: string, mode: "current" | "local" = "current") {
   const controller = new AbortController();
   const timer = window.setTimeout(
     () => controller.abort(),
-    CURRENT_INFO_TIMEOUT_MS,
+    mode === "local" ? LOCAL_INFO_TIMEOUT_MS : CURRENT_INFO_TIMEOUT_MS,
   );
 
   try {
     const response = await fetch("/api/current-info", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, mode }),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => ({}));
@@ -142,6 +151,10 @@ export async function runVoiceResearchWithTimeout(
       fastGuard: true,
       reason: guard.reason,
     };
+  }
+
+  if (hasLocalAreaInfoIntent(question)) {
+    return runFastCurrentInfo(question, "local");
   }
 
   // Volatile questions use the direct-source Fast Current Agent first.
