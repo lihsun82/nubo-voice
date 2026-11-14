@@ -8,7 +8,7 @@ import {
 import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
-import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
+import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -159,7 +159,7 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
-  if (!NUBO_GUEST_MUSIC_ENABLED && (
+  if (!getNuboGuestConfigSnapshot().musicEnabled && (
     call.name === "open_youtube" ||
     call.name === "control_youtube" ||
     (call.name === "open_mobile_app" &&
