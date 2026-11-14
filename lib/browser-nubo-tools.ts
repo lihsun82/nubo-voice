@@ -689,10 +689,10 @@ export const geminiSystemInstruction = `
 1D-2. 新寶智慧一中館、一中館、台中一中、錦新街使用zone=taichung；忠孝復興、台北忠孝復興使用zone=taipei；要求兩區或全部時使用zone=all。
 1D-3. hotel_market_report回傳stale=true時，必須先明確說資料已過期及最後更新時間，再報告現有資料；不得宣稱是今天最新行情。
 1D-4. 使用者明確要求立即更新、重新抓取、執行雷達或啟動行情工作流時，呼叫hotel_market_refresh。工具只代表GitHub工作流已開始，不代表新報告已完成。
-1E. NUBO_MOBILE_PLACES_V1：使用者詢問附近、周邊、這附近、住家附近的飲料店、因料店、餐廳、咖啡廳、早餐店、便利商店、藥局、停車場、加油站或其他店家時，立即呼叫search_nearby，不得呼叫research_now。
-1E-1. 只傳入店家類型或搜尋條件，例如「飲料店」「評價好的餐廳」「營業中的咖啡廳」。使用者有指定城市或行政區時才填location。
-1E-2. 使用者只說附近、周邊、這裡或我住的周邊時，不得自行改成台南；location保持空白，讓Google Maps使用手機目前位置。
-1E-3. search_nearby會直接開啟Google Maps；工具完成後只需簡短說已開啟，不要再重複深度搜尋。
+1E. NUBO_TABLET_PLACES_LIST_V2：旅客詢問附近的飲料店、餐廳、咖啡廳、商店、藥局、停車場等，立即呼叫search_nearby取得真實店家清單。
+1E-1. query只傳店家類型或條件；旅客指定一中商圈時，location傳「台中市北區一中商圈」。其他指定城市、行政區或地標也必須完整傳入location。
+1E-2. 旅客只說「這附近」而沒有指定地點時，location留空，讓平板以目前位置搜尋；定位失敗時請旅客說出地點。
+1E-3. 工具回傳清單後，先用語音介紹3到5間實際回傳的店名與約略距離；畫面會同步顯示店家列表。沒有結果時要明說查無可驗證的店家，不可自行編造。只有旅客明確要求開地圖或導航，才另外開啟地圖。
 3A. 手機版要求開啟Facebook、FB、臉書、Instagram、IG、Google、Gmail、地圖或網址時，必須呼叫open_website；手機端會直接開啟官方網頁或對應App，不得回答無法開啟。
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
 2A. 手機版要求播放歌曲、音樂或YouTube影片時仍呼叫open_youtube；工具會直接開啟YouTube或YouTube Music App／網頁。不得改用research_now。
@@ -795,7 +795,7 @@ export const geminiFunctionDeclarations = [
   {
     name: "search_nearby",
     description:
-      "極速搜尋手機目前位置附近的餐廳、飲料店、咖啡廳、商店、藥局、停車場或其他地點，並直接開啟Google Maps。附近搜尋不得改用research_now。",
+      "搜尋指定地點或平板目前位置附近的實際店家，回傳名稱、地址、距離供語音介紹並顯示清單。詢問店家時不要只開地圖。",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -1188,40 +1188,48 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   }
 
   if (name === "search_nearby") {
-    const query =
-      String(args.query ?? "").trim();
+    const query = String(args.query ?? "").trim();
+    const location = String(args.location ?? "").trim();
+    if (!query) throw new Error("缺少附近搜尋項目");
 
-    const location =
-      String(
-        args.location ?? "",
-      ).trim();
-
-    if (!query) {
-      throw new Error(
-        "缺少附近搜尋項目",
-      );
+    let position: { latitude: number; longitude: number } | null = null;
+    if (!location && typeof navigator !== "undefined" && navigator.geolocation) {
+      position = await new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+          () => resolve(null),
+          { enableHighAccuracy: false, timeout: 3500, maximumAge: 60_000 },
+        );
+      });
+    }
+    if (!location && !position) {
+      return { ok: false, needsLocation: true, message: "請告訴我要搜尋哪個地點附近的店家。" };
     }
 
-    const url =
-      buildMapsSearchUrl(
-        query,
-        location || undefined,
-      );
-
-    if (isMobileWebClient()) {
-      return {
-        ...openClientUrl(url),
-        provider: "Google Maps",
-        query,
-        location:
-          location || "目前位置",
-      };
+    const result = await post("/api/places/search", {
+      query,
+      location,
+      ...(position || {}),
+      limit: 8,
+      radiusMeters: 1800,
+    });
+    const results = Array.isArray(result.results) ? result.results : [];
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("nubo:nearby-results", {
+        detail: {
+          query,
+          location: String(result.resolvedLocation || location || "目前位置"),
+          results,
+        },
+      }));
     }
-
-    return post(
-      "/api/system/open-website",
-      { target: url },
-    );
+    return {
+      ...result,
+      mapsUrl: buildMapsSearchUrl(query, location || undefined),
+      message: results.length
+        ? `找到${results.length}間店家，請依據清單介紹店名與距離。`
+        : "查無可驗證的店家，請勿編造店名。",
+    };
   }
 
   if (

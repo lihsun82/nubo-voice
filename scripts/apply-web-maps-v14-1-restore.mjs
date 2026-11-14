@@ -469,12 +469,8 @@ async function tryNuboMapsWebOverlay(call: FunctionCall) {
 
   const args = call.args ?? {};
 
-  if (call.name === "search_nearby") {
-    const query = String(args.query ?? "").trim();
-    if (!query) return null;
-    return showNuboMapsWebOverlay(query, args.location);
-  }
-
+  // Nearby questions need verified place results for voice and the guest list.
+  // Keep this overlay for explicit map-opening commands only.
   if (call.name !== "open_mobile_app") return null;
   const app = normalizeNuboMapApp(args.app);
   if (!NUBO_MAP_WEB_APP_NAMES.has(app)) return null;

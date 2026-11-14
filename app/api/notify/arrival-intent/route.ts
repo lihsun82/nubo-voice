@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { classifyNuboArrivalIntent, isNuboArrivalCancellation, type NuboArrivalIntent } from "@/lib/nubo-arrival-intent";
-import { pushHotelLineText } from "@/lib/nubo-hotel-line";
+import { pushHotelLineText, getHotelLineStatus } from "@/lib/nubo-hotel-line";
+import { getAdminSession } from "@/lib/nubo-admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,11 @@ const SOURCE_MAX_ALERTS = 12;
 const recent = new Map<string, number>();
 type LineDelivery = Awaited<ReturnType<typeof pushHotelLineText>>;
 const inFlight = new Map<string, Promise<LineDelivery>>();
+const failedAt = new Map<string, number>();
+let quotaRetryAfter = 0;
+let lastDelivery: { state: "ready" | "delivered" | "quota_exhausted" | "failed"; at: string | null } = {
+  state: "ready", at: null,
+};
 const sourceWindows = new Map<string, { startedAt: number; count: number }>();
 
 function taipeiTime() {
@@ -44,6 +50,17 @@ function isAllowedOrigin(request: NextRequest) {
   } catch {
     return false;
   }
+}
+
+export async function GET(request: NextRequest) {
+  if (!await getAdminSession(request)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  return NextResponse.json({
+    ...lastDelivery,
+    retryAfterSeconds: Math.max(0, Math.ceil((quotaRetryAfter - Date.now()) / 1000)),
+    deliveryMode: getHotelLineStatus().deliveryMode,
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
@@ -83,9 +100,22 @@ export async function POST(request: NextRequest) {
   for (const [oldKey, at] of recent) {
     if (now - at > COOLDOWN_MS * 2) recent.delete(oldKey);
   }
+  for (const [oldKey, at] of failedAt) {
+    if (now - at > 30_000) failedAt.delete(oldKey);
+  }
   if (now - (recent.get(key) ?? 0) < cooldownMs) {
     console.info("[arrival-alert] duplicate utterance suppressed", { intent, source });
     return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
+  }
+
+  if (now < quotaRetryAfter) {
+    return NextResponse.json({
+      ok: false, sent: false, error: "line_monthly_quota",
+      retryAfterSeconds: Math.ceil((quotaRetryAfter - now) / 1000),
+    }, { status: 503 });
+  }
+  if (now - (failedAt.get(key) ?? 0) < 15_000) {
+    return NextResponse.json({ ok: false, sent: false, error: "line_delivery_retry_later" }, { status: 503 });
   }
 
   const sourceId = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
@@ -113,7 +143,7 @@ export async function POST(request: NextRequest) {
       console.info("[arrival-alert] concurrent utterance suppressed", { intent, source });
       return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
     } catch {
-      // A concurrent delivery failed; this request may retry it.
+      return NextResponse.json({ ok: false, sent: false, error: "line_delivery_retry_later" }, { status: 503 });
     }
   }
 
@@ -122,6 +152,9 @@ export async function POST(request: NextRequest) {
   try {
     const result = await delivery;
     recent.set(key, Date.now());
+    failedAt.delete(key);
+    quotaRetryAfter = 0;
+    lastDelivery = { state: "delivered", at: new Date().toISOString() };
     console.info("[arrival-alert] delivered", {
       intent, via: result.via, succeeded: result.succeeded,
     });
@@ -130,15 +163,22 @@ export async function POST(request: NextRequest) {
       channel: "line", targetCount: result.succeeded,
     });
   } catch (error) {
-    const relayStatus = error instanceof Error
-      ? error.message.match(/Relay 發送失敗：(\d{3})/)?.[1] ?? null
-      : null;
+    const message = error instanceof Error ? error.message : "";
+    const relayStatus = message.match(/Relay 發送失敗：(\d{3})/)?.[1] ?? null;
+    const quotaExhausted = /monthly limit|每月.*(?:上限|額度)/i.test(message);
+    failedAt.set(key, Date.now());
+    if (quotaExhausted) quotaRetryAfter = Date.now() + 60_000;
+    lastDelivery = {
+      state: quotaExhausted ? "quota_exhausted" : "failed",
+      at: new Date().toISOString(),
+    };
     console.warn("[arrival-alert] delivery failed", {
-      intent, relayStatus, errorName: error instanceof Error ? error.name : "unknown",
+      intent, relayStatus, quotaExhausted,
+      errorName: error instanceof Error ? error.name : "unknown",
     });
     return NextResponse.json(
-      { ok: false, sent: false, error: "LINE 群組通知未送達" },
-      { status: 502 },
+      { ok: false, sent: false, error: quotaExhausted ? "line_monthly_quota" : "LINE 群組通知未送達" },
+      { status: quotaExhausted ? 503 : 502 },
     );
   } finally {
     if (inFlight.get(key) === delivery) inFlight.delete(key);

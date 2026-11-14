@@ -96,7 +96,7 @@ function getRenderProfile(): RenderProfile {
     return {
       particleCount: reducedMotion ? 48 : 96,
       frameInterval: 1000 / (reducedMotion ? 12 : 20),
-      dpr: 0.75,
+      dpr: Math.min(window.devicePixelRatio || 1, cores <= 4 ? 1.25 : 1.5),
     };
   }
 
@@ -1110,30 +1110,39 @@ function drawTabletMolecularOrb(
 ) {
   const t = time * 0.001;
   const speaking = phase === "speaking";
-  const pulse = 1 + Math.sin(t * (speaking ? 4 : 1.7)) * (speaking ? 0.045 : 0.025);
-  const radius = 118 * pulse;
+  const listening = phase === "listening";
+  const voice = speaking || listening ? clamp01(audioLevel) : 0;
+  const pulse = 1 + Math.sin(t * (speaking ? 4 : 1.7)) * (speaking ? 0.018 : 0.012);
+  const radius = 118 * (pulse + voice * 0.2);
   const cx = AVATAR_WIDTH / 2;
   const cy = AVATAR_HEIGHT / 2 - 25;
   ctx.clearRect(0, 0, AVATAR_WIDTH, AVATAR_HEIGHT);
 
-  const halo = ctx.createRadialGradient(cx, cy, 55, cx, cy, 205);
+  const haloRadius = 205 + voice * 28;
+  const halo = ctx.createRadialGradient(cx, cy, 55, cx, cy, haloRadius);
   halo.addColorStop(0, "rgba(28, 221, 243, 0.12)");
   halo.addColorStop(0.65, "rgba(16, 130, 242, 0.10)");
   halo.addColorStop(1, "rgba(16, 130, 242, 0)");
   ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(cx, cy, 205, 0, Math.PI * 2);
+  ctx.arc(cx, cy, haloRadius, 0, Math.PI * 2);
   ctx.fill();
 
   const core = ctx.createRadialGradient(cx - 35, cy - 42, 8, cx, cy, radius);
   core.addColorStop(0, "rgba(244, 251, 255, 0.95)");
   core.addColorStop(0.28, "rgba(112, 240, 251, 0.94)");
   core.addColorStop(0.63, "rgba(34, 155, 241, 0.78)");
-  core.addColorStop(1, "rgba(79, 59, 217, 0.26)");
+  core.addColorStop(0.94, "rgba(71, 106, 228, 0.52)");
+  core.addColorStop(1, "rgba(160, 236, 255, 0.55)");
   ctx.fillStyle = core;
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(195, 249, 255, ${0.54 + voice * 0.3})`;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
 
   for (let ring = 0; ring < 3; ring += 1) {
     ctx.beginPath();
@@ -1145,7 +1154,7 @@ function drawTabletMolecularOrb(
 
   for (const particle of particles) {
     const angle = particle.angle + t * particle.speed;
-    const orbit = particle.radius * (1 + Math.sin(t * 1.3 + particle.phase) * 0.035);
+    const orbit = particle.radius * (1 + Math.sin(t * 1.3 + particle.phase) * 0.035 + voice * 0.14);
     const x = cx + Math.cos(angle) * orbit;
     const y = cy + Math.sin(angle) * orbit * 0.83;
     const shimmer = 0.55 + Math.sin(t * 2.2 + particle.phase) * 0.25;
@@ -1182,7 +1191,10 @@ export function NuboEnergyOrb() {
     let phase: NuboVoicePhase = "idle";
     let playbackActive = false;
     let audioLevel = 0;
-    let targetAudioLevel = 0;
+    let microphoneLevel = 0;
+    let microphoneAt = 0;
+    let outputLevel = 0;
+    let outputAt = 0;
     let animationFrame = 0;
     let lastFrameAt = 0;
     let visible = document.visibilityState === "visible";
@@ -1237,9 +1249,14 @@ export function NuboEnergyOrb() {
     };
 
     const onAudioLevel = (event: Event) => {
-      const level = (event as CustomEvent<{ level?: number }>).detail?.level;
-      if (typeof level === "number" && Number.isFinite(level)) {
-        targetAudioLevel = clamp01(level);
+      const detail = (event as CustomEvent<{ level?: number; source?: "input" | "output" }>).detail;
+      if (typeof detail?.level !== "number" || !Number.isFinite(detail.level)) return;
+      if (detail.source === "input") {
+        microphoneLevel = clamp01(detail.level);
+        microphoneAt = performance.now();
+      } else {
+        outputLevel = clamp01(detail.level);
+        outputAt = performance.now();
       }
     };
 
@@ -1270,8 +1287,10 @@ export function NuboEnergyOrb() {
       animationFrame = 0;
       if (!visible || !intersecting) return;
 
-      audioLevel += (targetAudioLevel - audioLevel) * 0.22;
-      targetAudioLevel *= 0.9;
+      const sourceLevel = playbackActive || phase === "speaking" ? outputLevel : microphoneLevel;
+      const sourceAt = playbackActive || phase === "speaking" ? outputAt : microphoneAt;
+      const freshLevel = time - sourceAt < 220 ? sourceLevel : 0;
+      audioLevel += (freshLevel - audioLevel) * 0.24;
 
       // Scrolling gets priority over decorative canvas work. As soon as scrolling
       // stops, the avatar returns to its normal frame rate.

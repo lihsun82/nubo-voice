@@ -93,11 +93,11 @@ function calculateRms(input: Float32Array) {
   return Math.sqrt(sum / Math.max(1, input.length));
 }
 
-function dispatchVoiceLevel(level: number) {
+function dispatchVoiceLevel(level: number, source: "input" | "output" = "output") {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent("nubo:voice-level", {
-      detail: { level: Math.max(0, Math.min(1, level)) },
+      detail: { level: Math.max(0, Math.min(1, level)), source },
     }),
   );
 }
@@ -145,6 +145,7 @@ export class MicrophonePcmStream {
   private foregroundListenersAttached = false;
   private lastVoiceAt = Date.now();
   private lastCaptureCallbackAt = 0;
+  private lastLevelEmitAt = 0;
   private ecoSleeping = false;
   private noiseFloor = 0.012;
   private hotFrames = 0;
@@ -181,6 +182,7 @@ export class MicrophonePcmStream {
 
     this.lastVoiceAt = Date.now();
     this.lastCaptureCallbackAt = 0;
+    this.lastLevelEmitAt = 0;
     this.ecoSleeping = false;
     this.noiseFloor = 0.012;
     this.hotFrames = 0;
@@ -224,6 +226,13 @@ export class MicrophonePcmStream {
 
       const voiceDetected = this.hotFrames >= 2;
       if (voiceDetected) this.lastVoiceAt = now;
+      if (now - this.lastLevelEmitAt >= 50) {
+        this.lastLevelEmitAt = now;
+        dispatchVoiceLevel(
+          voiceDetected ? Math.min(1, Math.max(0, (rms - threshold) * 7)) : 0,
+          "input",
+        );
+      }
 
       const pcm = floatToPcm16(
         downsample(input, event.inputBuffer.sampleRate, 16000),
@@ -421,12 +430,12 @@ export class PcmPlaybackQueue {
     const audioBuffer = context.createBuffer(1, sampleCount, sampleRate);
     const channel = audioBuffer.getChannelData(0);
     for (let i = 0; i < sampleCount; i += 1) {
-      channel[i] = view.getInt16(i * 2, true) / 0x8000;
+      channel[i] = (view.getInt16(i * 2, true) / 0x8000) * 0.7;
     }
 
     // Publish the actual NUBO output level so the hologram can brighten and
     // the N particle logo can pulse while speech audio is being scheduled.
-    dispatchVoiceLevel(Math.min(1, calculateRms(channel) * 4.6));
+    dispatchVoiceLevel(Math.min(1, calculateRms(channel) * 4.6), "output");
 
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
@@ -448,7 +457,7 @@ export class PcmPlaybackQueue {
     source.onended = () => {
       this.sources.delete(source);
       if (this.sources.size === 0 && this.nextStart <= context.currentTime + 0.02) {
-        dispatchVoiceLevel(0);
+        dispatchVoiceLevel(0, "output");
         this.clearPlaybackTailTimer();
         this.playbackTailTimer = window.setTimeout(() => {
           this.playbackTailTimer = null;
@@ -476,7 +485,7 @@ export class PcmPlaybackQueue {
     }
     this.sources.clear();
     this.nextStart = this.context?.currentTime ?? 0;
-    dispatchVoiceLevel(0);
+    dispatchVoiceLevel(0, "output");
     this.setPlaybackActive(false);
   }
 

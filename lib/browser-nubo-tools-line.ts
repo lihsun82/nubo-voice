@@ -8,7 +8,7 @@ import {
 import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
-import { NUBO_GUEST_MUSIC_ENABLED } from "@/lib/nubo-guest-features";
+import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -159,7 +159,7 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
-  if (!NUBO_GUEST_MUSIC_ENABLED && (
+  if (!getNuboGuestConfigSnapshot().musicEnabled && (
     call.name === "open_youtube" ||
     call.name === "control_youtube" ||
     (call.name === "open_mobile_app" &&
@@ -274,9 +274,9 @@ export const geminiSystemInstruction = `
 1. 一般聊天、常識、簡單建議直接回答，不得呼叫research_now。
 2. 使用者詢問最近或可能變動的國際情勢、經濟、天氣災害、政治、選舉、藝文活動、展覽、演出、旅遊資訊時，應主動呼叫research_now查即時來源，不必等他說「幫我搜尋」。穩定常識與閒聊可直接回答。
 3. 語音辨識很短、不完整或無法理解時，請旅客再說一次。可理解的外語入住、訂房與住宿需求必須正常處理。
-4. 時間與相對日期用get_current_time；一般天氣用get_weather，旅客未指定地點時以台中市北區為準；颱風與災害警報用research_now；要開地圖或導航才用search_nearby；條件完整的旅行規劃用travel_plan。
-5. 只有旅館房價、競品與市場行情用hotel_market_report；一中商圈的一般店家、交通、學校、醫院與旅遊問題不可改查房價雷達，應用research_now取得當地即時資料。明確要求重新抓取行情才用hotel_market_refresh。
-5A. 「一中商圈」「一中街」「台中一中」「錦新街」及 Yizhong 都指台中市北區；問知名店家、餐飲、交通路線、學校、醫院、景點、營業時間或近期活動時，research_now的question要包含「台中市北區一中商圈」與旅客實際問題。回答只用查到的名稱、位置及日期，不要編造店名、營業狀態或班次。
+4. 時間與相對日期用get_current_time；一般天氣用get_weather，旅客未指定地點時以台中市北區為準；颱風與災害警報用research_now；問附近店家先用search_nearby取得清單，要開地圖或導航才用open_mobile_app開Google Maps；條件完整的旅行規劃用travel_plan。
+5. 只有旅館房價、競品與市場行情用hotel_market_report；一中商圈的飲料店、餐飲及其他店家先用search_nearby取得真實清單；交通、學校、醫院與旅遊問題可用research_now取得當地即時資料。明確要求重新抓取行情才用hotel_market_refresh。
+5A. 「一中商圈」「一中街」「台中一中」「錦新街」及 Yizhong 都指台中市北區；問店家或飲料店時search_nearby的location要傳「台中市北區一中商圈」，再口述3到5間查到的名稱與約略距離，畫面同步顯示清單。問交通路線、學校、醫院、景點、營業時間或近期活動時，research_now的question要包含「台中市北區一中商圈」與旅客實際問題。不要編造店名、營業狀態或班次。
 6. 單純開啟Facebook、IG、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，用open_mobile_app，不得用open_desktop_app。
 7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
 8. 只要使用者指定歌曲、歌手、MV、音樂或影片，即使說法是「開啟YouTube播放」，一律用open_youtube，不得用open_mobile_app，不得只開YouTube首頁或搜尋頁。
@@ -362,7 +362,7 @@ export const geminiFunctionDeclarations = [
       return {
         ...declaration,
         description:
-          "查詢需要近期資料的國際情勢、經濟、政治、文藝活動、災害與一中商圈店家、交通、學校、醫院及旅遊資訊。先查來源再回答；禁止用於穩定常識、閒聊、播放歌曲或語音不清。",
+          "查詢需要近期資料的國際情勢、經濟、政治、文藝活動、災害與一中商圈交通、學校、醫院及旅遊資訊。附近店家與飲料店改用search_nearby取得實際清單；禁止用於穩定常識、閒聊、播放歌曲或語音不清。",
       };
     }
 

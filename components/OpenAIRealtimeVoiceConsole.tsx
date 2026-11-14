@@ -402,6 +402,7 @@ export function OpenAIRealtimeVoiceConsole({
 
       const remoteAudio = document.createElement("audio") as SinkAudioElement;
       remoteAudio.autoplay = true;
+      remoteAudio.volume = 0.7;
       remoteAudio.dataset.nuboVoiceOutput = "true";
       remoteAudio.setAttribute("playsinline", "true");
       remoteAudio.style.display = "none";

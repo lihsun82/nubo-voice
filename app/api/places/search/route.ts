@@ -434,6 +434,10 @@ export async function POST(request: NextRequest) {
         lng: inputLng,
         label: location || "目前位置",
       };
+    } else if (/一中商圈|一中街|yizhong/i.test(location) && !/台北|臺北|台南|臺南/i.test(location)) {
+      // The hotel's local shopping district has a stable center. Avoid a
+      // geocoder miss or timeout when guests use the common short name.
+      anchor = { lat: 24.14953, lng: 120.68518, label: "台中市北區一中商圈" };
     } else if (location) {
       anchor = await geocode(location);
     } else {
