@@ -6,7 +6,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const COOLDOWN_MS = 45_000;
+const SOURCE_WINDOW_MS = 10 * 60_000;
+const SOURCE_MAX_ALERTS = 12;
 const recent = new Map<string, number>();
+const sourceWindows = new Map<string, { startedAt: number; count: number }>();
 
 function taipeiTime() {
   return new Intl.DateTimeFormat("zh-TW", {
@@ -18,6 +21,20 @@ function taipeiTime() {
 }
 
 export async function POST(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).host !== request.nextUrl.host) {
+        return NextResponse.json({ ok: false, sent: false }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ ok: false, sent: false }, { status: 403 });
+    }
+  }
+  if (request.headers.get("sec-fetch-site") === "cross-site") {
+    return NextResponse.json({ ok: false, sent: false }, { status: 403 });
+  }
+
   const body = await request.json().catch(() => ({}));
   const transcript = String(body.transcript ?? "").trim().slice(0, 500);
   const source = body.source === "model" ? "model" : "transcript";
@@ -47,7 +64,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, sent: false, duplicate: true, intent });
   }
 
+  const sourceId = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  const bucket = sourceWindows.get(sourceId);
+  if (bucket && now - bucket.startedAt < SOURCE_WINDOW_MS && bucket.count >= SOURCE_MAX_ALERTS) {
+    return NextResponse.json({ ok: false, sent: false, error: "通知頻率過高" }, { status: 429 });
+  }
+
   recent.set(key, now);
+  sourceWindows.set(sourceId, bucket && now - bucket.startedAt < SOURCE_WINDOW_MS
+    ? { startedAt: bucket.startedAt, count: bucket.count + 1 }
+    : { startedAt: now, count: 1 });
   const label = intent === "checkin" ? "辦理入住" : "訂房";
   const message = [
     "🛎️ NUBO 旅客到店需求",
