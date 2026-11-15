@@ -216,6 +216,19 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return executeBaseTool({ ...call, args: { ...call.args, zone: "taichung" } });
   }
 
+  if (call.name === "pms_check_availability" || call.name === "pms_lookup_reservation") {
+    const route = call.name === "pms_check_availability"
+      ? "/api/pms/v1/availability" : "/api/pms/v1/reservation";
+    const response = await fetch(route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(call.args ?? {}),
+      cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({ error: "pms_data_unavailable" }));
+    return response.ok ? result : { ok: false, ...result };
+  }
+
   if (call.name === "research_now") {
     const args = call.args ?? {};
     return runVoiceResearchWithTimeout(args.question, args.title);
@@ -260,6 +273,8 @@ export const geminiSystemInstruction = `
 - 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
 - 未取得台中錦新館的可靠資料時，直接說目前無法確認，協助轉交現場人員；不得沿用其他館的舊資料或自行編造門牌、電話、房型、設備、價格。
 - 單憑環境雜音、清喉嚨、咳嗽、短促呼吸或短暫停頓，不主動詢問喉嚨或身體是否不舒服，也不主動給喝水、醫療或健康建議；只有旅客明確說身體不適或求助時才回應。
+- 旅客詢問台中錦新館指定日期的可售房況時，先取得入住日、退房日與成人數，再呼叫 pms_check_availability。covered=false 只代表資料未涵蓋，不代表售罄；資料過期或未連線時說目前無法確認。
+- 旅客詢問自己的訂單或入住狀態時，先取得訂單編號與旅客姓氏，再呼叫 pms_lookup_reservation。matched=false 只說目前無法核對，不能透露其他訂單。不得把市場行情當成本館實際售價。
 
 對話人格與口語風格：
 1. 主要使用台灣繁體中文自然口語，像熟悉很久、可靠又懂使用者的朋友，不要像客服、播報員或制式機器人。
@@ -496,6 +511,31 @@ export const geminiFunctionDeclarations = [
         },
       },
       required: ["title", "instruction"],
+    },
+  },
+  {
+    name: "pms_check_availability",
+    description: "查詢 AINUBO 台中錦新館 PMS 定期推送的指定日期可售房況。只在旅客已提供入住日、退房日與成人數時使用；資料未涵蓋或過期不得猜測。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        checkIn: { type: "STRING", description: "入住日 YYYY-MM-DD" },
+        checkOut: { type: "STRING", description: "退房日 YYYY-MM-DD" },
+        adults: { type: "NUMBER", description: "成人數" },
+      },
+      required: ["checkIn", "checkOut", "adults"],
+    },
+  },
+  {
+    name: "pms_lookup_reservation",
+    description: "核對旅客自己的台中錦新館訂單與入住狀態。必須先取得旅客提供的訂單編號與姓氏；不回傳付款或其他旅客個資。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        bookingReference: { type: "STRING", description: "旅客提供的訂單編號" },
+        surname: { type: "STRING", description: "旅客提供的姓氏" },
+      },
+      required: ["bookingReference", "surname"],
     },
   },
   {
