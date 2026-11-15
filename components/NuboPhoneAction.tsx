@@ -14,7 +14,7 @@ export function NuboPhoneAction({
   const label = inCall
     ? "通話中，點電話圖示結束"
     : state === "ringing"
-      ? "電話響鈴中"
+      ? "撥號音播放中"
       : state === "connecting"
         ? "正在接通 NUBO"
         : "點電話圖示開始對話";
