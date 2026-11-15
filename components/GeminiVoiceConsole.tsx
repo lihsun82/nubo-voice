@@ -14,6 +14,7 @@ import {
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { NuboPhoneAction } from "@/components/NuboPhoneAction";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
@@ -141,6 +142,7 @@ export function GeminiVoiceConsole() {
   const ecoRecognitionRef = useRef<any>(null);
   const ecoRecognitionRestartRef = useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
+  const [isRinging, setIsRinging] = useState(false);
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
   const [mobileYoutube, setMobileYoutube] = useState<{
@@ -512,6 +514,7 @@ export function GeminiVoiceConsole() {
 
   const disconnect = async () => {
     callTonePendingRef.current = false;
+    setIsRinging(false);
     window.localStorage.removeItem(
       NUBO_AUTO_RESUME_STORAGE_KEY,
     );
@@ -1177,10 +1180,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     callTonePendingRef.current = true;
     clearReconnectTimer();
     setState("connecting");
+    setIsRinging(true);
     setError("");
 
     try {
       await playNuboCallTones();
+      setIsRinging(false);
       if (!callTonePendingRef.current || document.visibilityState !== "visible") {
         setState("idle");
         return;
@@ -1189,6 +1194,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
       await connect(false);
     } finally {
+      setIsRinging(false);
       callTonePendingRef.current = false;
     }
   };
@@ -1197,15 +1203,13 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     <section className="console nubo-guest-console" aria-live="polite">
       <div className="orb-wrap"><NuboEnergyOrb /></div>
       <div className="status">
-        <strong>{state === "connected" ? "正在聆聽" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
+        <strong>{state === "connected" ? "通話中 · 正在聆聽" : isRinging ? "電話響鈴中…" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
       </div>
       <div className="actions">
-        <button className="primary nubo-guest-talk-button" type="button"
+        <NuboPhoneAction
+          state={isRinging ? "ringing" : state}
           onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
-          disabled={state === "connecting"}
-          aria-label={state === "connected" ? "結束對話" : "開始對話"}>
-          {state === "connecting" ? "連線中…" : state === "connected" ? "結束對話" : "開始對話"}
-        </button>
+        />
       </div>
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
