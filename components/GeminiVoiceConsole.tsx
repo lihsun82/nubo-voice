@@ -1203,7 +1203,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     <section className="console nubo-guest-console" aria-live="polite">
       <div className="orb-wrap"><NuboEnergyOrb /></div>
       <div className="status">
-        <strong>{state === "connected" ? "通話中 · 正在聆聽" : isRinging ? "電話響鈴中…" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
+        <strong>{state === "connected" ? "通話中 · 正在聆聽" : isRinging ? "撥號中 · 嘟嘟聲…" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
       </div>
       <div className="actions">
         <NuboPhoneAction

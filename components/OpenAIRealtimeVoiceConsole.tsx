@@ -622,7 +622,7 @@ export function OpenAIRealtimeVoiceConsole({
         <NuboEnergyOrb />
       </div>
       <div className="status">
-        <strong>{isRinging ? "電話響鈴中…" : stateLabel[0]}</strong>
+        <strong>{isRinging ? "撥號中 · 嘟嘟聲…" : stateLabel[0]}</strong>
         <span>{isRinging ? "響兩聲後開始對話" : stateLabel[1]}</span>
       </div>
       {!accessReady ? (
