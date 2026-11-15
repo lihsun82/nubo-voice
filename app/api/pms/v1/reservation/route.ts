@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
 import { findPmsReservation } from "@/lib/pms-snapshot";
 
@@ -11,13 +12,15 @@ export async function POST(request: NextRequest) {
   if (!await allowPmsQuery(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers });
   }
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const credential = request.cookies.get("nubo_guest_device")?.value ||
+    request.cookies.get("nubo_admin_session")?.value || "partner";
+  const key = createHash("sha256").update(credential).digest("hex");
   const now = Date.now();
-  const current = windows.get(ip);
+  const current = windows.get(key);
   const next = current && now - current.since < 60_000
     ? { since: current.since, count: current.count + 1 }
     : { since: now, count: 1 };
-  windows.set(ip, next);
+  windows.set(key, next);
   if (windows.size > 5000) {
     for (const [key, value] of windows) if (now - value.since > 60_000) windows.delete(key);
   }
