@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
+import { NuboPhoneAction } from "@/components/NuboPhoneAction";
+import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import {
   NuboQuestionHistory,
   recordNuboQuestion,
@@ -140,8 +142,10 @@ export function OpenAIRealtimeVoiceConsole({
   const transcriptBufferRef = useRef("");
   const closingRef = useRef(false);
   const connectGuardRef = useRef(false);
+  const callTonePendingRef = useRef(false);
   const connectionEpochRef = useRef(0);
   const [state, setState] = useState<ConnectionState>("idle");
+  const [isRinging, setIsRinging] = useState(false);
   const [ecoMode, setEcoMode] = useState<NuboEcoMode>("active");
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState("");
@@ -183,6 +187,8 @@ export function OpenAIRealtimeVoiceConsole({
   };
 
   const disconnect = async () => {
+    callTonePendingRef.current = false;
+    setIsRinging(false);
     connectionEpochRef.current += 1;
     connectGuardRef.current = false;
     closingRef.current = true;
@@ -579,13 +585,34 @@ export function OpenAIRealtimeVoiceConsole({
     }
   };
 
+  const startWithCallTones = async () => {
+    if (callTonePendingRef.current || state === "connecting" || state === "connected") return;
+    if (!accessReady) {
+      await connect();
+      return;
+    }
+    callTonePendingRef.current = true;
+    setIsRinging(true);
+    setError("");
+    try {
+      await playNuboCallTones();
+      if (callTonePendingRef.current && document.visibilityState === "visible") {
+        setIsRinging(false);
+        await connect();
+      }
+    } finally {
+      callTonePendingRef.current = false;
+      setIsRinging(false);
+    }
+  };
+
   const stateLabel =
     state === "connected" && ecoMode === "sleeping"
       ? ["NUBO智慧節約待命", "雲端收音已暫停・偵測到近端語音會自動恢復"]
       : {
           idle: ["NUBO待命", "智慧服務已就緒"],
           connecting: ["NUBO正在連線", "正在啟動高擬人語音服務"],
-          connected: ["NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
+          connected: ["通話中 · NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
           error: ["NUBO尚未連線", "請檢查語音設定或服務額度"],
         }[state];
 
@@ -595,8 +622,8 @@ export function OpenAIRealtimeVoiceConsole({
         <NuboEnergyOrb />
       </div>
       <div className="status">
-        <strong>{stateLabel[0]}</strong>
-        <span>{stateLabel[1]}</span>
+        <strong>{isRinging ? "電話響鈴中…" : stateLabel[0]}</strong>
+        <span>{isRinging ? "響兩聲後開始對話" : stateLabel[1]}</span>
       </div>
       {!accessReady ? (
         <div className="voice-transcript">
@@ -614,20 +641,10 @@ export function OpenAIRealtimeVoiceConsole({
         </div>
       ) : null}
       <div className="actions">
-        <button
-          className="primary"
-          onClick={() => void connect()}
-          disabled={state === "connecting" || state === "connected"}
-        >
-          {state === "connecting" ? "連線中…" : "啟動NUBO"}
-        </button>
-        <button
-          className="secondary"
-          onClick={() => void disconnect()}
-          disabled={state === "idle"}
-        >
-          結束對話
-        </button>
+        <NuboPhoneAction
+          state={isRinging ? "ringing" : state}
+          onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
+        />
       </div>
       {transcript ? <div className="voice-transcript">{transcript}</div> : null}
       {error ? <div className="error">{error}</div> : null}
