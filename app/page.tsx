@@ -18,7 +18,7 @@ export default function HomePage() {
       <NuboGuestMusicSlot />
       <header className="nubo-guest-header">
         <h1>AINUBO 新寶智慧酒店</h1>
-        <p>您好，請點「開始對話」，直接說出您的需求。</p>
+        <p>您好，請點電話圖示，聽到兩聲後直接說出您的需求。</p>
       </header>
       <NuboVoiceConsole />
       <NuboNearbyResults />
