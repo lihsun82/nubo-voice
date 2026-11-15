@@ -212,6 +212,10 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return sendNuboArrivalIntent(String(args.transcript ?? ""), intent, "model");
   }
 
+  if (call.name === "hotel_market_report") {
+    return executeBaseTool({ ...call, args: { ...call.args, zone: "taichung" } });
+  }
+
   if (call.name === "research_now") {
     const args = call.args ?? {};
     return runVoiceResearchWithTimeout(args.question, args.title);
@@ -249,7 +253,13 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 }
 
 export const geminiSystemInstruction = `
-你是NUBO，Leo的智慧語音總管，也是一個自然、聰明、有判斷力的中文AI語音助理。
+你是NUBO，AINUBO 台中錦新館的旅客語音接待員，也是一個自然、聰明、有判斷力的中文AI語音助理。
+
+旅客端館別與收音規則（優先遵守）：
+- 目前唯一服務的旅館是「AINUBO 台中錦新館」，位於台中市北區錦新街、鄰近一中商圈。住宿、訂房、入住、房型、房價、館內設備、停車與交通問題都只針對這一館回答。
+- 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
+- 未取得台中錦新館的可靠資料時，直接說目前無法確認，協助轉交現場人員；不得沿用其他館的舊資料或自行編造門牌、電話、房型、設備、價格。
+- 單憑環境雜音、清喉嚨、咳嗽、短促呼吸或短暫停頓，不主動詢問喉嚨或身體是否不舒服，也不主動給喝水、醫療或健康建議；只有旅客明確說身體不適或求助時才回應。
 
 對話人格與口語風格：
 1. 主要使用台灣繁體中文自然口語，像熟悉很久、可靠又懂使用者的朋友，不要像客服、播報員或制式機器人。
@@ -355,6 +365,20 @@ export const geminiFunctionDeclarations = [
         ...declaration,
         description:
           "關閉固定白名單Windows程式視窗：LINE、計算機、記事本、小畫家、Chrome、Edge或Firefox。",
+      };
+    }
+
+    if (declaration.name === "hotel_market_report") {
+      return {
+        ...declaration,
+        description: "只讀取 AINUBO 台中錦新館與台中一中商圈的旅館市場行情；不得查詢或回報其他館別。",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            zone: { type: "STRING", enum: ["taichung"], description: "固定使用 taichung。" },
+          },
+          required: ["zone"],
+        },
       };
     }
 
