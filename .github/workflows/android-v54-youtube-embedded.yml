@@ -29,6 +29,12 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: android-actions/setup-android@v3
+        with:
+          # The action default still requests the legacy `tools` package,
+          # which is no longer published by the current Android SDK repository.
+          # Install only platform-tools here; the exact platform/build-tools
+          # required by this APK are installed explicitly in the next step.
+          packages: platform-tools
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
