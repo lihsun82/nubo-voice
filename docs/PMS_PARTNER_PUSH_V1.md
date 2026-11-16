@@ -53,6 +53,14 @@
 - 舊於現有 `generatedAt` 的快照回 `409 outdated_snapshot`，避免舊批次覆蓋新資料。
 - 成功回 `200`、`ok: true`、館別、更新時間及筆數。
 
+## 語音查房的資料驗收
+
+正式站剛收到的快照若回 `200`，仍須檢查回應或狀態檢查中的 `ready` 與 `availabilityCount`。**`availabilityCount: 0` 代表 PMS 沒有提供可查房況**，旅客語音只能說目前無法確認，不能把它當成客滿。
+
+PMS 部門需將台中錦新館的真實可售房數填入 `availability`。每筆明確列出 `checkIn`、`checkOut`、`adults` 與 `roomTypes[].availableCount`；`availableCount: 0` 才表示該房型在這組條件下沒有可售房。NUBO 目前使用這三個欄位**精確比對**，未提供的日期、住宿天數或人數會回 `covered:false`，不能推斷有房或已滿。
+
+驗收方式：推送後用 PMS 專用 Bearer token 呼叫 `GET /api/pms/v1/snapshot`，確認 `ready:true` 且 `availabilityCount>0`；再選擇一筆剛送出的真實條件呼叫 `POST /api/pms/v1/availability`，確認 `covered:true` 與房型數量一致。請勿以示例或假房況推送到正式站。
+
 ## NUBO 唯讀查詢
 
 下列路由供已配對的 NUBO 平板、登入後台的管理員，或持同一專用 Bearer token 的 PMS 伺服器呼叫。所有回應均 `Cache-Control: no-store`。
