@@ -16,6 +16,9 @@ export async function POST(request: NextRequest) {
   try { body = JSON.parse(raw); } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400, headers });
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
+  }
   const { checkIn, checkOut, adults } = body;
   if (!validPmsQueryDateRange(checkIn, checkOut) ||
       !Number.isInteger(adults) || (adults as number) < 1 || (adults as number) > 20) {

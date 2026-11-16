@@ -30,11 +30,12 @@ export async function PUT(request: NextRequest) {
   }
   try {
     const next = await parsePmsRequest(request);
-    const status = await savePmsSnapshot(next);
+    const status = await savePmsSnapshot(next, request.headers.get("x-pms-expected-snapshot"));
     return NextResponse.json({ ok: true, ...status }, { headers });
   } catch (error) {
     const code = error instanceof Error ? error.message : "invalid_payload";
-    const status = code === "outdated_snapshot" ? 409 : code === "payload_too_large" ? 413 : 400;
+    const conflict = code === "outdated_snapshot" || code === "snapshot_conflict";
+    const status = conflict ? 409 : code === "payload_too_large" ? 413 : 400;
     return NextResponse.json({ ok: false, error: code }, { status, headers });
   }
 }

@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { readJson, writeJson } from "@/lib/json-store";
 
@@ -41,7 +41,7 @@ function text(value: unknown, max = 120) {
   return cleaned;
 }
 function validDate(value: unknown): value is string {
-  return typeof value === "string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(value) &&
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     !Number.isNaN(Date.parse(value + "T00:00:00Z")) &&
     new Date(value + "T00:00:00Z").toISOString().slice(0, 10) === value;
 }
@@ -70,6 +70,16 @@ export function verifyPmsBearer(value: string | null) {
   const a = Buffer.from(token);
   const b = Buffer.from(supplied);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+export function verifyPmsReservationReadBearer(value: string | null) {
+  const configuredDigest = process.env.NUBO_PMS_RESERVATION_READ_TOKEN_SHA256?.trim() || "";
+  const supplied = value?.match(/^Bearer ([a-f0-9]{64})$/i)?.[1] || "";
+  const writeToken = configuredToken();
+  if (!/^[a-f0-9]{64}$/i.test(configuredDigest) || !supplied || !writeToken) return false;
+  const digest = Buffer.from(configuredDigest, "hex");
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  const writeDigest = createHash("sha256").update(writeToken).digest();
+  return timingSafeEqual(digest, suppliedDigest) && !timingSafeEqual(digest, writeDigest);
 }
 function lookupKey(bookingReference: string, surname: string) {
   const token = configuredToken();
@@ -105,7 +115,8 @@ function parseSnapshot(value: unknown): PmsSnapshot {
   if (body.propertyId !== PMS_PROPERTY_ID) throw new Error("invalid_property");
   const generatedAt = text(body.generatedAt, 40);
   const timestamp = Date.parse(generatedAt);
-  if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(generatedAt) ||
+  if (!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(generatedAt) ||
+      !validDate(generatedAt.slice(0, 10)) ||
       !Number.isFinite(timestamp) || timestamp > Date.now() + 5 * 60_000 || Date.now() - timestamp > 24 * 60 * 60_000) {
     throw new Error("invalid_generated_at");
   }
@@ -165,10 +176,28 @@ export async function parsePmsRequest(request: Request) {
   try { parsed = JSON.parse(raw); } catch { throw new Error("invalid_json"); }
   return parseSnapshot(parsed);
 }
-export async function savePmsSnapshot(next: PmsSnapshot) {
+function sameSnapshotContents(previous: PmsSnapshot, next: PmsSnapshot) {
+  return previous.version === next.version &&
+    previous.propertyId === next.propertyId &&
+    previous.generatedAt === next.generatedAt &&
+    JSON.stringify(previous.availability) === JSON.stringify(next.availability) &&
+    JSON.stringify(previous.reservations) === JSON.stringify(next.reservations);
+}
+
+export async function savePmsSnapshot(next: PmsSnapshot, expectedSnapshot: string | null = null) {
   const operation = writeQueue.then(async () => {
     const previous = await readPmsSnapshot();
-    if (previous && Date.parse(next.generatedAt) < Date.parse(previous.generatedAt)) {
+    const previousTime = previous ? Date.parse(previous.generatedAt) : -Infinity;
+    const nextTime = Date.parse(next.generatedAt);
+    if (previous && nextTime === previousTime) {
+      // A timestamp identifies one immutable snapshot. A lost response may be retried.
+      if (sameSnapshotContents(previous, next)) return pmsSnapshotStatus(previous);
+      throw new Error("snapshot_conflict");
+    }
+    if (expectedSnapshot !== null && expectedSnapshot !== (previous?.generatedAt ?? "empty")) {
+      throw new Error("snapshot_conflict");
+    }
+    if (nextTime < previousTime) {
       throw new Error("outdated_snapshot");
     }
     await writeJson(STORE_FILE, next);

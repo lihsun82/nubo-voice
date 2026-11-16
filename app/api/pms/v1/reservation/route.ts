@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
-import { findPmsReservation } from "@/lib/pms-snapshot";
+import { findPmsReservation, verifyPmsReservationReadBearer } from "@/lib/pms-snapshot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,11 +9,15 @@ const headers = { "Cache-Control": "no-store" };
 const windows = new Map<string, { since: number; count: number }>();
 
 export async function POST(request: NextRequest) {
-  if (!await allowPmsQuery(request)) {
+  const readOnly = !request.headers.has("origin") &&
+    verifyPmsReservationReadBearer(request.headers.get("authorization"));
+  if (!readOnly && !await allowPmsQuery(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401, headers });
   }
-  const credential = request.cookies.get("nubo_guest_device")?.value ||
-    request.cookies.get("nubo_admin_session")?.value || "partner";
+  const credential = readOnly ? "reservation-reader" : (
+    request.cookies.get("nubo_guest_device")?.value ||
+    request.cookies.get("nubo_admin_session")?.value || "partner"
+  );
   const key = createHash("sha256").update(credential).digest("hex");
   const now = Date.now();
   const current = windows.get(key);
@@ -31,6 +35,9 @@ export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = JSON.parse(raw); } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400, headers });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
   const bookingReference = typeof body.bookingReference === "string" ? body.bookingReference.trim() : "";
   const surname = typeof body.surname === "string" ? body.surname.trim() : "";
