@@ -149,6 +149,21 @@ export function GeminiVoiceConsole() {
     playerUrl: string;
     title: string;
   } | null>(null);
+  const [bookingLink, setBookingLink] = useState<string | null>(null);
+
+  const revealBookingLink = async () => {
+    try {
+      const response = await fetch("/api/guest-booking-link", { cache: "no-store" });
+      if (!response.ok) return false;
+      const data: { enabled?: unknown; url?: unknown } = await response.json();
+      if (data.enabled !== true || typeof data.url !== "string" ||
+          new URL(data.url).protocol !== "https:") return false;
+      setBookingLink(data.url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const stopNuboOutput = () => {
     playbackRef.current?.interrupt();
@@ -553,6 +568,7 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
+      setBookingLink(null);
     }
     setState("connecting");
     closingRef.current = false;
@@ -912,10 +928,26 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   }
                 }
 
+                let responseResult: unknown = result;
+                const availableRooms = call.name === "pms_check_availability" &&
+                  result && typeof result === "object" &&
+                  "covered" in result && result.covered === true &&
+                  "roomTypes" in result && Array.isArray(result.roomTypes) &&
+                  result.roomTypes.some((room: unknown) =>
+                    room && typeof room === "object" && "availableCount" in room &&
+                    typeof room.availableCount === "number" && room.availableCount > 0);
+                if (call.name === "pms_check_availability") setBookingLink(null);
+                if (availableRooms ||
+                    (call.name === "notify_arrival_intent" && call.args?.intent === "booking")) {
+                  const bookingPageReady = await revealBookingLink();
+                  responseResult = result && typeof result === "object"
+                    ? { ...result, bookingPageReady }
+                    : { value: result, bookingPageReady };
+                }
                 functionResponses.push({
                   id: call.id,
                   name: call.name,
-                  response: { result },
+                  response: { result: responseResult },
                 });
               } catch (cause) {
                 functionResponses.push({
@@ -1216,6 +1248,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
           {"開啟："}{mobileYoutube.title}
         </a>
+      ) : null}
+      {bookingLink ? (
+        <button className="primary" type="button"
+          onClick={() => { void disconnect().then(() => window.location.assign(bookingLink)); }}>
+          前往訂房
+        </button>
       ) : null}
       {error ? <div className="error" role="alert">{error}</div> : null}
     </section>

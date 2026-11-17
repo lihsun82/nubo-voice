@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
 import { findPmsAvailability, validPmsQueryDateRange } from "@/lib/pms-snapshot";
+import { queryLivePmsAvailability } from "@/lib/pms-live-availability";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,13 @@ export async function POST(request: NextRequest) {
       !Number.isInteger(adults) || (adults as number) < 1 || (adults as number) > 20) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
-  const result = await findPmsAvailability(checkIn as string, checkOut as string, adults as number);
+  let result;
+  try {
+    result = await queryLivePmsAvailability(checkIn as string, checkOut as string, adults as number);
+  } catch {
+    return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
+  }
+  result ??= await findPmsAvailability(checkIn as string, checkOut as string, adults as number);
   if (!result.ready) return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
   return NextResponse.json({ propertyId: "ainubo-taichung-jinxin", ...result }, { headers });
 }
