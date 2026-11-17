@@ -82,6 +82,35 @@ test("requests a one-use Gemini grant with the full AUDIO setup locked", async (
   assert.equal(options.body.includes(SESSION_ID), false);
 });
 
+test("puts only supplied PMS room rows into the locked voice instructions", async () => {
+  const { handle, calls } = setup({
+    availabilityProvider: async () => ({
+      generatedAt: "2026-11-16T02:00:00Z",
+      availability: [{
+        checkIn: "2026-11-17",
+        checkOut: "2026-11-18",
+        adults: 2,
+        roomTypes: [{ code: "DBL", name: "雙人房", availableCount: 3 }],
+      }],
+    }),
+  });
+  assert.equal((await handle(request())).status, 200);
+  const instruction = JSON.parse(calls[0][1].body).bidiGenerateContentSetup.systemInstruction.parts[0].text;
+  assert.match(instruction, /房況 JSON/);
+  assert.match(instruction, /2026-11-17/);
+  assert.match(instruction, /雙人房/);
+  assert.ok(instruction.includes('"availableCount":3'));
+  assert.match(instruction, /不能說已客滿/);
+});
+
+test("withholds unavailable PMS room data from the voice instructions", async () => {
+  const { handle, calls } = setup({ availabilityProvider: async () => null });
+  assert.equal((await handle(request())).status, 200);
+  const instruction = JSON.parse(calls[0][1].body).bidiGenerateContentSetup.systemInstruction.parts[0].text;
+  assert.match(instruction, /沒有可供語音核對的有效房況資料/);
+  assert.doesNotMatch(instruction, /房況 JSON/);
+});
+
 test("fails closed when missing config, unauthorized, or called with browser origin", async () => {
   const cases = [
     [{ partnerKeySha256: undefined }, request(), 503],
