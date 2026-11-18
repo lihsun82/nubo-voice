@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import path from "node:path";
-import { readJson, writeJson } from "@/lib/json-store";
+import { readJson, writeJson } from "./json-store.ts";
 
 export const PMS_PROPERTY_ID = "ainubo-taichung-jinxin";
 const MAX_AGE_MINUTES = 60;

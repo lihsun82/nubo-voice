@@ -111,6 +111,23 @@ test("withholds unavailable PMS room data from the voice instructions", async ()
   assert.doesNotMatch(instruction, /房況 JSON/);
 });
 
+test("declares stay and rest tools only when the nubosci client is ready", async () => {
+  const { handle, calls } = setup({
+    enablePmsTools: true,
+    availabilityProvider: async () => { throw new Error("must not preload a snapshot"); },
+  });
+  assert.equal((await handle(request())).status, 200);
+  const locked = JSON.parse(calls[0][1].body).bidiGenerateContentSetup;
+  assert.deepEqual(locked.tools[0].functionDeclarations.map((item) => item.name), [
+    "open_reservation_lookup", "pms_check_stay_availability", "pms_check_rest_availability",
+  ]);
+  const instruction = locked.systemInstruction.parts[0].text;
+  assert.match(instruction, /room_catalogue_incomplete/);
+  assert.match(instruction, /目前無法確認住宿房況，請洽櫃檯/);
+  assert.match(instruction, /開始時間與休息時長/);
+  assert.doesNotMatch(instruction, /房況 JSON/);
+});
+
 test("fails closed when missing config, unauthorized, or called with browser origin", async () => {
   const cases = [
     [{ partnerKeySha256: undefined }, request(), 503],

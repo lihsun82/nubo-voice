@@ -1,6 +1,35 @@
-import { PMS_PROPERTY_ID } from "@/lib/pms-snapshot";
+import { PMS_PROPERTY_ID } from "./pms-snapshot.ts";
 
 type RoomType = { code: string; name: string; availableCount: number };
+
+export class PmsLiveError extends Error {
+  readonly code: "pms_data_unavailable" | "room_catalogue_incomplete" | "invalid_query" | "rate_limited";
+  constructor(code: PmsLiveError["code"]) {
+    super(code);
+    this.code = code;
+  }
+}
+
+export async function rejectPmsResponse(response: Response): Promise<never> {
+  if (response.status === 400) throw new PmsLiveError("invalid_query");
+  if (response.status === 429) throw new PmsLiveError("rate_limited");
+  if (response.status === 503) {
+    const raw = await response.text().catch(() => "");
+    if (raw.length <= 2048) {
+      try {
+        const body = JSON.parse(raw) as { reason?: unknown };
+        if (body.reason === "room_catalogue_incomplete") {
+          throw new PmsLiveError("room_catalogue_incomplete");
+        }
+      } catch (error) {
+        if (error instanceof PmsLiveError) throw error;
+      }
+    }
+  } else {
+    void response.body?.cancel().catch(() => undefined);
+  }
+  throw new PmsLiveError("pms_data_unavailable");
+}
 
 function configuredEndpoint() {
   const rawUrl = process.env.NUBO_PMS_AVAILABILITY_URL?.trim();
@@ -56,7 +85,8 @@ export async function queryLivePmsAvailability(
     redirect: "error",
     signal: AbortSignal.timeout(4_000),
   });
-  if (!response.ok || Number(response.headers.get("content-length") || 0) > 65_536) {
+  if (!response.ok) await rejectPmsResponse(response);
+  if (Number(response.headers.get("content-length") || 0) > 65_536) {
     void response.body?.cancel().catch(() => undefined);
     throw new Error("pms_live_unavailable");
   }
