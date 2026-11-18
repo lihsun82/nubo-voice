@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = createNubosciVoiceSessionHandler({
+  enablePmsTools: process.env.NUBOSCI_PMS_VOICE_TOOLS_ENABLED === "true",
   availabilityProvider: async () => {
     const snapshot = await readPmsSnapshot();
     return pmsFresh(snapshot) && snapshot
