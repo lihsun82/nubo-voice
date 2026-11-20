@@ -216,9 +216,13 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return executeBaseTool({ ...call, args: { ...call.args, zone: "taichung" } });
   }
 
-  if (call.name === "pms_check_availability" || call.name === "pms_lookup_reservation") {
+  if (call.name === "pms_check_availability" || call.name === "pms_check_rest_availability" ||
+      call.name === "pms_lookup_reservation") {
     const route = call.name === "pms_check_availability"
-      ? "/api/pms/v1/availability" : "/api/pms/v1/reservation";
+      ? "/api/pms/v1/availability"
+      : call.name === "pms_check_rest_availability"
+        ? "/api/pms/v1/rest-availability"
+        : "/api/pms/v1/reservation";
     const response = await fetch(route, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -273,7 +277,8 @@ export const geminiSystemInstruction = `
 - 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
 - 未取得台中錦新館的可靠資料時，直接說目前無法確認，協助轉交現場人員；不得沿用其他館的舊資料或自行編造門牌、電話、房型、設備、價格。
 - 單憑環境雜音、清喉嚨、咳嗽、短促呼吸或短暫停頓，不主動詢問喉嚨或身體是否不舒服，也不主動給喝水、醫療或健康建議；只有旅客明確說身體不適或求助時才回應。
-- 旅客詢問台中錦新館指定日期的可售房況時，先取得入住日、退房日與成人數，再呼叫 pms_check_availability。covered=false 只代表資料未涵蓋，不代表售罄；資料過期或未連線時說目前無法確認。
+- 旅客詢問台中錦新館指定日期的住宿可售房況時，先取得入住日、退房日與成人數，再呼叫 pms_check_availability。只有工具成功回傳的 roomTypes 可播報；covered=false、room_catalogue_incomplete、503 或資料過期均說「目前無法確認住宿房況，請洽櫃檯」，不可當成客滿。
+- 旅客詢問台中錦新館休息房況時，先取得開始時間與休息時長，再呼叫 pms_check_rest_availability。現在起算用 startAt=now；指定未來時段用台灣時間的 ISO 格式，包含 +08:00。只有工具成功時才能播報該時段 availableCount；工具失敗時說「目前無法確認休息房況，請洽櫃檯」，不得猜測間數。
 - 查到可售房且工具結果 bookingPageReady=true，或旅客要訂房且通知工具結果 bookingPageReady=true 時，告訴旅客可按畫面上的「前往訂房」，由 PMS 訂房頁重新確認房況、正式價格與完成訂單。bookingPageReady=false 時不得說訂房頁已開放，也不得聲稱已完成訂房。
 - 旅客詢問自己的訂單或入住狀態時，先取得訂單編號與旅客姓氏，再呼叫 pms_lookup_reservation。matched=false 只說目前無法核對，不能透露其他訂單。不得把市場行情當成本館實際售價。
 
@@ -516,7 +521,7 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "pms_check_availability",
-    description: "查詢 AINUBO 台中錦新館 PMS 定期推送的指定日期可售房況。只在旅客已提供入住日、退房日與成人數時使用；資料未涵蓋或過期不得猜測。",
+    description: "即時查詢 AINUBO 台中錦新館指定日期的住宿可售房況。只在旅客已提供入住日、退房日與成人數時使用；資料不可用時不得猜測。",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -525,6 +530,18 @@ export const geminiFunctionDeclarations = [
         adults: { type: "NUMBER", description: "成人數" },
       },
       required: ["checkIn", "checkOut", "adults"],
+    },
+  },
+  {
+    name: "pms_check_rest_availability",
+    description: "即時查詢 AINUBO 台中錦新館指定開始時間與時長的休息房可用間數。現在起算用 startAt=now；未來時間需帶台灣時區 +08:00。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        startAt: { type: "STRING", description: "now 或 YYYY-MM-DDTHH:mm:00+08:00" },
+        durationMinutes: { type: "NUMBER", description: "休息時長，60 至 720 分鐘" },
+      },
+      required: ["startAt", "durationMinutes"],
     },
   },
   {
