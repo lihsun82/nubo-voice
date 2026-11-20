@@ -118,6 +118,37 @@ test("rest proxy verifies the requested interval, count and freshness", () => wi
     async () => Response.json({ ...result, asOf: new Date(Date.now() - 6 * 60_000).toISOString() })), /pms_data_unavailable/);
 }));
 
+test("guest room-type lookup requires a PMS public-count response and never forwards a rest total", () => withConfig(async () => {
+  const accept = { Accept: "application/vnd.nubosci.room-types.v1+json" };
+  const q = {propertyId: PROPERTY, startAt: "now", durationMinutes: 60};
+  const base = {propertyId: PROPERTY, startAt: new Date().toISOString(), durationMinutes: 60, asOf: new Date().toISOString()};
+  const roomTypes = [{code: "DEMO",name:"合成雙人房",availableCount:0}];
+  const handle = createNubosciPmsQueryHandler("rest");
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.headers["X-Nubo-Inventory-View"],"guest-room-types-v1");
+    return Response.json({...base, availableCount: 10});
+  };
+  const legacy = await handle(request("rest-availability",q,accept));
+  assert.equal(legacy.status,503);
+  assert.deepEqual(await legacy.json(),{error:"pms_data_unavailable",reason:"room_type_breakdown_unavailable"});
+  globalThis.fetch = async () => Response.json({...base,inventoryView:"guest-room-types-v1",roomTypes,
+    availableCount:10,privateRoomNumbers:["demo-room"]});
+  const current = await handle(request("rest-availability",q,accept));
+  assert.equal(current.status,200);
+  assert.deepEqual(await current.json(),{...base,inventoryView:"guest-room-types-v1",roomTypes});
+}));
+
+test("guest stay lookup distinguishes public allowance from gross physical stock", () => withConfig(async () => {
+  const h = createNubosciPmsQueryHandler("stay"), accept = {Accept:"application/vnd.nubosci.room-types.v1+json"};
+  const data = {...STAY,asOf:new Date().toISOString(),roomTypes:[{code:"DEMO",name:"測試雙人房",availableCount:2}]};
+  globalThis.fetch = async () => Response.json(data);
+  const raw = await h(request("availability",STAY,accept));
+  assert.equal(raw.status,503);assert.equal((await raw.json()).reason,"room_type_allocation_unavailable");
+  globalThis.fetch = async () => Response.json({...data,inventoryView:"guest-room-types-v1"});
+  const allowed = await h(request("availability",STAY,accept));
+  assert.equal(allowed.status,200);assert.deepEqual((await allowed.json()).roomTypes,data.roomTypes);
+}));
+
 test("rest proxy reports confirmed zero separately from an upstream failure", () => withConfig(async () => {
   const handle = createNubosciPmsQueryHandler("rest");
   globalThis.fetch = async () => Response.json({

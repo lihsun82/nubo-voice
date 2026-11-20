@@ -77,20 +77,22 @@ export function createNubosciPmsQueryHandler(kind: Kind) {
     while (requests.length && now - requests[0] >= 60_000) requests.shift();
     if (requests.length >= MAX_PER_MINUTE) return json({ error: "rate_limited" }, 429, 60);
     requests.push(now);
+    const guestRoomTypes = request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json";
     try {
       if (kind === "stay") {
         const result = await queryLivePmsAvailability(
-          body.checkIn as string, body.checkOut as string, body.adults as number);
+          body.checkIn as string, body.checkOut as string, body.adults as number, fetch, guestRoomTypes);
         if (!result || !result.covered) return json({ error: "pms_data_unavailable" }, 503);
         return json({ propertyId: PMS_PROPERTY_ID, ...result });
       }
       const result = await queryLivePmsRestAvailability(
-        body.startAt as string, body.durationMinutes as number);
+        body.startAt as string, body.durationMinutes as number, fetch, guestRoomTypes);
       if (!result) return json({ error: "pms_data_unavailable" }, 503);
       return json(result);
     } catch (error) {
-      if (error instanceof PmsLiveError && error.code === "room_catalogue_incomplete") {
-        return json({ error: "pms_data_unavailable", reason: "room_catalogue_incomplete" }, 503);
+      if (error instanceof PmsLiveError && (error.code === "room_catalogue_incomplete" ||
+          error.code === "room_type_breakdown_unavailable" || error.code === "room_type_allocation_unavailable")) {
+        return json({ error: "pms_data_unavailable", reason: error.code }, 503);
       }
       if (error instanceof PmsLiveError && error.code === "invalid_query") {
         return json({ error: "invalid_payload" }, 400);

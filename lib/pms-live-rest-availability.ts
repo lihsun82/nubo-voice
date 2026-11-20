@@ -1,5 +1,5 @@
 import { PMS_PROPERTY_ID } from "./pms-snapshot.ts";
-import { PmsLiveError, rejectPmsResponse } from "./pms-live-availability.ts";
+import { guestRoomTypeView, PmsLiveError, rejectPmsResponse, roomTypesFrom } from "./pms-live-availability.ts";
 
 const START_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:Z|[+-]\d{2}:\d{2})$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -30,6 +30,7 @@ export async function queryLivePmsRestAvailability(
   startAt: string,
   durationMinutes: number,
   fetcher: typeof fetch = fetch,
+  guestRoomTypes = false,
 ) {
   const endpoint = configuredEndpoint();
   if (!endpoint) return null;
@@ -40,6 +41,7 @@ export async function queryLivePmsRestAvailability(
       Authorization: `Bearer ${endpoint.token}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(guestRoomTypes ? { "X-Nubo-Inventory-View": guestRoomTypeView } : {}),
     },
     body: JSON.stringify({ propertyId: PMS_PROPERTY_ID, startAt, durationMinutes }),
     cache: "no-store",
@@ -59,11 +61,14 @@ export async function queryLivePmsRestAvailability(
     throw new PmsLiveError("pms_data_unavailable");
   }
   const result = value as Record<string, unknown>;
+  if (guestRoomTypes && (result.inventoryView !== guestRoomTypeView || !Array.isArray(result.roomTypes))) {
+    throw new PmsLiveError("room_type_breakdown_unavailable");
+  }
   if (result.propertyId !== PMS_PROPERTY_ID || result.durationMinutes !== durationMinutes ||
       typeof result.startAt !== "string" || !TIMESTAMP.test(result.startAt) ||
       typeof result.asOf !== "string" || !TIMESTAMP.test(result.asOf) ||
-      !Number.isInteger(result.availableCount) || (result.availableCount as number) < 0 ||
-      (result.availableCount as number) > 1000) {
+      (!guestRoomTypes && (!Number.isInteger(result.availableCount) || (result.availableCount as number) < 0 ||
+      (result.availableCount as number) > 1000))) {
     throw new PmsLiveError("pms_data_unavailable");
   }
   const start = Date.parse(result.startAt);
@@ -76,11 +81,13 @@ export async function queryLivePmsRestAvailability(
         : start !== Date.parse(startAt))) {
     throw new PmsLiveError("pms_data_unavailable");
   }
-  return {
+  const interval = {
     propertyId: PMS_PROPERTY_ID,
     startAt: result.startAt,
     durationMinutes,
     asOf: result.asOf,
-    availableCount: result.availableCount as number,
   };
+  return guestRoomTypes
+    ? { ...interval, inventoryView: guestRoomTypeView, roomTypes: roomTypesFrom(result.roomTypes) }
+    : { ...interval, availableCount: result.availableCount as number };
 }
