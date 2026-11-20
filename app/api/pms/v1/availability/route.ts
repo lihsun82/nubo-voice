@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
   let result;
   try {
-    result = await queryLivePmsAvailability(checkIn as string, checkOut as string, adults as number);
+    result = await queryLivePmsAvailability(checkIn as string, checkOut as string, adults as number, fetch, true);
   } catch {
     return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
   }

@@ -34,6 +34,7 @@ test("live PMS lookup requires a matching fresh response and booking link stays 
   const bookingLink = route("guest-booking-link");
   const responseBody = () => ({
     propertyId, checkIn, checkOut, adults: 2, asOf: new Date().toISOString(),
+    inventoryView: "guest-room-types-v1",
     roomTypes: [{ code: "TEST", name: "測試房型", availableCount: 2 }],
   });
 
@@ -54,6 +55,7 @@ test("live PMS lookup requires a matching fresh response and booking link stays 
     assert.equal(calls[0].url, process.env.NUBO_PMS_AVAILABILITY_URL);
     assert.equal(calls[0].options.redirect, "error");
     assert.equal(calls[0].options.headers.Authorization, `Bearer ${token}`);
+    assert.equal(calls[0].options.headers["X-Nubo-Inventory-View"], "guest-room-types-v1");
   });
 
   await t.test("rejects mismatched and stale PMS results", async (t) => {
@@ -63,6 +65,14 @@ test("live PMS lookup requires a matching fresh response and booking link stays 
     t.mock.restoreAll();
     t.mock.method(globalThis, "fetch", async () =>
       Response.json({ ...responseBody(), asOf: "2020-01-01T00:00:00Z" }));
+    assert.equal((await availability.POST(availabilityRequest())).status, 503);
+  });
+
+  await t.test("rejects an ordinary PMS response without guest inventory", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => {
+      const { inventoryView, ...ordinaryResponse } = responseBody();
+      return Response.json(ordinaryResponse);
+    });
     assert.equal((await availability.POST(availabilityRequest())).status, 503);
   });
 
