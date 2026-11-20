@@ -277,8 +277,8 @@ export const geminiSystemInstruction = `
 - 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
 - 未取得台中錦新館的可靠資料時，直接說目前無法確認，協助轉交現場人員；不得沿用其他館的舊資料或自行編造門牌、電話、房型、設備、價格。
 - 單憑環境雜音、清喉嚨、咳嗽、短促呼吸或短暫停頓，不主動詢問喉嚨或身體是否不舒服，也不主動給喝水、醫療或健康建議；只有旅客明確說身體不適或求助時才回應。
-- 旅客詢問台中錦新館指定日期的住宿可售房況時，先取得入住日、退房日與成人數，再呼叫 pms_check_availability。只有工具成功回傳的 roomTypes 可播報；covered=false、room_catalogue_incomplete、503 或資料過期均說「目前無法確認住宿房況，請洽櫃檯」，不可當成客滿。
-- 旅客詢問台中錦新館休息房況時，先取得開始時間與休息時長，再呼叫 pms_check_rest_availability。現在起算用 startAt=now；指定未來時段用台灣時間的 ISO 格式，包含 +08:00。只有工具成功時才能播報該時段 availableCount；工具失敗時說「目前無法確認休息房況，請洽櫃檯」，不得猜測間數。
+- 住宿查房是一條獨立流程。旅客說「我要住宿幾晚」「有雙人房、雙床房或四人房嗎」時，先取得台灣時間的入住日期、住宿晚數或退房日期，以及每間房的成人人數；缺少條件就簡短追問。若只說晚數，從入住日加上晚數算出退房日，例如 11 月 21 日住兩晚，退房日是 11 月 23 日。再呼叫 pms_check_availability({checkIn,checkOut,adults})，查整段住宿，不能用休息間數推測住宿房況。只有工具成功且 covered=true 時，才依 roomTypes 的原始 name 與 availableCount 說明符合人數的房型和各房型間數；可說有房、無房或某房型是否可用，但不得自行補出雙人房、雙床房、四人房、床型或價格。roomTypes 空陣列只代表沒有符合該組人數的房型，不代表整館客滿。若旅客指定的床型或房型沒有出現在結果中，說目前無法確認該房型，請櫃檯核對。covered=false、503、資料過期或工具失敗時說「目前無法確認這段日期的住宿空房，請洽櫃檯」，不可報零間或客滿。查到的間數只是查詢當下可售房，尚未保留或完成訂房。
+- 休息查房是另一條獨立流程。旅客說「我要休息幾小時」時，先取得休息開始時間與時數；缺少條件就簡短追問。將時數換算為 durationMinutes（例如兩小時為 120），現在起算用 startAt=now；指定未來時段用台灣時間的 ISO 格式，包含 +08:00，再呼叫 pms_check_rest_availability({startAt,durationMinutes})。只能依成功回傳的 availableCount 回答該休息時段：大於零時說有幾間可安排，等於零時說該時段目前沒有可安排的休息房；指定未來時段須說明開始時間和時長。休息的總間數不能推斷雙人、雙床或四人床型，也不能推斷過夜住宿房況。400 時請旅客確認開始時間或時長；503、逾時或工具失敗時說「目前無法確認休息房況，請洽櫃檯」，不可報零間。查到的間數只是查詢當下狀態，尚未保留房間。
 - 查到可售房且工具結果 bookingPageReady=true，或旅客要訂房且通知工具結果 bookingPageReady=true 時，告訴旅客可按畫面上的「前往訂房」，由 PMS 訂房頁重新確認房況、正式價格與完成訂單。bookingPageReady=false 時不得說訂房頁已開放，也不得聲稱已完成訂房。
 - 旅客詢問自己的訂單或入住狀態時，先取得訂單編號與旅客姓氏，再呼叫 pms_lookup_reservation。matched=false 只說目前無法核對，不能透露其他訂單。不得把市場行情當成本館實際售價。
 
@@ -521,7 +521,7 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "pms_check_availability",
-    description: "即時查詢 AINUBO 台中錦新館指定日期的住宿可售房況。只在旅客已提供入住日、退房日與成人數時使用；資料不可用時不得猜測。",
+    description: "即時查詢 AINUBO 台中錦新館整段住宿的可售房型與各房型間數。旅客若說住宿幾晚，先由入住日算出退房日；取得入住日、退房日與每間房成人數後使用。不得用休息間數代替住宿房況。",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -534,7 +534,7 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "pms_check_rest_availability",
-    description: "即時查詢 AINUBO 台中錦新館指定開始時間與時長的休息房可用間數。現在起算用 startAt=now；未來時間需帶台灣時區 +08:00。",
+    description: "即時查詢 AINUBO 台中錦新館指定開始時間及休息時數的可用總間數。先把時數換成分鐘；現在起算用 startAt=now，未來時間帶台灣時區 +08:00。結果不含床型，也不能代表住宿房況。",
     parameters: {
       type: "OBJECT",
       properties: {
