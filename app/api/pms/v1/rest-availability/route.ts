@@ -26,8 +26,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
   try {
+    const byRoomType = request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json";
     const result = await queryLivePmsRestAvailability(
-      body.startAt as string, body.durationMinutes as number);
+      body.startAt as string, body.durationMinutes as number, fetch, byRoomType);
     if (!result) throw new PmsLiveError("pms_data_unavailable");
     return NextResponse.json(result, { headers });
   } catch (error) {

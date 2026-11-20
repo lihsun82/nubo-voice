@@ -31,6 +31,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
   }
+  if (request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json" && !result?.covered) {
+    return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
+  }
   result ??= await findPmsAvailability(checkIn as string, checkOut as string, adults as number);
   if (!result.ready) return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
   return NextResponse.json({ propertyId: "ainubo-taichung-jinxin", ...result }, { headers });
