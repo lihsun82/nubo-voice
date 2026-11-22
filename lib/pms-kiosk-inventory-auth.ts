@@ -19,13 +19,11 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 30;
 const windows = new Map<string, { start: number; count: number }>();
 
+// The canonical hotel NUBO domain is the only permitted guest-facing origin.
+// Do not derive kiosk permission from NUBO_PUBLIC_URL: that variable may point
+// to a Railway-internal or alternative runtime origin.
 function originForKiosk() {
-  try {
-    const url = new URL(process.env.NUBO_PUBLIC_URL || "https://nubo.ainubo.com");
-    return url.protocol === "https:" ? url.origin : "https://nubo.ainubo.com";
-  } catch {
-    return "https://nubo.ainubo.com";
-  }
+  return "https://nubo.ainubo.com";
 }
 
 export function isHotelKioskInventoryRequest(request: NextRequest) {
