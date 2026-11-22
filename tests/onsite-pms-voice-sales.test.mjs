@@ -42,7 +42,7 @@ test("main voice speaks only verified PMS room counts on explicit guest request"
   assert.match(browserTool, /旅客明確問「還有幾間」/);
   assert.match(browserTool, /先說「有／沒有符合需求的可售房型」/);
   assert.match(browserTool, /只檢查可售數量，不查已售房間或旅客個資/);
-  assert.match(browserTool, /不可把不同房型任意加總/);
+  assert.match(browserTool, /不得把不同房型任意加總/);
   assert.match(browserTool, /目前無法確認/);
   assert.doesNotMatch(browserTool, /即使被問到幾間也不報|不得報出剩餘間數|對客不報庫存數字/);
 });
