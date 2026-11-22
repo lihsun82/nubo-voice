@@ -38,8 +38,10 @@ export async function POST(request: NextRequest) {
     const result = await queryLivePmsRestAvailability(
       body.startAt as string, body.durationMinutes as number, fetch, byRoomType);
     if (!result) throw new PmsLiveError("pms_data_unavailable");
-    if (kioskRead && (result.inventoryView !== "guest-room-types-v1" ||
-        !Array.isArray(result.roomTypes) || result.roomTypes.length === 0)) {
+    if (kioskRead && (!("inventoryView" in result) ||
+        result.inventoryView !== "guest-room-types-v1" ||
+        !("roomTypes" in result) || !Array.isArray(result.roomTypes) ||
+        result.roomTypes.length === 0)) {
       throw new PmsLiveError("pms_data_unavailable");
     }
     return NextResponse.json(result, { headers });
