@@ -1,0 +1,46 @@
+name: Yating Taigi female A/B one-time initial samples
+
+on:
+  push:
+    branches:
+      - test/yating-taigi-female-ab-20261122
+    paths:
+      - .github/workflows/yating-taigi-ab-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yating-once-female-ab
+  cancel-in-progress: false
+
+jobs:
+  two-voices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate generator offline first
+        run: python3 -m unittest discover -s tests -p 'test_yating_taigi_ab.py' -v
+      - name: Synthesize exactly one identical Taiwanese line per female voice
+        env:
+          YATING_API_KEY: ${{ secrets.YATING_API_KEY }}
+        run: |
+          if [ -z "$YATING_API_KEY" ]; then
+            echo 'MISSING_YATING_API_KEY: Please create the repository Actions secret.'
+            exit 1
+          fi
+          python3 scripts/yating-taigi-ab.py --samples 1 --output yating-taigi-ab-output
+      - name: Package real audio samples
+        uses: actions/upload-artifact@v4
+        with:
+          name: NUBO-Yating-Taigi-A-B
+          path: yating-taigi-ab-output/
+          retention-days: 7
+          if-no-files-found: error
+
+# This deliberately performs only two paid/trial synthesis calls when created.
+# Never merges or deploys to NUBO production.
