@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 type Status = "idle" | "connecting" | "connected" | "error";
 type Score = { recognition: string; accent: string; note: string };
@@ -15,7 +15,7 @@ const QUESTIONS = [
 const MAX_SECONDS = 120;
 
 function timestamp() { return new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" }); }
-function styleButton(disabled = false): React.CSSProperties {
+function styleButton(disabled = false): CSSProperties {
   return { background: disabled ? "#c7cbcf" : "#326a60", color: "#fff", border: 0,
     borderRadius: 8, fontSize: 16, padding: "12px 16px", cursor: disabled ? "not-allowed" : "pointer" };
 }
@@ -146,6 +146,22 @@ export default function Live11TaigiLab() {
       };
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
+      // Avoid sending an incomplete SDP before browser ICE gathering settles.
+      if (peer.iceGatheringState !== "complete") {
+        await new Promise<void>((resolve) => {
+          const onChange = () => {
+            if (peer.iceGatheringState === "complete") done();
+          };
+          const done = () => {
+            clearTimeout(timer);
+            peer.removeEventListener("icegatheringstatechange", onChange);
+            resolve();
+          };
+          const timer = setTimeout(done, 5000);
+          peer.addEventListener("icegatheringstatechange", onChange);
+          if (peer.iceGatheringState === "complete") done();
+        });
+      }
       if (!peer.localDescription?.sdp) throw new Error("沒有產生 WebRTC SDP。");
       const response = await fetch("/api/live11-lab/session", {
         method: "POST",
