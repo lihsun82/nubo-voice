@@ -102,3 +102,5 @@ jobs:
             "$HOST/api/guest-config")
           echo "CROSS_ORIGIN=$bad PRIVATE_RESERVATION=$order PRIVATE_GUEST_CONFIG=$config"
           [ "$bad" = "401" ] && [ "$order" = "401" ] && [ "$config" = "401" ]
+
+# Rerun production probe after canonical NUBO origin fix: 2116a94c842ea9a35c39e31395d25122ba8c97d5
