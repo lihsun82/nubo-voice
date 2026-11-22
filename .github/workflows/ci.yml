@@ -19,3 +19,5 @@ jobs:
       - run: npm install
       - run: npm run typecheck
       - run: npm run build
+      - name: Test hotel-owned NUBO kiosk room-count authorization
+        run: node --experimental-strip-types --test tests/pms-kiosk-access.test.mjs tests/main-voice-room-types.test.mjs tests/pms-rest-guest.test.mjs
