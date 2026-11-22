@@ -8,7 +8,6 @@ const LIVE_ENDPOINT = "https://api.openai.com/v1/live/sessions";
 const MODEL = "gpt-live-1.1";
 const MAX_SESSIONS_PER_HOUR = 10;
 const timestamps: number[] = [];
-const sessionIds = new Set<string>();
 
 const instructions = [
   "You are NUBO's private Taiwanese Hokkien (Tâi-gí / 臺灣台語) audition assistant.",
@@ -63,26 +62,6 @@ export async function POST(request: NextRequest) {
   const payload = await request.json().catch(() => null) as null | { action?: unknown; sdp?: unknown; sessionId?: unknown };
   if (!payload || typeof payload !== "object") return error(400, "invalid_payload", "請求內容無效。");
 
-  if (payload.action === "hangup") {
-    const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
-    if (!/^live_[A-Za-z0-9_-]{3,120}$/.test(sessionId) || !sessionIds.has(sessionId)) {
-      return error(400, "unknown_session", "無效或已結束的測試通話。");
-    }
-    sessionIds.delete(sessionId);
-    try {
-      const result = await fetch(`${LIVE_ENDPOINT}/${encodeURIComponent(sessionId)}/hangup`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: AbortSignal.timeout(12000),
-        cache: "no-store",
-      });
-      if (!result.ok && result.status !== 404) return error(502, "hangup_failed", "結束通話請求未獲服務確認。");
-    } catch {
-      return error(502, "hangup_unconfirmed", "已關閉本機語音；遠端結束狀態無法確認。");
-    }
-    return NextResponse.json({ ok: true }, { headers: noStore });
-  }
-
   if (payload.action !== "start") return error(400, "unknown_action", "不支援的操作。");
   const sdp = typeof payload.sdp === "string" ? payload.sdp : "";
   if (!sdp.startsWith("v=0") || sdp.length > 64000) {
@@ -134,6 +113,5 @@ export async function POST(request: NextRequest) {
     || !answer.startsWith("v=0") || typeof sessionId !== "string") {
     return error(502, "invalid_live_answer", "Live 1.1 回傳格式錯誤，未能完成語音連線。");
   }
-  sessionIds.add(sessionId);
   return NextResponse.json({ model: MODEL, sessionId, sdp: answer }, { headers: noStore });
 }
