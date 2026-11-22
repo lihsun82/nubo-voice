@@ -932,10 +932,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                 const availableRooms = call.name === "pms_check_availability" &&
                   result && typeof result === "object" &&
                   "covered" in result && result.covered === true &&
+                  "source" in result && result.source === "live" &&
+                  "inventoryView" in result && result.inventoryView === "guest-room-types-v1" &&
                   "roomTypes" in result && Array.isArray(result.roomTypes) &&
                   result.roomTypes.some((room: unknown) =>
                     room && typeof room === "object" && "availableCount" in room &&
-                    typeof room.availableCount === "number" && room.availableCount > 0);
+                    typeof room.availableCount === "number" && Number.isInteger(room.availableCount) && room.availableCount > 0);
                 if (call.name === "pms_check_availability") setBookingLink(null);
                 if (availableRooms ||
                     (call.name === "notify_arrival_intent" && call.args?.intent === "booking")) {
