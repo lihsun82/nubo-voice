@@ -1,0 +1,104 @@
+name: NUBO PMS production kiosk authorization smoke (read-only)
+
+on:
+  push:
+    branches: [ci/verify-live-kiosk-401-20261122]
+    paths: [".github/workflows/nubo-pms-live-kiosk-smoke.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe NUBO room-count API, no credentials, no writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="https://nubo.ainubo.com"
+          IN=$(TZ=Asia/Taipei date -d "+1 day" +%F)
+          OUT=$(TZ=Asia/Taipei date -d "+2 days" +%F)
+
+          # Valid same-origin availability query, no cookie or API token.
+          stay=$(curl --silent --show-error --max-time 15 -o /tmp/pms-stay.json \
+            -w "%{http_code}" -X POST "$HOST/api/pms/v1/availability" \
+            -H "Origin: $HOST" -H "Sec-Fetch-Site: same-origin" \
+            -H "Accept: application/vnd.nubosci.room-types.v1+json" \
+            -H "Content-Type: application/json" \
+            --data "{\"checkIn\":\"$IN\",\"checkOut\":\"$OUT\",\"adults\":2}")
+          echo "LIVE_STAY_HTTP=$stay"
+          if [ "$stay" = "200" ]; then
+            python3 - <<'PY'
+          import json
+          v=json.load(open('/tmp/pms-stay.json'))
+          assert v.get('propertyId')=='ainubo-taichung-jinxin'
+          assert v.get('source')=='live' and v.get('covered') is True
+          assert v.get('inventoryView')=='guest-room-types-v1'
+          assert len(v.get('roomTypes',[]))>=1
+          assert all(isinstance(x.get('availableCount'),int) and x['availableCount']>=0 for x in v['roomTypes'])
+          print('LIVE_STAY=PMS_LIVE_ROOM_TYPES_VERIFIED')
+          PY
+          elif [ "$stay" = "503" ]; then
+            python3 - <<'PY'
+          import json
+          v=json.load(open('/tmp/pms-stay.json'))
+          assert v.get('error')=='pms_data_unavailable'
+          print('LIVE_STAY=AUTH_PASSED_BUT_PMS_DATA_UNAVAILABLE')
+          PY
+          else
+            echo "FAIL: stay API returned $stay, expected 200 or 503"
+            exit 1
+          fi
+
+          # Rest uses independent inventory; no customer or reservation data.
+          rest=$(curl --silent --show-error --max-time 15 -o /tmp/pms-rest.json \
+            -w "%{http_code}" -X POST "$HOST/api/pms/v1/rest-availability" \
+            -H "Origin: $HOST" -H "Sec-Fetch-Site: same-origin" \
+            -H "Accept: application/vnd.nubosci.room-types.v1+json" \
+            -H "Content-Type: application/json" \
+            --data '{"startAt":"now","durationMinutes":120}')
+          echo "LIVE_REST_HTTP=$rest"
+          if [ "$rest" = "200" ]; then
+            python3 - <<'PY'
+          import json
+          v=json.load(open('/tmp/pms-rest.json'))
+          assert v.get('propertyId')=='ainubo-taichung-jinxin'
+          assert v.get('inventoryView')=='guest-room-types-v1'
+          assert len(v.get('roomTypes',[]))>=1
+          print('LIVE_REST=PMS_LIVE_ROOM_TYPES_VERIFIED')
+          PY
+          elif [ "$rest" = "503" ]; then
+            python3 - <<'PY'
+          import json
+          v=json.load(open('/tmp/pms-rest.json'))
+          assert v.get('error')=='pms_data_unavailable'
+          print('LIVE_REST=AUTH_PASSED_BUT_PMS_DATA_UNAVAILABLE')
+          PY
+          else
+            echo "FAIL: rest API returned $rest, expected 200 or 503"
+            exit 1
+          fi
+
+      - name: Ensure outside sites and private reservation/config APIs remain locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST="https://nubo.ainubo.com"
+          bad=$(curl --silent --show-error --max-time 15 -o /dev/null -w "%{http_code}" \
+            -X POST "$HOST/api/pms/v1/availability" \
+            -H "Origin: https://outside.invalid" -H "Sec-Fetch-Site: cross-site" \
+            -H "Accept: application/vnd.nubosci.room-types.v1+json" \
+            -H "Content-Type: application/json" \
+            --data '{"checkIn":"2026-12-01","checkOut":"2026-12-02","adults":2}')
+          order=$(curl --silent --show-error --max-time 15 -o /dev/null -w "%{http_code}" \
+            -X POST "$HOST/api/pms/v1/reservation" \
+            -H "Origin: $HOST" -H "Sec-Fetch-Site: same-origin" \
+            -H "Content-Type: application/json" \
+            --data '{"bookingReference":"NO-REAL-ORDER","surname":"TEST"}')
+          config=$(curl --silent --show-error --max-time 15 -o /dev/null -w "%{http_code}" \
+            "$HOST/api/guest-config")
+          echo "CROSS_ORIGIN=$bad PRIVATE_RESERVATION=$order PRIVATE_GUEST_CONFIG=$config"
+          [ "$bad" = "401" ] && [ "$order" = "401" ] && [ "$config" = "401" ]
