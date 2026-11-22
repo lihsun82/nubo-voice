@@ -125,10 +125,13 @@ test("declares stay and rest tools only when the nubosci client is ready", async
   assert.match(instruction, /room_catalogue_incomplete/);
   assert.match(instruction, /目前無法確認住宿房況，請洽櫃檯/);
   assert.match(instruction, /開始時間與休息時長/);
-  assert.match(instruction, /不報庫存間數/);
-  assert.match(instruction, /挑一個有房/);
-  assert.match(instruction, /不要重薦客人拒絕/);
-  assert.doesNotMatch(instruction, /以「房型名稱，剩幾間」|只播報這次/);
+  assert.match(instruction, /明確問「剩幾間」/);
+  assert.match(instruction, /只推薦一種/);
+  assert.match(instruction, /拒絕的床型不再推薦/);
+  assert.match(instruction, /availableCount/);
+  assert.match(instruction, /引導至現場櫃檯完成訂房/);
+  assert.match(instruction, /不可把不同房型加總/);
+  assert.doesNotMatch(instruction, /即使被問到幾間也不報/);
   assert.doesNotMatch(instruction, /房況 JSON/);
 });
 
