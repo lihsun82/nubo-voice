@@ -1,0 +1,55 @@
+name: Yating Taiwanese A/B audition (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: '試音句數：1 = 各一段；3 = 各三段'
+        required: true
+        type: choice
+        options:
+          - '1'
+          - '3'
+        default: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yating-taigi-ab-manual
+  cancel-in-progress: false
+
+jobs:
+  audition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      YATING_API_KEY: ${{ secrets.YATING_API_KEY }}
+    steps:
+      - name: Check Yating secret is configured
+        shell: bash
+        run: |
+          if [ -z "$YATING_API_KEY" ]; then
+            echo 'Missing GitHub Actions repository secret YATING_API_KEY; no paid TTS requests sent.'
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: 24aeec98f1eb45758702e450f4a949da69b00cdd
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests (no network)
+        run: python3 -m unittest discover -s tests -p 'test_yating_taigi_ab.py' -v
+      - name: Generate two real Taiwanese female voices with matched settings
+        run: python3 scripts/yating-taigi-ab.py --samples '${{ inputs.samples }}' --output yating-taigi-ab-output
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NUBO-Yating-Taigi-A-B
+          path: yating-taigi-ab-output/
+          retention-days: 7
+          if-no-files-found: error
+
+# Only a manual run can invoke the paid Yating API.
+# The source is pinned to a reviewed test branch commit; this workflow does not deploy NUBO.
