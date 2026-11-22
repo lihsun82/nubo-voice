@@ -57,9 +57,21 @@ export function isNuboArrivalCancellation(value: string) {
   return CANCELLATION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+// A room-availability question is not permission to start a booking handoff.
+// Keep explicit booking or check-in requests on the existing fast notification path.
+export function isNuboAvailabilityOnlyQuestion(value: string) {
+  const text = value.normalize("NFKC").trim().toLowerCase().replace(/[\\s　]+/g, " ");
+  const explicitRequest = /(?:幫我|帮我|請幫我|请帮我|麻煩幫我|麻烦帮我|我要|我想要|我需要|我們要|我们要).{0,12}(?:辦理入住|办理入住|訂房|订房|預訂|预订|住宿|住一晚)/u;
+  if (explicitRequest.test(text)) return false;
+  const roomAvailability = /(?:有沒有|有没有|還有|还有|空房|可售|剩幾|剩几|剩多少).{0,12}(?:房|入住|住宿|休息)|(?:可以|能不能|可不可以).{0,8}(?:訂房|订房|入住)|(?:訂房|订房|入住).{0,4}(?:嗎|吗|呢|\\?|？)/u;
+  const question = /(?:請問|请问|想問|想问|\\?|？|嗎|吗|有沒有|有没有|還有|还有|幾間|几间|多少間|多少间|可不可以|能不能)/u;
+  if (roomAvailability.test(text) && question.test(text)) return true;
+  return /^(?:can|could|may|do|does|is|are)\\b.*(?:book|check[ -]?in|rooms? available|vacanc)/iu.test(text);
+}
+
 export function classifyNuboArrivalIntent(value: string): NuboArrivalIntent | null {
   const text = value.normalize("NFKC").trim().toLowerCase().replace(/[\s　]+/g, " ");
-  if (!text || isNuboArrivalCancellation(text)) return null;
+  if (!text || isNuboArrivalCancellation(text) || isNuboAvailabilityOnlyQuestion(text)) return null;
   if (CHECK_IN_PATTERNS.some((pattern) => pattern.test(text))) return "checkin";
   if (BOOKING_PATTERNS.some((pattern) => pattern.test(text))) return "booking";
   if (LODGING_PATTERNS.some((pattern) => pattern.test(text))) return "lodging";
