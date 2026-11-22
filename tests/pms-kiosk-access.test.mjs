@@ -46,7 +46,8 @@ function responseBody(path) {
   };
 }
 
-process.env.NUBO_PUBLIC_URL = origin;
+// Railway may use a different NUBO_PUBLIC_URL; kiosk trust must use the canonical hotel domain.
+process.env.NUBO_PUBLIC_URL = "https://nubo-voice-production.up.railway.app";
 process.env.NUBO_PMS_PUSH_TOKEN = testToken;
 process.env.NUBO_PMS_AVAILABILITY_TOKEN = testToken;
 process.env.NUBO_PMS_AVAILABILITY_URL = "https://pms.example.test/api/voice/v1/availability";

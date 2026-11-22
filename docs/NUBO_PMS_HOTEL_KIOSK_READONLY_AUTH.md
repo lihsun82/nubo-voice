@@ -5,7 +5,7 @@
 
 ## 已開放的最小唯讀邊界
 - 僅 POST /api/pms/v1/availability 與 /api/pms/v1/rest-availability。
-- 只處理由 NUBO 同源網頁發出的 guest-room-types-v1 查詢；瀏覽器需有允許的 Origin 或可信的同源 Fetch Metadata + Referer。
+- 只處理由 NUBO 正式網域 `https://nubo.ainubo.com` 同源網頁發出的 guest-room-types-v1 查詢；此網域不可被 Railway 的 `NUBO_PUBLIC_URL` 其他部署別名替換。瀏覽器需有允許的 Origin 或可信的同源 Fetch Metadata + Referer。
 - 只能回傳 PMS 即時有效的房型名稱、代碼、availableCount 等唯讀房況資料，禁止使用過期快照或缺失的房型目錄代替即時資料。
 - PMS Bearer Token 僅放在 Railway 伺服器環境，由 NUBO 後端轉呼叫 PMS；不會出現在網頁或 APP。
 - 匿名查房每來源 60 秒最多 30 次，超過回 HTTP 429；同時仍保留輸入驗證、4 秒逾時、no-store、房況過期拒絕。這是單副本記憶體限流；未來多副本需共享限流。
