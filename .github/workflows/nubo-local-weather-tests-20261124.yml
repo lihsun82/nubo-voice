@@ -1,0 +1,25 @@
+name: NUBO local guides and Taiwan weather tests
+on:
+  push:
+    branches:
+      - test/nubo-jinxin-contact-20261124
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-local-weather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.4"
+      - name: Test Jinxin hotel contact details
+        run: node --experimental-strip-types --test tests/nubo-jinxin-contact.test.mjs
+      - name: Test Taiwan-wide weather and local-guide source integrity
+        run: node --experimental-strip-types --test tests/nubo-local-weather-guide.test.mjs
+      - name: Test timezone and midnight date resolution
+        run: node --experimental-strip-types --test tests/nubo-clock.test.mjs

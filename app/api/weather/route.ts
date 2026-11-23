@@ -3,6 +3,7 @@ import {
   NextResponse,
 } from "next/server";
 import { z } from "zod";
+import { TAIWAN_WEATHER_REPRESENTATIVE_POINTS, isTaiwanWideWeatherRequest, coordinatesWithinTaiwan } from "@/lib/nubo-taiwan-weather-regions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -274,12 +275,15 @@ async function fetchJson<T>(
 async function resolveWithOpenMeteo(
   query: string,
   approximate: boolean,
+  taiwanOnly = false,
 ): Promise<ResolvedPlace | null> {
   const url = new URL(
     "https://geocoding-api.open-meteo.com/v1/search",
   );
 
   url.searchParams.set("name", query);
+  // Restrict only Taiwan locations; keep world-city queries functional.
+  if (taiwanOnly) url.searchParams.set("countryCode", "TW");
   url.searchParams.set("count", "1");
   url.searchParams.set("language", "zh");
   url.searchParams.set("format", "json");
@@ -294,11 +298,14 @@ async function resolveWithOpenMeteo(
     }>;
   }>(url.toString());
 
-  const place = result.results?.[0];
+  const place = result.results?.find((item) =>
+    !taiwanOnly || (
+      coordinatesWithinTaiwan(item.latitude, item.longitude) &&
+      /taiwan|台灣|臺灣|台湾/i.test(String(item.country || ""))
+    )
+  );
 
-  if (!place) {
-    return null;
-  }
+  if (!place) return null;
 
   return {
     name: place.name,
@@ -434,7 +441,7 @@ async function resolveWithNominatim(
     nonPoiResult ??
     results[0];
 
-  if (!result) {
+  if (!result || (taiwanOnly && !coordinatesWithinTaiwan(Number(result.lat), Number(result.lon)))) {
     return null;
   }
 
@@ -505,7 +512,7 @@ async function resolvePlace(
   let place: ResolvedPlace | null =
     null;
 
-  if (detailed) {
+  if (detailed || /(?:新竹|嘉義)(?:縣|市)/.test(location)) {
     try {
       place = await resolveWithNominatim(
         taiwanLocation
@@ -526,6 +533,7 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         `${city.english}, Taiwan`,
         false,
+        true,
       );
     } catch {
       place = null;
@@ -537,6 +545,7 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         location,
         false,
+        taiwanLocation,
       );
     } catch {
       place = null;
@@ -561,15 +570,17 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         `${city.english}, Taiwan`,
         detailed,
+        true,
       );
     } catch {
       place = null;
     }
   }
 
-  if (!place) {
+  if (!place || (taiwanLocation &&
+      !coordinatesWithinTaiwan(place.latitude, place.longitude))) {
     throw new Error(
-      `目前無法解析地點「${rawLocation}」，請改說鄰近城市、行政區或完整地址。`,
+      `目前無法可靠定位地點「${rawLocation}」，請確認縣市與鄉鎮區名稱；不可改以國外同名地點代替。`,
     );
   }
 
@@ -663,10 +674,80 @@ async function loadForecast(
   };
 }
 
+
+/**
+ * Clearly labelled all-Taiwan forecast overview; one multi-coordinate
+ * Open-Meteo request for the 22 county-seat representative points.
+ * Never claim that one urban point represents every mountain / township.
+ */
+let taiwanOverviewCache: { at: number; value: Record<string, unknown> } | null = null;
+async function getTaiwanOverview() {
+  if (taiwanOverviewCache && Date.now() - taiwanOverviewCache.at < 5 * 60_000) {
+    return NextResponse.json({ ...taiwanOverviewCache.value, cached: true });
+  }
+  const points = TAIWAN_WEATHER_REPRESENTATIVE_POINTS;
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude", points.map((p) => p.lat).join(","));
+  url.searchParams.set("longitude", points.map((p) => p.lng).join(","));
+  url.searchParams.set("daily", "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max");
+  url.searchParams.set("timezone", "Asia/Taipei");
+  url.searchParams.set("forecast_days", "2");
+  try {
+    const forecasts = await fetchJson<Forecast[]>(url.toString());
+    if (!Array.isArray(forecasts) || forecasts.length !== points.length) {
+      throw new Error("regional_forecast_incomplete");
+    }
+    const regions = points.map((point, index) => {
+      const item = forecasts[index];
+      const daily = item?.daily;
+      if (!daily?.time?.[0] ||
+        typeof daily.temperature_2m_max?.[0] !== "number" ||
+        typeof daily.temperature_2m_min?.[0] !== "number" ||
+        !coordinatesWithinTaiwan(point.lat, point.lng)) throw new Error("regional_forecast_incomplete");
+      return {
+        county: point.name,
+        representativeLocationOnly: true,
+        today: {
+          date: daily.time[0],
+          condition: describeWeather(daily.weather_code?.[0] ?? -1),
+          highC: daily.temperature_2m_max[0],
+          lowC: daily.temperature_2m_min[0],
+          rainChancePercent: daily.precipitation_probability_max?.[0] ?? null,
+        },
+        tomorrow: {
+          date: daily.time?.[1] ?? null,
+          condition: typeof daily.weather_code?.[1] === "number"
+            ? describeWeather(daily.weather_code[1]) : null,
+          highC: daily.temperature_2m_max?.[1] ?? null,
+          lowC: daily.temperature_2m_min?.[1] ?? null,
+          rainChancePercent: daily.precipitation_probability_max?.[1] ?? null,
+        },
+      };
+    });
+    const result = {
+      ok: true,
+      source: "Open-Meteo",
+      scope: "taiwan-22-county-seat-representative-forecast",
+      timezone: "Asia/Taipei",
+      advisory: "各縣市代表市區的概略預報，並非該縣市全部鄉鎮／山區天氣；請指定鄉鎮區取得更貼近目的地的資料。颱風警報和停班停課須另查官方公告。",
+      regionCount: regions.length,
+      regions,
+    };
+    taiwanOverviewCache = { at: Date.now(), value: result };
+    return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({
+      ok: false,
+      error: "全臺縣市預報資料暫時不完整，請指定縣市或鄉鎮區重新查詢；不可猜測氣溫或降雨機率。",
+    }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+}
+
 async function weatherResponse(
   location: string,
 ) {
   const startedAt = Date.now();
+  if (isTaiwanWideWeatherRequest(location)) return getTaiwanOverview();
 
   try {
     const placeResult =
@@ -689,6 +770,10 @@ async function weatherResponse(
       ok: true,
       source: "Open-Meteo",
       requestedLocation: location,
+      scope: placeResult.place.approximate ? "parent-city-approximate" : "resolved-place-forecast",
+      weatherAccuracyNotice: placeResult.place.approximate
+        ? "鄉鎮位置查詢未能確認，以下僅是上層縣市代表地點概略預報，不可當作指定鄉鎮或高山精確氣象。"
+        : "模型預報不是官方警報或即時路況；如需鄉鎮、山區預報或警報，請另查中央氣象署。",
       resolvedLocation: {
         name: placeResult.place.name,
         admin1:

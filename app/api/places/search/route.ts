@@ -163,6 +163,8 @@ function queryMatches(
   const groups: Array<[RegExp, string[]]> = [
     [/景點|觀光|旅遊|景點推薦/, ["tourism", "attraction", "museum", "viewpoint", "gallery", "park", "temple"]],
     [/交通|捷運|地鐵|車站|公車/, ["station", "subway", "bus", "public_transport", "railway", "stop"]],
+    [/學校|大學|高中|高職|中學|國中|國小|校園/, ["school", "university", "college", "kindergarten", "campus"]],
+    [/醫院|醫療|急診|診所|醫師|看病|就醫/, ["hospital", "clinic", "doctors", "doctor", "medical", "healthcare"]],
     [/餐廳|美食|吃|餐飲/, ["restaurant", "food", "cafe", "fast_food", "cuisine"]],
     [/咖啡|咖啡廳/, ["cafe", "coffee"]],
     [/早餐/, ["restaurant", "cafe", "fast_food", "breakfast"]],
