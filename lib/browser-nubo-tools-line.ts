@@ -1,5 +1,5 @@
-import { NUBO_JINXIN_REFERENCE } from "./nubo-jinxin-reference";
 "use client";
+import { NUBO_JINXIN_REFERENCE } from "./nubo-jinxin-reference";
 
 import {
   executeNuboBrowserTool as executeBaseTool,
