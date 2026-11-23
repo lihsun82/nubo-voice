@@ -12,7 +12,6 @@ export async function playNuboCallTones() {
   const audio = new Audio(NUBO_PHONE_RING_URL);
   audio.preload = "auto";
   audio.volume = NUBO_PHONE_RING_VOLUME;
-  audio.playsInline = true;
 
   const finished = new Promise<void>((resolve) => {
     const finish = () => resolve();
