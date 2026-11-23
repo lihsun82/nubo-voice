@@ -1,0 +1,25 @@
+name: NUBO group booking and parking regression
+on:
+  push:
+    branches:
+      - test/nubo-group-booking-parking-20261124
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  group-booking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.4"
+      - name: Group booking, coach parking and PMS guard
+        run: node --experimental-strip-types --test tests/nubo-group-booking-parking.test.mjs
+      - name: Hotel contact regression
+        run: node --experimental-strip-types --test tests/nubo-jinxin-contact.test.mjs
+      - name: Taiwan clock regression
+        run: node --experimental-strip-types --test tests/nubo-clock.test.mjs
