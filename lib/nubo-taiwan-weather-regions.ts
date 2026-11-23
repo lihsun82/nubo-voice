@@ -30,7 +30,7 @@ export const TAIWAN_WEATHER_REPRESENTATIVE_POINTS = [
 
 export function isTaiwanWideWeatherRequest(location: string) {
   const normalized = String(location || "").replace(/\s/g, "").replace(/臺/g, "台");
-  return /^(?:全台|全台灣|台灣全境|台灣各縣市|全國|全台各地|台灣|整個台灣)(?:地區|天氣|天氣預報|氣象)?$/.test(normalized);
+  return /^(?:全台|全台灣|台灣全境|台灣各縣市|全國|全台各地|全台各縣市|台灣|整個台灣)(?:地區|各地|各縣市|整體)?(?:今明天|今天|明天)?(?:的)?(?:天氣|天氣預報|氣象|預報)?(?:如何|怎麼樣|狀況|概況)?$/.test(normalized);
 }
 
 /** Covers Taiwan main island, Penghu, Kinmen, Matsu and nearby islands. */
