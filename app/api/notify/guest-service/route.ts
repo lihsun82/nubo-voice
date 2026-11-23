@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { sendGmailMessage } from "@/lib/gmail";
 import { pushHotelLineText } from "@/lib/nubo-hotel-line";
@@ -85,8 +86,19 @@ function getRecentDelivery(key: string, now: number) {
 }
 
 async function sendGuestAlert(text: string) {
-  const token = process.env.NUBO_TELEGRAM_BOT_TOKEN?.trim();
+  let token = process.env.NUBO_TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) {
+    token = await readFile("/etc/secrets/NUBO_TELEGRAM_BOT_TOKEN", "utf8")
+      .then((value) => value.trim(), () => undefined);
+  }
   const chatId = process.env.NUBO_TELEGRAM_CHAT_ID?.trim();
+
+  if (!token || !chatId) {
+    console.warn("[notify/guest-service] Telegram configuration incomplete", {
+      tokenConfigured: Boolean(token),
+      chatIdConfigured: Boolean(chatId),
+    });
+  }
 
   if (token && chatId) {
     try {
@@ -99,11 +111,14 @@ async function sendGuestAlert(text: string) {
         redirect: "error",
         signal: AbortSignal.timeout(5_000),
       });
-      const result = await response.json();
+      const result = await response.json().catch(() => null);
       if (response.ok && result?.ok === true) {
         return { channel: "telegram" as const };
       }
-      console.warn("[notify/guest-service] Telegram rejected the alert", { status: response.status });
+      console.warn("[notify/guest-service] Telegram rejected the alert", {
+        status: response.status,
+        telegramCode: Number.isInteger(result?.error_code) ? result.error_code : null,
+      });
     } catch {
       // Fetch errors can include the request URL, which contains the bot token.
       console.warn("[notify/guest-service] Telegram delivery could not be confirmed");
