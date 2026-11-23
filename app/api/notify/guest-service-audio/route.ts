@@ -149,7 +149,8 @@ async function analyzeGuestAudio(wavBase64: string) {
     "你是旅館客務語音分流器。請直接聽原始音訊，不要依賴任何外部逐字稿。",
     "判斷旅客是否正在提出需要旅館現場人員處理的需求，例如：送毛巾/浴巾/備品/水/枕頭、房務清潔、設備故障、噪音、遺失物、客訴、退款帳務、換房、叫車、緊急事件，或『送/拿/補/給某樣東西到某房』。",
     "只要語意明確是旅館客務，即使品項有一兩個字聽不清楚，也 guestService=true，issue 可寫『旅客要求送物到房間，品項語音不確定，請現場確認』，不要因此漏報。",
-    "若只是聊天、查資料、播放音樂、打電話、一般手機控制、詢問日期時間，guestService=false。",
+    "詢問飯店空房、當日或指定日期房況、飯店或櫃檯電話、要求聯絡真人櫃檯、反映客訴，皆 guestService=true。一般聊天、查詢非飯店電話、撥打私人電話、播放音樂、手機控制、詢問日期時間，皆 guestService=false。",
+    "明確的房況、飯店電話、聯絡櫃檯與客訴可直接轉交，不需等待姓氏、房號或聯絡方式。issue 用一句話記下原意，保留已說明的日期、房型或客訴重點，別推測房況，也別加入旅客私人電話。",
     "房號若聽到三零五、305、三樓五號房等，盡量正規化成最可能的房號；真的不確定可留空。",
     "只回 JSON，不要加任何說明。格式：",
     '{"guestService":true,"confidence":0.0,"roomNumber":"","issue":"","urgency":"normal"}',
@@ -283,6 +284,7 @@ export async function POST(req: NextRequest) {
       analyzed: true,
       sent: forwardedPayload?.sent === true,
       duplicate: forwardedPayload?.duplicate === true,
+      channel: forwardedPayload?.channel,
       decision,
       model,
     });
