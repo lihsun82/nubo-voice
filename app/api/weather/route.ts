@@ -299,7 +299,7 @@ async function resolveWithOpenMeteo(
 
   const place = result.results?.find((item) =>
     coordinatesWithinTaiwan(item.latitude, item.longitude) &&
-    /taiwan|台灣|臺灣/i.test(String(item.country || ""))
+    /taiwan|台灣|臺灣|台湾/i.test(String(item.country || ""))
   );
 
   if (!place) return null;
@@ -509,7 +509,7 @@ async function resolvePlace(
   let place: ResolvedPlace | null =
     null;
 
-  if (detailed) {
+  if (detailed || /(?:新竹|嘉義)(?:縣|市)/.test(location)) {
     try {
       place = await resolveWithNominatim(
         taiwanLocation
