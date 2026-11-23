@@ -817,7 +817,7 @@ export const geminiFunctionDeclarations = [
   {
     name: "get_weather",
     description:
-      "智慧查詢世界各地城市、行政區、鄉鎮、道路、地標或地址的目前、今天與明天天氣；必須傳入完整地點，未指定時使用台中市北區。",
+      "查詢全臺22縣市與任一鄉鎮區、離島及世界地點的即時和今明天氣。請傳旅客指定的完整地點；指定全臺時 location=全台 取得22縣市代表市區的概略預報；沒有指定地點才使用台中市北區。來源 Open-Meteo，不可聲稱中央氣象署；有 approximate 標記時只說概略預報。",
     parameters: {
       type: "OBJECT",
       properties: {
