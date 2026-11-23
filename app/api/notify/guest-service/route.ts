@@ -14,7 +14,7 @@ const DEFAULT_ALERT_EMAILS = [
   "ginatu83@gmail.com",
 ];
 const DUPLICATE_WINDOW_MS = 180_000;
-const recentAlerts = new Map<string, number>();
+const recentAlerts = new Map<string, { at: number; channel: "telegram" | "line" }>();
 
 const NON_SUBSTANTIVE_ISSUE_PATTERNS = [
   /^尚未提供(?:客訴|抱怨|需求|內容)?$/u,
@@ -73,15 +73,45 @@ function getTaipeiTime() {
 }
 
 function cleanupRecentAlerts(now: number) {
-  for (const [key, at] of recentAlerts.entries()) {
+  for (const [key, { at }] of recentAlerts.entries()) {
     if (now - at > DUPLICATE_WINDOW_MS * 2) recentAlerts.delete(key);
   }
 }
 
-function wasRecentlyDelivered(key: string, now: number) {
+function getRecentDelivery(key: string, now: number) {
   cleanupRecentAlerts(now);
-  const previous = recentAlerts.get(key) ?? 0;
-  return now - previous < DUPLICATE_WINDOW_MS;
+  const previous = recentAlerts.get(key);
+  return previous && now - previous.at < DUPLICATE_WINDOW_MS ? previous : undefined;
+}
+
+async function sendGuestAlert(text: string) {
+  const token = process.env.NUBO_TELEGRAM_BOT_TOKEN?.trim();
+  const chatId = process.env.NUBO_TELEGRAM_CHAT_ID?.trim();
+
+  if (token && chatId) {
+    try {
+      const telegramText = text.length <= 4096 ? text : `${text.slice(0, 4000)}\n（內容過長，已截斷）`;
+      const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: telegramText }),
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(5_000),
+      });
+      const result = await response.json();
+      if (response.ok && result?.ok === true) {
+        return { channel: "telegram" as const };
+      }
+      console.warn("[notify/guest-service] Telegram rejected the alert", { status: response.status });
+    } catch {
+      // Fetch errors can include the request URL, which contains the bot token.
+      console.warn("[notify/guest-service] Telegram delivery could not be confirmed");
+    }
+  }
+
+  const line = await pushHotelLineText(text);
+  return { channel: "line" as const, line };
 }
 
 export async function POST(req: NextRequest) {
@@ -126,17 +156,18 @@ export async function POST(req: NextRequest) {
       .join(":");
     const now = Date.now();
 
-    if (wasRecentlyDelivered(fingerprint, now)) {
+    const recentDelivery = getRecentDelivery(fingerprint, now);
+    if (recentDelivery) {
       return NextResponse.json({
         ok: true,
         sent: false,
         duplicate: true,
-        channel: "line",
+        channel: recentDelivery.channel,
         source,
       });
     }
 
-    const lineText = [
+    const alertText = [
       `${urgencyIcon} NUBO 即時客務通知`,
       `時間：${getTaipeiTime()}（Asia/Taipei）`,
       `類型：${categoryLabel}`,
@@ -153,13 +184,10 @@ export async function POST(req: NextRequest) {
       .filter((line) => line !== "")
       .join("\n");
 
-    // LINE is the operational primary channel. It must not wait for surname,
-    // phone number, Gmail OAuth, or a second confirmation.
-    const lineResult = await pushHotelLineText(lineText);
-    recentAlerts.set(fingerprint, Date.now());
+    const delivery = await sendGuestAlert(alertText);
+    recentAlerts.set(fingerprint, { at: Date.now(), channel: delivery.channel });
 
-    // Email is now an optional copy only. A Gmail failure must never block the
-    // LINE alert requested by hotel operations.
+    // An optional email copy cannot block the operational alert.
     let emailSent = false;
     let emailError: string | null = null;
     if (
@@ -178,7 +206,7 @@ export async function POST(req: NextRequest) {
           recipients.join(", "),
           subject,
           [
-            "NUBO 客務通知（LINE 已先行送達）。",
+            "NUBO 客務通知（即時通知已送達）。",
             `時間：${getTaipeiTime()}（Asia/Taipei）`,
             `房號：${roomNumber}`,
             `客人姓氏：${surname}`,
@@ -199,8 +227,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       sent: true,
-      channel: "line",
-      line: lineResult,
+      ...delivery,
       emailSent,
       emailError,
       surname: surname || null,
