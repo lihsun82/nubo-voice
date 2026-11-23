@@ -57,4 +57,8 @@ test("weather forecasts are dynamically fetched, not hallucinated", () => {
   assert.match(weather, /regional_forecast_incomplete/);
   assert.match(weather, /countryCode/);
   assert.match(baseTool, /get_weather/);
+  // The Taiwan safeguard must NOT force all global weather requests to TW.
+  assert.match(weather, /if \(taiwanOnly\) url\.searchParams\.set\("countryCode", "TW"\)/);
+  assert.match(weather, /!taiwanOnly \|\|/);
+  assert.match(weather, /taiwanLocation,/);
 });
