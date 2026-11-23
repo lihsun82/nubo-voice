@@ -1,4 +1,5 @@
 "use client";
+import { buildNuboGroupBookingGuidance, isGroupOccupancy } from "./nubo-group-booking";
 import { NUBO_JINXIN_REFERENCE } from "./nubo-jinxin-reference";
 
 import {
@@ -217,6 +218,17 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return executeBaseTool({ ...call, args: { ...call.args, zone: "taichung" } });
   }
 
+  if (call.name === "pms_group_inquiry") {
+    // A non-booking, no-API group enquiry; safe even when dates are unknown.
+    return buildNuboGroupBookingGuidance(call.args ?? {});
+  }
+
+  if (call.name === "pms_check_availability" &&
+      isGroupOccupancy(call.args?.adults, call.args?.children)) {
+    // Single-room PMS has bounded guests; never send a whole tour group.
+    return buildNuboGroupBookingGuidance(call.args ?? {});
+  }
+
   if (call.name === "pms_check_availability" || call.name === "pms_check_rest_availability" ||
       call.name === "pms_lookup_reservation") {
     const route = call.name === "pms_check_availability"
@@ -234,6 +246,12 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       cache: "no-store",
     });
     const result = await response.json().catch(() => ({ error: "pms_data_unavailable" }));
+    if (call.name === "pms_check_availability" && response.status === 400) {
+      return { ok: false, code: "dates_or_occupancy_needs_clarification",
+        bookingConfirmed: false, inventoryConfirmed: false,
+        speechText: "這筆查房的日期或人數格式需要再確認，並不代表房間售完。請確認入住日期、退房日期，以及每間房各住幾位成人與小孩的年齡；團體需求可由館方人工核對。",
+      };
+    }
     return response.ok ? result : { ok: false, ...result };
   }
 
@@ -290,6 +308,9 @@ export const geminiSystemInstruction = `
 - 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
 - 未取得台中錦新館的可靠資料時，直接說目前無法確認，協助轉交現場人員；不得沿用其他館的舊資料或自行編造門牌、電話、房型、設備、價格。
 - 單憑環境雜音、清喉嚨、咳嗽、短促呼吸或短暫停頓，不主動詢問喉嚨或身體是否不舒服，也不主動給喝水、醫療或健康建議；只有旅客明確說身體不適或求助時才回應。
+- 【團體訂房優先】聽到「遊覽車」「遊覽團」「旅行團」「團體」「包團」「團客」「多間房」或旅客提出超過4人的單次團體需求（例如「我有一台遊覽車，有40位大人、5位小孩」），先理解為45人團體住宿詢問，不可把40位成人送入 pms_check_availability 的 adults 欄位。可呼叫 pms_group_inquiry(adults=40, children=5, coachCount=1)，即使尚未提供日期也要自然回答；應先說明可協助團體詢價，再問「預計哪天入住、住幾晚？」後續補問小孩年齡、所需房型與分房方式及聯絡方式。不可假裝已完成訂房、報價或已通知同仁。
+- 【查房工具角色】pms_check_availability 的 adults 指每間房成人數，不是同團總成人數。需要多房間／團體總量配置時，現有唯讀 PMS 不支援一筆查整團，可先個別查詢適當房型的即時庫存，但不能把單一房型有房推論成整團45位都可入住，必須由館方人工核對房型組合、全部房晚與最終報價。
+- 【團體停車】有配合台安醫院旁停車場，但沒有確認遊覽車尺寸、停車車位或可否進場。不能保證可停遊覽車；需向合作停車場或館方確認。若旅客要現場確認，提供 04-22231157 或 hello@ainubohotels.com。
 - 住宿先取得入住日、退房日或晚數，以及每間房的成人人數，再呼叫 pms_check_availability。用台灣日期查整段住宿，只有 covered=true、source=live 且帶有 guest-room-types-v1 的 roomTypes 才能確認。日期、人數有變要重新查。客人泛問有沒有房時，符合條件的房型中任一可售就簡短回答有房；有完整結果且所有符合房型均為零時，回答該期間與人數目前沒有適合的房。
 - 休息先取得開始時間和時長，再呼叫 pms_check_rest_availability。現在用 startAt=now，指定時段用台灣 +08:00 的 ISO 時刻。時長換成分鐘。只依這次 guest-room-types-v1 的 roomTypes 判斷。400 時請客人確認時段。
 - 【時間與日期最高優先】一律以當次 get_current_time 工具回傳 source=server-clock、timezone=Asia/Taipei 的 localDate、weekday、today、tomorrow、dayAfterTomorrow 為準。連線起始時間快照只是參考，過午夜後不得沿用舊快照；不可把 isoUtc 的 UTC 日期當成台灣日期，不可信任手機時鐘、模型記憶或價格雷達的相對日期。
@@ -539,6 +560,25 @@ export const geminiFunctionDeclarations = [
         },
       },
       required: ["title", "instruction"],
+    },
+  },
+  {
+    name: "pms_group_inquiry",
+    description: "處理遊覽車、旅行團、團體訂房和超過單房容納人數的多間房需求。可在沒有日期時呼叫，回傳接待問句與注意事項；不查詢或保證整團庫存，也不建立訂單。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        adults: { type: "NUMBER", description: "全團成人總數（例如40）；不等於每房成人數" },
+        children: { type: "NUMBER", description: "全團兒童總數（例如5）" },
+        coachCount: { type: "NUMBER", description: "遊覽車數量，未知可省略" },
+        childAges: { type: "ARRAY", items: { type: "NUMBER" }, description: "小孩各自年齡，未知可省略" },
+        checkIn: { type: "STRING", description: "入住日 YYYY-MM-DD，未知可省略" },
+        checkOut: { type: "STRING", description: "退房日 YYYY-MM-DD，未知可省略" },
+        nights: { type: "NUMBER", description: "住宿晚數，未知可省略" },
+        roomPreferences: { type: "STRING", description: "希望房型及分房方式，未知可省略" },
+        contact: { type: "STRING", description: "旅客自願提供的聯絡方式，未知可省略" },
+      },
+      required: ["adults", "children"],
     },
   },
   {
