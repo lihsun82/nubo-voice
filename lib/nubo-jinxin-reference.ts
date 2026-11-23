@@ -18,7 +18,26 @@ export const JINXIN_ROOM_RATES = [
   {code:"NV",name:"星曜閣樓景觀家庭房",weekday:3480,friday:3880,saturday:4580,sunday:3680},
 ] as const;
 
+/**
+ * 館方直接確認的錦新館聯絡資料，2026-11-24。
+ * 公開提供給旅客；不代表官網所有其他資料已驗證。
+ */
+export const NUBO_JINXIN_CONTACT = {
+  name: "AINUBO HOTEL 新寶智慧酒店 台中錦新館",
+  address: "台中市北區錦新街18號",
+  phone: "04-22231157",
+  email: "hello@ainubohotels.com",
+} as const;
+
 export const NUBO_JINXIN_REFERENCE = `
+
+【館方最新確認的基本聯絡資訊（2026-11-24）】
+- 正式名稱：${NUBO_JINXIN_CONTACT.name}
+- 館址：${NUBO_JINXIN_CONTACT.address}
+- 服務專線：${NUBO_JINXIN_CONTACT.phone}（連續數字 0422231157；唸成「零四、二二二三、一一五七」，不可增減、改成其他分館電話）
+- 公司／官方聯絡信箱：${NUBO_JINXIN_CONTACT.email}（完整地址必須準確；可用英文逐字拼讀）
+- 旅客詢問「飯店在哪裡」、「地址」、「導航目的地」、「聯絡電話」、「櫃檯電話」、「客服電話」、「公司 Email」、「如何聯絡飯店」時，可以直接回答這三項館方已確認的資訊，不必重新查房況或詢問入住日期。
+- 旅客要求打電話或寄信時，僅提供號碼及信箱，除非已確實啟用且成功執行相應工具，否則不可宣稱已撥通電話、已寄出郵件或已通知櫃檯。
 AINUBO HOTEL 新寶智慧酒店｜台中錦新館館方基礎資料（館方 2026-11-23 截圖，非官網或 PMS 即時資料）：
 - 地址：台中市北區錦新街18號。對外官網網址 https://ainubohotels.com/；目前未能在線上完整驗證官網所有頁面，不得冒稱已核對。
 - 房價為新臺幣每房每晚的「館方價格表參考價」，須先知道入住日期、退房日期、房型和人數才可對應星期；特殊日、連假、旺季、方案與動態調價可能不同。
