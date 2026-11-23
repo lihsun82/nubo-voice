@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
+import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import {
   NuboQuestionHistory,
   recordNuboQuestion,
@@ -386,10 +387,13 @@ export function OpenAIRealtimeVoiceConsole({
     setTranscript("");
 
     try {
-      const tokenResponse = await fetch(
-        `/api/realtime-token?voice=${encodeURIComponent(profile.voice)}`,
-        { cache: "no-store", headers: { "X-Nubo-Voice-Access": accessCode } },
-      );
+      const [tokenResponse, sessionClockInstruction] = await Promise.all([
+        fetch(
+          `/api/realtime-token?voice=${encodeURIComponent(profile.voice)}`,
+          { cache: "no-store", headers: { "X-Nubo-Voice-Access": accessCode } },
+        ),
+        loadNuboSessionClockInstruction(),
+      ]);
       const tokenPayload = await tokenResponse.json();
       if (!tokenResponse.ok) {
         if (tokenResponse.status === 401) {
@@ -513,7 +517,7 @@ export function OpenAIRealtimeVoiceConsole({
 
       const instructions = `${geminiSystemInstruction}\n\n${getNuboPersonalityInstruction(
         profile.personality,
-      )}`;
+      )}\n\n${sessionClockInstruction}`;
       const session = {
         type: "realtime",
         model: "gpt-realtime-2.1-mini",
