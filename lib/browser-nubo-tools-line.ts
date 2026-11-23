@@ -9,6 +9,7 @@ import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
+import { NUBO_KJXIN_GUEST_KNOWLEDGE } from "@/lib/nubo-hotel-guest-knowledge";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -349,7 +350,7 @@ export const geminiSystemInstruction = `
 - guest_service_alert是固定授權的客務升級通道，四項資料齊全後可直接執行，不適用一般寄信二次確認。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
-`;
+`.trim() + `\n\n${NUBO_KJXIN_GUEST_KNOWLEDGE}`;
 
 export const geminiFunctionDeclarations = [
   ...baseDeclarations.map((declaration) => {
