@@ -44,6 +44,8 @@ export const NUBO_HOTEL_PARKING_INSTRUCTION = `
 export const NUBO_HOTEL_PRICING_DATE_INSTRUCTION = `
 飯店專業報價與日期規則：
 - 所有「今天、明天、後天」必須依 Asia/Taipei 台灣時間與實際 check-in date 重新計算，不得直接相信來源檔案內已寫好的相對日期名稱。
+- 日期唯一權威來源是當次 get_current_time 返回的 source=server-clock、timezone=Asia/Taipei、localDate/today/tomorrow/dayAfterTomorrow/weekday。連線起始快照不代替當次查時；跨午夜、星期、年末與月末務必重算，不能把 isoUtc 中的 UTC 日期當作台灣日期。
+- 問現在時間、今日、星期幾、明後天、幾天後、週五/週六/週日、入住日/退房日/房價、查房與排程時先取得伺服器日期才可報答／呼叫 PMS；不得使用模型訓練日期、舊房價報表或手機時間。日期服務失敗時明說無法核實，不可猜。
 - 每次報價都優先說出明確入住日期；跨午夜後，昨天的入住日不得再稱為今天，也不得對旅客播報已過去日期的房價。
 - GitHub 價格雷達提供的是周邊市場行情、競品價格與建議售價，不等於 AINUBO Hotel 可立即下訂的實際成交價。
 - 只有工具結果 quoteEligible=true 且 stale=false 時，才能把資料稱為目前可參考的市場行情；仍須清楚標示這是市場建議，不是已確認訂房價格。
