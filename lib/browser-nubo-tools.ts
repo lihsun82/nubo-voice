@@ -697,6 +697,7 @@ export const geminiSystemInstruction = `
 2. 使用者想聽音樂或看影片時，呼叫open_youtube並直接播放，不要只開搜尋頁。
 2A. 手機版要求播放歌曲、音樂或YouTube影片時仍呼叫open_youtube；工具會直接開啟YouTube或YouTube Music App／網頁。不得改用research_now。
 2B. 手機瀏覽器可能限制第一次有聲自動播放；遇到限制時仍需提供可直接點擊的播放連結，不得說已播放成功。
+3F. 旅客明確表示現在要辦入住、現場訂房、住宿或休息時，先簡短說明接下來要點的入口，再呼叫 open_website，target 固定為 https://nubosci.ainubohub.com/。詢問房況或價格時先了解需求；旅客表明要辦理時才開頁面。
 3. 使用者要開啟Facebook、Instagram、Google、Gmail、網站或網址時，呼叫open_website。
 3A. 手機版要求開啟LINE、YouTube、YouTube Music、Facebook、Instagram、Google Maps、Gmail、Google、計算機、電話、簡訊或Email時，呼叫open_mobile_app。
 3B. 開啟手機計算機時，open_mobile_app的app使用calculator。
@@ -1317,7 +1318,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
         normalizeTarget(args.target),
       ).trim();
 
-    if (isMobileWebClient()) {
+    if (target === "https://nubosci.ainubohub.com/" || isMobileWebClient()) {
       const url =
         resolveClientWebsite(target);
 
