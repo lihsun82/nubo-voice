@@ -1101,90 +1101,36 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   if (name === "gmail_status") return requestJson("/api/gmail/status", { cache: "no-store" });
   if (name === "task_action") return post("/api/tasks/action", { id: args.id, action: args.action });
   if (name === "get_current_time") {
-    const requestedTimezone =
-      String(
-        args.timezone ??
-        "Asia/Taipei",
-      ).trim() || "Asia/Taipei";
-
-    const location =
-      String(args.location ?? "").trim();
-
-    const now = new Date();
-
-    const formatterOptions:
-      Intl.DateTimeFormatOptions = {
-        timeZone: requestedTimezone,
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        weekday: "long",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hourCycle: "h23",
-      };
-
-    let timezone =
-      requestedTimezone;
-
-    let formatter:
-      Intl.DateTimeFormat;
-
-    let fallbackApplied = false;
-
+    const timezone = String(args.timezone ?? "Asia/Taipei").trim() || "Asia/Taipei";
+    const location = String(args.location ?? "").trim();
     try {
-      formatter =
-        new Intl.DateTimeFormat(
-          "zh-TW",
-          formatterOptions,
-        );
+      // Server clock is authoritative; the browser/device clock may be wrong.
+      const response = await fetch(
+        `/api/clock?timezone=${encodeURIComponent(timezone)}`,
+        { cache: "no-store", signal: AbortSignal.timeout(4500) },
+      );
+      if (!response.ok) throw new Error("clock_service_unavailable");
+      const snapshot: unknown = await response.json();
+      if (!snapshot || typeof snapshot !== "object") {
+        throw new Error("invalid_clock_payload");
+      }
+      const clock = snapshot as Record<string, unknown>;
+      if (clock.ok !== true || clock.source !== "server-clock" ||
+          typeof clock.localDate !== "string" ||
+          typeof clock.localIso !== "string" ||
+          typeof clock.weekday !== "string") {
+        throw new Error("invalid_clock_payload");
+      }
+      return { ...clock, location: location || undefined };
     } catch {
-      timezone = "Asia/Taipei";
-      fallbackApplied = true;
-
-      formatter =
-        new Intl.DateTimeFormat(
-          "zh-TW",
-          {
-            ...formatterOptions,
-            timeZone: timezone,
-          },
-        );
+      // Fail closed: never substitute a potentially misconfigured device clock.
+      return {
+        ok: false,
+        error: "time_source_unavailable",
+        timezone: "Asia/Taipei",
+        message: "目前無法核實伺服器日期與時間，請勿猜測日期或星期。",
+      };
     }
-
-    const formattedParts =
-      formatter.formatToParts(now);
-
-    const readPart = (type: string) =>
-      formattedParts.find(
-        (part) => part.type === type,
-      )?.value ?? "";
-
-    return {
-      ok: true,
-      source:
-        "browser-device-clock",
-      location:
-        location || undefined,
-      requestedTimezone,
-      timezone,
-      fallbackApplied,
-      isoUtc: now.toISOString(),
-      unixMs: now.getTime(),
-      localTime:
-        formatter.format(now),
-      year: readPart("year"),
-      month: readPart("month"),
-      day: readPart("day"),
-      weekday:
-        readPart("weekday"),
-      hour: readPart("hour"),
-      minute:
-        readPart("minute"),
-      second:
-        readPart("second"),
-    };
   }
 
   if (name === "search_nearby") {
