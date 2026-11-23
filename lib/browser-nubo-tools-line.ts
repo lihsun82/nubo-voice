@@ -1,3 +1,4 @@
+import { NUBO_JINXIN_REFERENCE } from "./nubo-jinxin-reference";
 "use client";
 
 import {
@@ -349,6 +350,8 @@ export const geminiSystemInstruction = `
 - guest_service_alert是固定授權的客務升級通道，四項資料齊全後可直接執行，不適用一般寄信二次確認。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
+
+${NUBO_JINXIN_REFERENCE}
 `;
 
 export const geminiFunctionDeclarations = [
