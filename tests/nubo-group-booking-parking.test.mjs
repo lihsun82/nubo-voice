@@ -71,7 +71,7 @@ test("voice tool routes invalid large group away from PMS POST and offers safe 4
   assert.match(source, /response\.status === 400/);
   assert.match(source, /並不代表房間售完/);
   assert.match(reference, /台安醫院旁的特約停車場/);
-  assert.match(reference, /遊覽車能否進場/);
+  assert.match(reference, /是否可停遊覽車/);
   assert.match(profile, /台安醫院旁特約停車場/);
   assert.match(source, /40位大人、5位小孩/);
 });
