@@ -5,6 +5,8 @@ export type NuboGuestServiceAlert = {
     | "maintenance"
     | "housekeeping"
     | "amenity"
+    | "room_availability"
+    | "hotel_phone"
     | "frontdesk"
     | "billing"
     | "safety"
@@ -313,6 +315,16 @@ export function classifyNuboGuestServiceTranscript(
     };
   }
 
+  const availability = text.match(/房況|空房|有沒有房|還有房嗎|還有房間嗎|有房間嗎|還有雙人房|還有四人房|是否有房|還有空房/u);
+  if (availability) {
+    return { matched: true, category: "room_availability", urgency: "normal", matchedKeywords: [availability[0]] };
+  }
+
+  const hotelPhone = text.match(/(?:櫃檯|飯店|酒店|旅館|訂房)(?:的|聯絡|的聯絡)?電話|聯絡櫃檯|找真人櫃檯|(?:請問)?電話(?:號碼)?(?:是多少|多少|幾號)/u);
+  if (hotelPhone) {
+    return { matched: true, category: "hotel_phone", urgency: "normal", matchedKeywords: [hotelPhone[0]] };
+  }
+
   const frontdesk = matchedKeywords(text, FRONTDESK_KEYWORDS);
   if (frontdesk.length) {
     return {
@@ -350,6 +362,8 @@ export function getNuboGuestServiceCategoryLabel(
     maintenance: "設備/維修",
     housekeeping: "房務/清潔",
     amenity: "備品/物品需求",
+    room_availability: "房況詢問",
+    hotel_phone: "飯店電話／聯絡櫃檯",
     frontdesk: "櫃檯/住宿需求",
     billing: "付款/退款/帳務",
     safety: "安全/緊急事件",
