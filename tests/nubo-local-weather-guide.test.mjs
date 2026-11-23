@@ -27,7 +27,7 @@ test("all 22 Taiwan regions and islands have valid representative coordinates", 
 });
 
 test("only nationwide requests trigger all-Taiwan weather", () => {
-  for (const query of ["全台", "全臺天氣", "全台灣", "臺灣", "台灣各縣市天氣", "整個台灣天氣"]) {
+  for (const query of ["全台", "全臺天氣", "全台的天氣", "全台各縣市天氣", "全台灣", "臺灣", "台灣各縣市天氣", "整個台灣天氣", "整個台灣天氣如何"]) {
     assert.ok(isTaiwanWideWeatherRequest(query), query);
   }
   for (const query of ["台中市北區", "金門縣金城鎮", "嘉義市", "新竹縣", "馬祖", "台北市內湖區"]) {
