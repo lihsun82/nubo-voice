@@ -275,14 +275,15 @@ async function fetchJson<T>(
 async function resolveWithOpenMeteo(
   query: string,
   approximate: boolean,
+  taiwanOnly = false,
 ): Promise<ResolvedPlace | null> {
   const url = new URL(
     "https://geocoding-api.open-meteo.com/v1/search",
   );
 
   url.searchParams.set("name", query);
-  // Never geocode a Taiwan city to an identically named place abroad.
-  url.searchParams.set("countryCode", "TW");
+  // Restrict only Taiwan locations; keep world-city queries functional.
+  if (taiwanOnly) url.searchParams.set("countryCode", "TW");
   url.searchParams.set("count", "1");
   url.searchParams.set("language", "zh");
   url.searchParams.set("format", "json");
@@ -298,8 +299,10 @@ async function resolveWithOpenMeteo(
   }>(url.toString());
 
   const place = result.results?.find((item) =>
-    coordinatesWithinTaiwan(item.latitude, item.longitude) &&
-    /taiwan|台灣|臺灣|台湾/i.test(String(item.country || ""))
+    !taiwanOnly || (
+      coordinatesWithinTaiwan(item.latitude, item.longitude) &&
+      /taiwan|台灣|臺灣|台湾/i.test(String(item.country || ""))
+    )
   );
 
   if (!place) return null;
@@ -530,6 +533,7 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         `${city.english}, Taiwan`,
         false,
+        true,
       );
     } catch {
       place = null;
@@ -541,6 +545,7 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         location,
         false,
+        taiwanLocation,
       );
     } catch {
       place = null;
@@ -565,6 +570,7 @@ async function resolvePlace(
       place = await resolveWithOpenMeteo(
         `${city.english}, Taiwan`,
         detailed,
+        true,
       );
     } catch {
       place = null;
