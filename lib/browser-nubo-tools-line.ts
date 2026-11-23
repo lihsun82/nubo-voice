@@ -583,13 +583,13 @@ export const geminiFunctionDeclarations = [
   },
   {
     name: "pms_check_availability",
-    description: "查詢錦新館整段住宿依成人數可售的房型。用間數判斷有無，對客不報庫存數字。",
+    description: "僅用於單間房的入住人數、入住日與退房日查錦新館整段住宿可售房型。adults 是每間房成人數，不是全團成人總數；遊覽車、旅行團、多間房或合計超過4位請使用 pms_group_inquiry。查詢結果不能推論整團有房或對客報房量。",
     parameters: {
       type: "OBJECT",
       properties: {
         checkIn: { type: "STRING", description: "入住日 YYYY-MM-DD" },
         checkOut: { type: "STRING", description: "退房日 YYYY-MM-DD" },
-        adults: { type: "NUMBER", description: "成人數" },
+        adults: { type: "NUMBER", description: "單間房成人數（非全團人數，通常1至4位；多房間團體改 pms_group_inquiry）" },
       },
       required: ["checkIn", "checkOut", "adults"],
     },
