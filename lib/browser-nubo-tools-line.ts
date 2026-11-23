@@ -242,6 +242,15 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     return runVoiceResearchWithTimeout(args.question, args.title);
   }
 
+  // Guest concierge: an unspecified "nearby" location means the hotel,
+  // not the owner's phone GPS or an off-site guest's present location.
+  if (call.name === "search_nearby" && !String(call.args?.location ?? "").trim()) {
+    return executeBaseTool({
+      ...call,
+      args: { ...call.args, location: "台中市北區一中商圈" },
+    });
+  }
+
   if (call.name === "get_weather" && !String(call.args?.location ?? "").trim()) {
     return executeBaseTool({
       ...call,
@@ -352,6 +361,10 @@ export const geminiSystemInstruction = `
 - guest_service_alert是固定授權的客務升級通道，四項資料齊全後可直接執行，不適用一般寄信二次確認。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
+- 【在地導覽】旅客問一中商圈附近景點、學校、大學、醫院、診所、藥局、交通或公車站時，以「台中市北區一中商圈」或「台中市北區錦新街18號」為地理中心，優先依 NUBO_JINXIN_REFERENCE 已核對來源回答固定名稱與地址。涉及最新店家營業、診所開診、地點選擇時呼叫 search_nearby，不可自行捏造距離、路線、時刻或門診時間。
+- 【交通即時查詢】從臺中車站或高鐵臺中站來飯店時先確認起點、交通方式與時間；公車路線可參考各校官網，但必須提醒實際班次以臺中市公車即時動態 https://citybus.taichung.gov.tw/ 查詢，導航目的地為錦新街18號。不可把舊的靜態交通說明當即時班次。
+- 【醫療安全】旅客求助就醫時只提供可靠院所資訊與地圖；急性危險／緊急症狀應聯絡119與現場人員，不能臆測診所今天是否有開診。
+- 【全臺天氣】旅客不論問臺北、彰化、南投、澎湖、金門、馬祖或其他臺灣縣市鄉鎮，必須用 get_weather(location=對方指定的完整臺灣地名) 查資料，不能自動套用台中北區天氣。若問「全台天氣」請用 get_weather(location=全台) 取得22縣市代表市區的概略預報，僅總結重要地區而不要朗讀22筆；指定鄉鎮須另外再查。現有來源 Open-Meteo，不能稱為中央氣象署公告；颱風、豪雨警報、停班停課另查官方資料。查不到或 approximate=true 時應清楚說明不精確，不可猜測。
 
 ${NUBO_JINXIN_REFERENCE}
 `;
