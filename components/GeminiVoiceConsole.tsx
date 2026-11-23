@@ -16,6 +16,7 @@ import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
+import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
@@ -574,7 +575,10 @@ export function GeminiVoiceConsole() {
     closingRef.current = false;
 
     try {
-      const tokenData = await requestJson("/api/gemini-token", { cache: "no-store" });
+      const [tokenData, sessionClockInstruction] = await Promise.all([
+        requestJson("/api/gemini-token", { cache: "no-store" }),
+        loadNuboSessionClockInstruction(),
+      ]);
       const endpoint =
         "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
@@ -590,8 +594,8 @@ export function GeminiVoiceConsole() {
               model: `models/${tokenData.model}`,
               generationConfig: { responseModalities: ["AUDIO"] },
               systemInstruction: { parts: [{ text: getNuboGuestConfigSnapshot().musicEnabled
-                ? geminiSystemInstruction
-                : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${geminiSystemInstruction}` }] },
+                ? `${geminiSystemInstruction}\n\n${sessionClockInstruction}`
+                : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${geminiSystemInstruction}\n\n${sessionClockInstruction}` }] },
               tools: [{ functionDeclarations: getNuboGuestConfigSnapshot().musicEnabled
                 ? geminiFunctionDeclarations
                 : geminiFunctionDeclarations.filter((tool) => tool.name !== "open_youtube" && tool.name !== "control_youtube") }],
