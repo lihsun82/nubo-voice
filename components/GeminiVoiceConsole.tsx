@@ -704,8 +704,8 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
-            const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE/iu.test(phrase);
-            if (qr || phone) setContactCard({ qr, phone });
+            const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE|加(?:入)?(?:你們|飯店|酒店|館方|櫃檯|官方)*(?:LINE|賴)|LINE(?:怎麼加|如何加|可以加|好友|QRCode|二維碼|帳號)|(?:加|加入)(?:好友|官方帳號)/iu.test(phrase);
+            if (qr || phone) setContactCard({ qr: true, phone });
             const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
             if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
             if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
