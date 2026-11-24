@@ -150,7 +150,24 @@ export function GeminiVoiceConsole() {
     playerUrl: string;
     title: string;
   } | null>(null);
+  const guestBookingUrl = "https://nubosci.ainubohub.com/";
+  const bookingAttemptedRef = useRef(false);
   const [bookingLink, setBookingLink] = useState<string | null>(null);
+
+  function openSpokenBooking() {
+    setBookingLink(guestBookingUrl);
+    if (bookingAttemptedRef.current) return;
+    bookingAttemptedRef.current = true;
+    try {
+      const bookingTab = window.open(guestBookingUrl, "nubo_guest_booking");
+      if (bookingTab) {
+        bookingTab.opener = null;
+        bookingTab.focus();
+      }
+    } catch {
+      // The link remains available when the browser blocks the new tab.
+    }
+  }
 
   const revealBookingLink = async () => {
     try {
@@ -569,6 +586,7 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
+      bookingAttemptedRef.current = false;
       setBookingLink(null);
     }
     setState("connecting");
@@ -664,6 +682,12 @@ export function GeminiVoiceConsole() {
 
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
+          if (!silentUntilWakeRef.current && typeof userText === "string") {
+            const phrase = userText.replace(/[\s\p{P}]/gu, "");
+            if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
+              openSpokenBooking();
+            }
+          }
           if (serverContent?.turnComplete) finishIncomingAudioTurn();
           if (typeof modelText === "string" && modelText.trim()) {
             noteVoiceInteraction();
@@ -940,7 +964,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   result.roomTypes.some((room: unknown) =>
                     room && typeof room === "object" && "availableCount" in room &&
                     typeof room.availableCount === "number" && room.availableCount > 0);
-                if (call.name === "pms_check_availability") setBookingLink(null);
+                if (call.name === "pms_check_availability" && !bookingAttemptedRef.current) setBookingLink(null);
                 if (availableRooms ||
                     (call.name === "notify_arrival_intent" && call.args?.intent === "booking")) {
                   const bookingPageReady = await revealBookingLink();
@@ -1253,12 +1277,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           {"開啟："}{mobileYoutube.title}
         </a>
       ) : null}
-      {bookingLink ? (
-        <button className="primary" type="button"
-          onClick={() => { void disconnect().then(() => window.location.assign(bookingLink)); }}>
-          前往訂房
-        </button>
-      ) : null}
+      <a className="primary" href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer">
+        前往旅客自助服務
+      </a>
       {error ? <div className="error" role="alert">{error}</div> : null}
     </section>
   );
