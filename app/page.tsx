@@ -10,16 +10,12 @@ export const dynamic = "force-dynamic";
 
 export default function HomePage() {
   return (
-    <main className="shell nubo-guest-shell">
+    <main className="shell nubo-guest-shell nubo-concierge-shell">
       <NuboGuestConfigRuntime />
       <NuboSmartNoiseRuntime />
       <NuboAudioPrimeGuard />
       <NuboMultilingualRuntime />
       <NuboGuestMusicSlot />
-      <header className="nubo-guest-header">
-        <h1>AINUBO 新寶智慧酒店</h1>
-        <p>您好，這裡是台中錦新館。</p>
-      </header>
       <NuboVoiceConsole />
       <NuboNearbyResults />
     </main>

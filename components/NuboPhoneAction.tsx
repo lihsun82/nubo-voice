@@ -5,9 +5,11 @@ type NuboPhoneState = "idle" | "ringing" | "connecting" | "connected" | "error";
 export function NuboPhoneAction({
   state,
   onClick,
+  kioskLabels,
 }: {
   state: NuboPhoneState;
   onClick: () => void;
+  kioskLabels?: readonly string[];
 }) {
   const inCall = state === "connected";
   const busy = state === "ringing" || state === "connecting";
@@ -19,6 +21,8 @@ export function NuboPhoneAction({
         ? "正在接通 NUBO"
         : "點電話圖示開始對話";
 
+  const kioskLabel = kioskLabels?.[inCall ? 1 : busy ? 2 : 0];
+
   return (
     <div className="nubo-phone-action">
       <button
@@ -26,13 +30,15 @@ export function NuboPhoneAction({
         type="button"
         onClick={onClick}
         disabled={busy}
-        aria-label={inCall ? "通話中，掛斷電話" : busy ? label : "開始對話"}
+        aria-label={kioskLabel ?? (inCall ? "通話中，掛斷電話" : busy ? label : "開始對話")}
         aria-pressed={inCall}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
           strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           {inCall ? (
             <path d="M3.8 15.7c4.9-4.2 11.5-4.2 16.4 0l-2.1 2.3a1 1 0 0 1-1.2.2l-2.2-1.1a1 1 0 0 1-.5-.9v-1a13 13 0 0 0-4.4 0v1a1 1 0 0 1-.5.9l-2.2 1.1a1 1 0 0 1-1.2-.2z" />
+          ) : kioskLabel ? (
+            <path d="M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0zM5 10v1a7 7 0 0 0 14 0v-1m-7 8v4m-4 0h8" />
           ) : (
             <>
               <path d="M7.2 3.7c.4-.4 1-.5 1.5-.3l2.1 1.2c.6.3.9 1 .7 1.6l-.8 2.1a14 14 0 0 0 5 5l2.1-.8c.6-.2 1.3.1 1.6.7l1.2 2.1c.2.5.1 1.1-.3 1.5l-1.4 1.4a2 2 0 0 1-2 .5A20 20 0 0 1 4.3 8.1a2 2 0 0 1 .5-2z" />
@@ -41,8 +47,9 @@ export function NuboPhoneAction({
           )}
         </svg>
         {inCall ? <span className="nubo-phone-live-dot" aria-hidden="true" /> : null}
+        {kioskLabel ? <small>{kioskLabel}</small> : null}
       </button>
-      <span className="nubo-phone-action-label">{label}</span>
+      {!kioskLabels && <span className="nubo-phone-action-label">{label}</span>}
     </div>
   );
 }

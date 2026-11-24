@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
-import { NuboPhoneAction } from "@/components/NuboPhoneAction";
+import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import {
@@ -610,25 +609,13 @@ export function OpenAIRealtimeVoiceConsole({
     }
   };
 
-  const stateLabel =
-    state === "connected" && ecoMode === "sleeping"
-      ? ["NUBO智慧節約待命", "雲端收音已暫停・偵測到近端語音會自動恢復"]
-      : {
-          idle: ["NUBO待命", "智慧服務已就緒"],
-          connecting: ["NUBO正在連線", "正在啟動高擬人語音服務"],
-          connected: ["通話中 · NUBO正在聆聽", "高擬人陪伴與工具服務已啟用"],
-          error: ["NUBO尚未連線", "請檢查語音設定或服務額度"],
-        }[state];
-
   return (
-    <section className="console" aria-live="polite">
-      <div className="orb-wrap">
-        <NuboEnergyOrb />
-      </div>
-      <div className="status">
-        <strong>{isRinging ? "撥號中 · 嘟嘟聲…" : stateLabel[0]}</strong>
-        <span>{isRinging ? "響兩聲後開始對話" : stateLabel[1]}</span>
-      </div>
+    <NuboConciergeKiosk
+      state={isRinging ? "ringing" : state}
+      transcript={transcript}
+      sleeping={ecoMode === "sleeping"}
+      onToggleCall={() => void (state === "connected" ? disconnect() : startWithCallTones())}
+    >
       {!accessReady ? (
         <div className="voice-transcript">
           <label htmlFor="nubo-openai-access">OpenAI 語音私人授權碼（不是 API Key）</label>
@@ -644,15 +631,8 @@ export function OpenAIRealtimeVoiceConsole({
           <button className="secondary" type="button" onClick={saveVoiceAccess}>本次使用授權</button>
         </div>
       ) : null}
-      <div className="actions">
-        <NuboPhoneAction
-          state={isRinging ? "ringing" : state}
-          onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
-        />
-      </div>
-      {transcript ? <div className="voice-transcript">{transcript}</div> : null}
-      {error ? <div className="error">{error}</div> : null}
+      {error ? <div className="error" role="alert">{error}</div> : null}
       <NuboQuestionHistory />
-    </section>
+    </NuboConciergeKiosk>
   );
 }

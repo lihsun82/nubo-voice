@@ -13,8 +13,7 @@ import {
 } from "@/lib/browser-nubo-tools-line";
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
-import { NuboEnergyOrb } from "@/components/NuboEnergyOrb";
-import { NuboPhoneAction } from "@/components/NuboPhoneAction";
+import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
@@ -154,6 +153,8 @@ export function GeminiVoiceConsole() {
   }, [contactCard]);
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [kioskResponse, setKioskResponse] = useState("");
+  const kioskResponseBufferRef = useRef("");
   const [mobileYoutube, setMobileYoutube] = useState<{
     playerUrl: string;
     title: string;
@@ -575,6 +576,8 @@ export function GeminiVoiceConsole() {
 
   const disconnect = async () => {
     setContactCard(null);
+    kioskResponseBufferRef.current = "";
+    setKioskResponse("");
     callTonePendingRef.current = false;
     setIsRinging(false);
     window.localStorage.removeItem(
@@ -615,6 +618,8 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
+      kioskResponseBufferRef.current = "";
+      setKioskResponse("");
       if (!isReconnect) guestKeywordNoticeRef.current = null;
       bookingAttemptedRef.current = false;
       setBookingLink(null);
@@ -712,6 +717,16 @@ export function GeminiVoiceConsole() {
               openSpokenBooking();
             }
           }
+          if (typeof modelText === "string" && modelText.trim().length > 0) {
+            const previous = kioskResponseBufferRef.current;
+            const response = modelText.startsWith(previous) ? modelText : previous + modelText;
+            kioskResponseBufferRef.current = response;
+            setKioskResponse(response.trim());
+          }
+          if (serverContent?.turnComplete || serverContent?.interrupted) {
+            kioskResponseBufferRef.current = "";
+          }
+
           if (serverContent?.interrupted) {
             recordServerInterruption();
             playbackRef.current?.interrupt();
@@ -1306,74 +1321,17 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   };
 
   return (
-    <section className="console nubo-guest-console" aria-live="polite" style={{ position: "relative" }}>
-      {contactCard !== null && (
-        <aside aria-label="飯店聯絡方式" style={{ position: "absolute", zIndex: 20, top: 8, right: 8, width: "min(210px, calc(100% - 16px))", padding: 12, borderRadius: 14, color: "#152016", background: "#fff", boxShadow: "0 4px 24px #0005" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <strong>飯店官方 LINE</strong>
-            <button type="button" onClick={() => setContactCard(null)} aria-label="關閉聯絡卡" style={{ border: 0, background: "transparent", color: "inherit", fontSize: 22, lineHeight: 1, padding: 6, cursor: "pointer" }}>×</button>
-          </div>
-          <img src="/images/jinxin-official-line-qr.png" alt="掃描 QR Code 聯絡新寶智慧酒店官方 LINE" width={492} height={492} style={{ display: "block", width: "100%", height: "auto" }} />
-          <a href="tel:+886422231157" style={{ display: "block", color: "#17472c", fontSize: 21, fontWeight: 700, padding: "8px 0" }}>04-2223-1157</a>
-
-        </aside>
-      )}
-      <div className="orb-wrap"><NuboEnergyOrb /></div>
-      <div className="status">
-        <strong>{state === "connected" ? "通話中 · 正在聆聽" : isRinging ? "撥號中 · 嘟嘟聲…" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
-      </div>
-      <div className="actions" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <NuboPhoneAction
-          state={isRinging ? "ringing" : state}
-          onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
-        />
-      </div>
-      <style>{`
-        .nubo-guest-shortcuts {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
-          gap: 10px;
-          width: min(100%, 640px);
-          margin: 24px auto 12px;
-          padding: 0 12px;
-        }
-        .nubo-guest-shortcuts > a, .nubo-guest-shortcuts > button {
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 4px;
-          min-height: 66px;
-          padding: 12px;
-          border: 1px solid #c8aa7266;
-          border-radius: 14px;
-          background: #18243b;
-          color: #f4e4c2;
-          font: inherit;
-          text-align: left;
-          text-decoration: none;
-          cursor: pointer;
-        }
-        .nubo-guest-shortcuts small { color: #d4dbe9; }
-        .nubo-guest-shortcuts > :is(a, button):hover { background: #23324e; }
-        .nubo-guest-shortcuts > :is(a, button):focus-visible {
-          outline: 2px solid #f4e4c2;
-          outline-offset: 2px;
-        }
-      `}</style>
-      <nav aria-label="櫃檯快捷服務" className="nubo-guest-shortcuts">
-        <a href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer">
-          <strong>自助服務</strong>
-          <small>查訂房、住宿或休息</small>
-        </a>
-        <a href="https://www.google.com/maps/search/?api=1&amp;query=台中市北區錦新街18號附近美食" target="_blank" rel="noopener noreferrer">
-          <strong>周邊美食</strong>
-          <small>開啟 Google 地圖</small>
-        </a>
-        <button type="button" onClick={() => setContactCard(performance.now())}>
-          <strong>聯絡飯店</strong>
-          <small>官方 LINE 與電話</small>
-        </button>
-      </nav>
+    <NuboConciergeKiosk
+      state={isRinging ? "ringing" : state}
+      transcript={kioskResponse}
+      bookingUrl={bookingLink ?? guestBookingUrl}
+      contact={{
+        visible: contactCard !== null,
+        open: () => setContactCard(performance.now()),
+        close: () => setContactCard(null),
+      }}
+      onToggleCall={() => void (state === "connected" ? disconnect() : startWithCallTones())}
+    >
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
@@ -1381,6 +1339,6 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         </a>
       ) : null}
       {error ? <div className="error" role="alert">{error}</div> : null}
-    </section>
+    </NuboConciergeKiosk>
   );
 }

@@ -20,6 +20,7 @@ import "./white-gold-v15-6-18.css";
 import "./molecular-orb-v15-6-26.css";
 import "./dark-dna-orb-v15-6-28.css";
 import "./guest-voice.css";
+import "./concierge-kiosk.css";
 
 export const metadata: Metadata = {
   title: {
