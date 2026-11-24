@@ -1327,13 +1327,53 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           state={isRinging ? "ringing" : state}
           onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
         />
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 16, textAlign: "center" }}>
-          <a className="primary" href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer" style={{ position: "static" }}>
-            前往旅客自助服務
-          </a>
-          <small>進入自助頁後，點右下角小兔可使用語音協助。</small>
-        </div>
       </div>
+      <style>{`
+        .nubo-guest-shortcuts {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+          gap: 10px;
+          width: min(100%, 640px);
+          margin: 24px auto 12px;
+          padding: 0 12px;
+        }
+        .nubo-guest-shortcuts > a, .nubo-guest-shortcuts > button {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 4px;
+          min-height: 66px;
+          padding: 12px;
+          border: 1px solid #c8aa7266;
+          border-radius: 14px;
+          background: #18243b;
+          color: #f4e4c2;
+          font: inherit;
+          text-align: left;
+          text-decoration: none;
+          cursor: pointer;
+        }
+        .nubo-guest-shortcuts small { color: #d4dbe9; }
+        .nubo-guest-shortcuts > :is(a, button):hover { background: #23324e; }
+        .nubo-guest-shortcuts > :is(a, button):focus-visible {
+          outline: 2px solid #f4e4c2;
+          outline-offset: 2px;
+        }
+      `}</style>
+      <nav aria-label="櫃檯快捷服務" className="nubo-guest-shortcuts">
+        <a href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer">
+          <strong>自助服務</strong>
+          <small>查訂房、住宿或休息</small>
+        </a>
+        <a href="https://www.google.com/maps/search/?api=1&amp;query=台中市北區錦新街18號附近美食" target="_blank" rel="noopener noreferrer">
+          <strong>周邊美食</strong>
+          <small>開啟 Google 地圖</small>
+        </a>
+        <button type="button" onClick={() => setContactCard(performance.now())}>
+          <strong>聯絡飯店</strong>
+          <small>官方 LINE 與電話</small>
+        </button>
+      </nav>
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
