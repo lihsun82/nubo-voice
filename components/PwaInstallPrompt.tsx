@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useNuboKioskLanguage } from "@/lib/nubo-kiosk-language";
+
+const COPY = {
+  zh: { title: "把 NUBO 安裝到手機", ios: "Safari：點分享，再選「加入主畫面」。", prompt: "安裝後可由手機桌面直接開啟 NUBO。", install: "安裝", later: "稍後" },
+  en: { title: "Install NUBO on your phone", ios: "In Safari, tap Share, then Add to Home Screen.", prompt: "Open NUBO directly from your home screen.", install: "Install", later: "Later" },
+  ja: { title: "スマートフォンに NUBO を追加", ios: "Safari の共有メニューで「ホーム画面に追加」を選択してください。", prompt: "ホーム画面から NUBO を直接開けます。", install: "追加", later: "後で" },
+  ko: { title: "휴대전화에 NUBO 설치", ios: "Safari에서 공유를 누른 후 홈 화면에 추가를 선택하세요.", prompt: "홈 화면에서 NUBO를 바로 열 수 있습니다.", install: "설치", later: "나중에" },
+};
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -21,6 +29,8 @@ export function PwaInstallPrompt() {
   const [isIos, setIsIos] = useState(false);
   const [isInstalled, setIsInstalled] = useState(true);
   const [isDismissed, setIsDismissed] = useState(true);
+  const { language } = useNuboKioskLanguage();
+  const copy = COPY[language];
 
   useEffect(() => {
     const standalone = isStandaloneMode();
@@ -72,23 +82,19 @@ export function PwaInstallPrompt() {
   if (isInstalled || isDismissed || (!installPrompt && !isIos)) return null;
 
   return (
-    <aside className="pwa-install" aria-label="安裝NUBO手機版">
+    <aside className="pwa-install" aria-label={copy.title}>
       <div>
-        <strong>把 NUBO 安裝到手機</strong>
-        <span>
-          {isIos
-            ? "Safari：點分享，再選「加入主畫面」。"
-            : "安裝後可由手機桌面直接開啟 NUBO。"}
-        </span>
+        <strong>{copy.title}</strong>
+        <span>{isIos ? copy.ios : copy.prompt}</span>
       </div>
       <div className="pwa-install-actions">
         {installPrompt ? (
           <button className="primary" type="button" onClick={() => void install()}>
-            安裝
+            {copy.install}
           </button>
         ) : null}
         <button className="secondary" type="button" onClick={dismiss}>
-          稍後
+          {copy.later}
         </button>
       </div>
     </aside>

@@ -17,6 +17,7 @@ import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
+import { reportNuboKioskSpeech } from "@/lib/nubo-kiosk-language";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -707,6 +708,10 @@ export function GeminiVoiceConsole() {
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
           if (!silentUntilWakeRef.current && typeof userText === "string") {
+            if (socketRef.current === socket && !closingRef.current) {
+              const input = serverContent.inputTranscription;
+              reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code);
+            }
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
             const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE|加(?:入)?(?:你們|飯店|酒店|館方|櫃檯|官方)*(?:LINE|賴)|LINE(?:怎麼加|如何加|可以加|好友|QRCode|二維碼|帳號)|(?:加|加入)(?:好友|官方帳號)/iu.test(phrase);
@@ -1324,6 +1329,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     <NuboConciergeKiosk
       state={isRinging ? "ringing" : state}
       transcript={kioskResponse}
+      error={error}
       bookingUrl={bookingLink ?? guestBookingUrl}
       contact={{
         visible: contactCard !== null,
@@ -1335,10 +1341,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
           target="_blank" rel="noreferrer" onClick={() => setMobileYoutube(null)}>
-          {"開啟："}{mobileYoutube.title}
+          {mobileYoutube.title} ↗
         </a>
       ) : null}
-      {error ? <div className="error" role="alert">{error}</div> : null}
     </NuboConciergeKiosk>
   );
 }

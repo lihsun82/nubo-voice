@@ -1,6 +1,31 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useNuboKioskLanguage } from "@/lib/nubo-kiosk-language";
+
+const MUSIC_COPY = {
+  zh: { switchTrack: "新歌曲會自動替換並播放", pause: "暫停", resume: "繼續", auto: "自動播放中", stop: "停止" },
+  en: { switchTrack: "New tracks play automatically", pause: "Pause", resume: "Resume", auto: "Autoplaying", stop: "Stop" },
+  ja: { switchTrack: "新しい曲は自動で再生されます", pause: "一時停止", resume: "再開", auto: "自動再生中", stop: "停止" },
+  ko: { switchTrack: "새 곡이 자동으로 재생됩니다", pause: "일시 정지", resume: "재개", auto: "자동 재생 중", stop: "정지" },
+};
+
+const STATUS_TRANSLATIONS: Record<string, { en: string; ja: string; ko: string }> = {
+  "正在準備播放器…": { en: "Preparing player…", ja: "プレーヤーを準備中…", ko: "플레이어 준비 중…" },
+  "背景播放中": { en: "Playing in background", ja: "バックグラウンド再生中", ko: "백그라운드 재생 중" },
+  "播放中": { en: "Playing", ja: "再生中", ko: "재생 중" },
+  "正在自動啟動有聲播放…": { en: "Starting audio…", ja: "音声を再生しています…", ko: "오디오 시작 중…" },
+  "正在自動恢復播放器…": { en: "Restoring player…", ja: "プレーヤーを復旧中…", ko: "플레이어 복구 중…" },
+  "正在自動恢復播放…": { en: "Resuming playback…", ja: "再生を再開しています…", ko: "재생 재개 중…" },
+  "已暫停": { en: "Paused", ja: "一時停止中", ko: "일시 정지됨" },
+  "已停止": { en: "Stopped", ja: "停止しました", ko: "정지됨" },
+  "載入中…": { en: "Loading…", ja: "読み込み中…", ko: "로딩 중…" },
+  "播放完畢": { en: "Playback ended", ja: "再生が終了しました", ko: "재생 완료" },
+  "正在自動解除播放限制…": { en: "Starting playback…", ja: "再生を開始しています…", ko: "재생 시작 중…" },
+  "這支影片無法內嵌播放，請重新指定歌曲。": { en: "This video can’t play here. Choose another track.", ja: "この動画は再生できません。別の曲を選んでください。", ko: "이 영상은 여기서 재생할 수 없습니다. 다른 곡을 선택해 주세요." },
+  "YouTube 連線失敗，正在等待重新連線…": { en: "Waiting to reconnect to YouTube…", ja: "YouTube への再接続を待っています…", ko: "YouTube 재연결 대기 중…" },
+  "正在重新連線 YouTube 播放器…": { en: "Reconnecting to YouTube…", ja: "YouTube に再接続中…", ko: "YouTube 재연결 중…" },
+};
 
 type InlineSong = {
   videoId: string;
@@ -100,6 +125,8 @@ export function NuboInlineMusicPlayer() {
   const [status, setStatus] = useState("正在準備播放器…");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isUserPaused, setIsUserPaused] = useState(false);
+  const { language } = useNuboKioskLanguage();
+  const copy = MUSIC_COPY[language];
 
   const clearTimerList = (timers: TimerListRef) => {
     timers.current.forEach((timer) => window.clearTimeout(timer));
@@ -597,6 +624,8 @@ export function NuboInlineMusicPlayer() {
 
   if (!song) return null;
 
+  const statusText = language === "zh" ? status : STATUS_TRANSLATIONS[status]?.[language] ?? copy.auto;
+
   return (
     <aside className="nubo-inline-music" aria-live="polite">
       <div className="nubo-inline-music-frame" aria-hidden="true">
@@ -604,9 +633,9 @@ export function NuboInlineMusicPlayer() {
       </div>
 
       <div className="nubo-inline-music-info">
-        <strong>{song.title}</strong>
+        <strong>{song.title === "正在播放" ? copy.auto : song.title}</strong>
         {song.channelTitle ? <span>{song.channelTitle}</span> : null}
-        <small>{status}｜新歌曲會自動替換並播放</small>
+        <small>{statusText} · {copy.switchTrack}</small>
       </div>
 
       <div className="nubo-inline-music-controls">
@@ -615,36 +644,36 @@ export function NuboInlineMusicPlayer() {
             type="button"
             className="nubo-inline-music-toggle"
             onClick={pausePlayback}
-            aria-label="暫停音樂"
+            aria-label={copy.pause}
           >
-            暫停
+            {copy.pause}
           </button>
         ) : isUserPaused ? (
           <button
             type="button"
             className="nubo-inline-music-toggle"
             onClick={resumePlayback}
-            aria-label="繼續音樂"
+            aria-label={copy.resume}
           >
-            繼續
+            {copy.resume}
           </button>
         ) : (
           <button
             type="button"
             className="nubo-inline-music-toggle"
             disabled
-            aria-label="音樂正在自動啟動"
+            aria-label={copy.auto}
           >
-            自動播放中
+            {copy.auto}
           </button>
         )}
         <button
           type="button"
           className="nubo-inline-music-stop"
           onClick={stopPlayback}
-          aria-label="停止音樂"
+          aria-label={copy.stop}
         >
-          停止
+          {copy.stop}
         </button>
       </div>
     </aside>

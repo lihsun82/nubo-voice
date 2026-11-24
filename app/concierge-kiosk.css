@@ -110,7 +110,7 @@ body:has(.nubo-concierge-shell)::after {
   font-size: 13px;
 }
 
-.nubo-concierge-shell .nubo-kiosk-language { position: relative; z-index: 12; }
+.nubo-concierge-shell .nubo-kiosk-language { position: relative; z-index: 30; }
 .nubo-concierge-shell .nubo-kiosk-language > button {
   display: inline-flex;
   align-items: center;

@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useNuboKioskLanguage } from "@/lib/nubo-kiosk-language";
+
+const COPY = {
+  zh: { places: "店家", location: "目前位置", heading: (query: string, location: string) => `${location}附近的${query}`, distance: (meters: number) => `約 ${meters} 公尺` },
+  en: { places: "Places", location: "your location", heading: (query: string, location: string) => `${query} near ${location}`, distance: (meters: number) => `About ${meters} m` },
+  ja: { places: "お店", location: "現在地", heading: (query: string, location: string) => `${location}周辺の${query}`, distance: (meters: number) => `約 ${meters} m` },
+  ko: { places: "매장", location: "현재 위치", heading: (query: string, location: string) => `${location} 주변 ${query}`, distance: (meters: number) => `약 ${meters} m` },
+};
 
 type NearbyPlace = {
   name: string;
@@ -16,6 +24,8 @@ type NearbyResult = {
 
 export function NuboNearbyResults() {
   const [search, setSearch] = useState<NearbyResult | null>(null);
+  const { language } = useNuboKioskLanguage();
+  const copy = COPY[language];
 
   useEffect(() => {
     let clearTimer: number | null = null;
@@ -26,8 +36,8 @@ export function NuboNearbyResults() {
         .filter((place) => place && typeof place.name === "string" && place.name.trim())
         .slice(0, 8);
       setSearch({
-        query: String(detail.query || "附近店家"),
-        location: String(detail.location || "目前位置"),
+        query: String(detail.query || ""),
+        location: String(detail.location || ""),
         results,
       });
       if (clearTimer !== null) window.clearTimeout(clearTimer);
@@ -44,14 +54,14 @@ export function NuboNearbyResults() {
 
   return (
     <section className="nubo-nearby-results" aria-live="polite">
-      <h2>{search.location}附近的{search.query}</h2>
+      <h2>{copy.heading(search.query || copy.places, search.location || copy.location)}</h2>
       <ol>
         {search.results.map((place, index) => (
           <li key={`${place.name}-${index}`}>
             <strong>{place.name}</strong>
             <span>
               {typeof place.distanceMeters === "number" && Number.isFinite(place.distanceMeters)
-                ? `約 ${Math.round(place.distanceMeters)} 公尺`
+                ? copy.distance(Math.round(place.distanceMeters))
                 : ""}
               {place.address ? ` · ${place.address}` : ""}
             </span>

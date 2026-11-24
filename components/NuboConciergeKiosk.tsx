@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NuboKioskOrb } from "@/components/NuboKioskOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
+import {
+  NUBO_KIOSK_LANGUAGES,
+  NUBO_KIOSK_LOCALES,
+  resetNuboKioskLanguage,
+  selectNuboKioskLanguage,
+  useNuboKioskLanguage,
+  type NuboKioskLanguage,
+} from "@/lib/nubo-kiosk-language";
 import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 
 const GUEST_SERVICE_URL = "https://nubosci.ainubohub.com/";
@@ -10,18 +18,13 @@ const FOOD_MAP_URL = "https://www.google.com/maps/search/?api=1&query=" +
   encodeURIComponent("台中市北區錦新街18號附近美食");
 const GUEST_WIFI = { network: "NUBO-Hotels🌞", password: "0422231157" };
 
-const LANGUAGES = [
-  ["zh", "繁體中文", "繁中"],
-  ["en", "English", "EN"],
-  ["ja", "日本語", "JA"],
-  ["ko", "한국어", "KO"],
-] as const;
-type Language = (typeof LANGUAGES)[number][0];
 type CallState = "idle" | "ringing" | "connecting" | "connected" | "error";
 
 const COPY = {
   zh: {
     location: "台中錦新館", language: "介面語言", response: "AI 管家回覆", services: "快捷禮賓服務",
+    brandRole: "AI 智慧禮賓", title: "AINUBO 新寶智慧酒店",
+    auto: "自動跟隨語音", error: "NUBO 暫時無法處理，請再試一次或聯絡飯店。",
     greeting: "您好，我是您的智慧管家 NUBO。請問今天需要什麼服務？",
     phases: ["AI 管家待命中", "正在接通語音…", "正在聆聽您的語音…", "正在處理您的需求…", "AI 管家正在回覆…", "語音尚未連線"],
     ring: "正在撥號…", sleeping: "語音暫停收音，待喚醒",
@@ -43,6 +46,8 @@ const COPY = {
   },
   en: {
     location: "Taichung Jinxin", language: "Interface language", response: "AI Assistant Response", services: "Quick Concierge Actions",
+    brandRole: "AI CONCIERGE", title: "AINUBO Hotel AI Concierge",
+    auto: "Follow spoken language", error: "NUBO couldn’t complete the request. Please try again or contact the hotel.",
     greeting: "Hello, I’m NUBO, your smart hotel concierge. How may I help?",
     phases: ["AI concierge on standby", "Connecting…", "Listening to your voice…", "Working on your request…", "NUBO is responding…", "Voice disconnected"],
     ring: "Ringing…", sleeping: "Voice paused. Say the wake word to continue.",
@@ -54,7 +59,7 @@ const COPY = {
       ["Contact the Hotel", "Official LINE and phone number"],
     ],
     wifi: { title: "Wi-Fi Password", network: "Network", password: "Password" },
-    hints: ["I’d like to check in", "Can I have two bottles of water?", "What food is nearby?"],
+    hints: ["I’d like to check in", "Two bottles of water, please", "Nearby food?"],
     help: [
       "Start a call and tell NUBO which items you need, such as two bottles of water.",
       "Start a call to ask about room equipment or request help from hotel staff.",
@@ -64,18 +69,20 @@ const COPY = {
   },
   ja: {
     location: "台中錦新館", language: "表示言語", response: "AI コンシェルジュの回答", services: "クイックサービス",
+    brandRole: "AI コンシェルジュ", title: "AINUBO ホテルの AI コンシェルジュ",
+    auto: "会話の言語に合わせる", error: "ただいま対応できません。もう一度お試しいただくか、ホテルへお問い合わせください。",
     greeting: "こんにちは。スマートコンシェルジュの NUBO です。ご用件をお聞かせください。",
     phases: ["AI コンシェルジュ待機中", "接続中…", "お話を聞いています…", "確認中…", "NUBO が回答中…", "音声未接続"],
     ring: "呼び出し中…", sleeping: "音声待機中。呼びかけて再開できます。",
     cards: [
-      ["予約・チェックイン", "ご予約・宿泊・休憩のご案内"],
-      ["LINE QRコード", "ホテル公式 LINE を友だち追加"],
+      ["予約・チェックイン", "予約・宿泊・休憩の案内"],
+      ["LINE QRコード", "公式 LINE を追加"],
       ["周辺観光・グルメ", "ホテル周辺のお店を探す"],
       ["客室設備", "空調・照明などの使い方"],
       ["ホテルに連絡", "公式 LINE・電話番号"],
     ],
     wifi: { title: "Wi-Fi パスワード", network: "SSID", password: "パスワード" },
-    hints: ["チェックインしたい", "お水を2本ください", "近くに飲食店はありますか？"],
+    hints: ["チェックインしたい", "お水を2本ください", "近くの飲食店は？"],
     help: [
       "通話を開始し、お水2本など必要な備品を NUBO にお伝えください。",
       "客室設備の使い方や不具合について、NUBO にご相談ください。",
@@ -85,6 +92,8 @@ const COPY = {
   },
   ko: {
     location: "타이중 진신관", language: "화면 언어", response: "AI 컨시어지 답변", services: "빠른 서비스",
+    brandRole: "AI 컨시어지", title: "AINUBO 호텔 AI 컨시어지",
+    auto: "대화 언어에 맞추기", error: "요청을 처리하지 못했습니다. 다시 시도하거나 호텔에 문의해 주세요.",
     greeting: "안녕하세요. 스마트 호텔 컨시어지 NUBO입니다. 무엇을 도와드릴까요?",
     phases: ["AI 컨시어지 대기 중", "연결 중…", "듣고 있어요…", "요청을 확인 중…", "NUBO가 답변 중…", "음성 연결 끊김"],
     ring: "호출 중…", sleeping: "음성 대기 중입니다. 호출어로 다시 시작할 수 있어요.",
@@ -104,8 +113,10 @@ const COPY = {
     controls: ["눌러서 말하기", "통화 종료", "연결 중"], close: "닫기", continue: "통화로 돌아가기",
     contact: "호텔 공식 LINE", qr: "QR 코드를 스캔하여 LINE으로 호텔에 연락",
   },
-} satisfies Record<Language, {
+} satisfies Record<NuboKioskLanguage, {
   location: string; language: string; response: string; services: string; greeting: string;
+  brandRole: string; title: string;
+  auto: string; error: string;
   phases: string[]; ring: string; sleeping: string; cards: Array<[string, string]>; hints: string[];
   wifi: { title: string; network: string; password: string };
   help: string[]; controls: string[]; close: string; continue: string; contact: string; qr: string;
@@ -116,9 +127,6 @@ const PHASE_INDEX: Record<NuboVoicePhase, number> = {
 };
 const TIME = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-});
-const DATE = new Intl.DateTimeFormat("en-US", {
-  timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", weekday: "short",
 });
 
 const ICONS = {
@@ -142,6 +150,7 @@ type HelpIndex = 0 | 1;
 type Props = {
   state: CallState;
   transcript?: string;
+  error?: string;
   sleeping?: boolean;
   onToggleCall: () => void;
   bookingUrl?: string;
@@ -150,11 +159,16 @@ type Props = {
 };
 
 export function NuboConciergeKiosk({
-  state, transcript, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
+  state, transcript, error, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
   contact, children,
 }: Props) {
-  const [language, setLanguage] = useState<Language>("zh");
+  const { language, preference } = useNuboKioskLanguage();
+  const locale = NUBO_KIOSK_LOCALES[language];
+  const date = useMemo(() => new Intl.DateTimeFormat(locale, {
+    timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", weekday: "short",
+  }), [locale]);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const wasConnected = useRef(false);
   const [clock, setClock] = useState<Date | null>(null);
   const [voicePhase, setVoicePhase] = useState<NuboVoicePhase>("idle");
   const [help, setHelp] = useState<HelpIndex | null>(null);
@@ -169,6 +183,26 @@ export function NuboConciergeKiosk({
   const contactVisible = contact?.visible ?? localContactAt !== null;
   const openContact = contact?.open ?? (() => setLocalContactAt(performance.now()));
   const closeContact = contact?.close ?? (() => setLocalContactAt(null));
+
+  useEffect(() => {
+    if (state === "connected") wasConnected.current = true;
+    if (state === "idle" && wasConnected.current) {
+      wasConnected.current = false;
+      resetNuboKioskLanguage();
+    }
+  }, [state]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const previousLang = root.lang;
+    const previousTitle = document.title;
+    root.lang = locale;
+    document.title = copy.title;
+    return () => {
+      root.lang = previousLang;
+      document.title = previousTitle;
+    };
+  }, [locale, copy.title]);
 
   useEffect(() => {
     const tick = () => setClock(new Date());
@@ -198,19 +232,19 @@ export function NuboConciergeKiosk({
     </>
   );
 
-  const languageLabel = LANGUAGES.find(([id]) => id === language)?.[2];
+  const languageLabel = NUBO_KIOSK_LANGUAGES.find(([id]) => id === language)?.[2];
 
   return (
-    <section className="console nubo-guest-console nubo-concierge" lang={language === "zh" ? "zh-Hant" : language}>
+    <section className="console nubo-guest-console nubo-concierge" lang={locale}>
       <header className="nubo-kiosk-header">
         <div className="nubo-kiosk-brand">
           <span className="nubo-kiosk-brand-mark"><Icon name="hotel" /></span>
-          <div><h1>AINUBO</h1><span>AI CONCIERGE</span></div>
+          <div><h1>AINUBO</h1><span>{copy.brandRole}</span></div>
         </div>
         <span className="nubo-kiosk-location">{copy.location}</span>
         <time className="nubo-kiosk-clock" dateTime={clock?.toISOString()}>
           <strong>{clock ? TIME.format(clock) : "--:--"}</strong>
-          <small>{clock ? DATE.format(clock).toUpperCase() : "\u00a0"}</small>
+          <small>{clock ? date.format(clock) : "\u00a0"}</small>
         </time>
         <div className="nubo-kiosk-language">
           <button type="button" onClick={() => setLanguageOpen(!languageOpen)} aria-label={copy.language}
@@ -221,9 +255,13 @@ export function NuboConciergeKiosk({
           {languageOpen && (
             <ul id="nubo-kiosk-language-options" aria-label={copy.language}
               onKeyDown={(event) => { if (event.key === "Escape") setLanguageOpen(false); }}>
-              {LANGUAGES.map(([id, label, shortLabel]) => (
-                <li key={id}><button type="button" lang={id === "zh" ? "zh-Hant" : id} aria-pressed={language === id}
-                  onClick={() => { setLanguage(id); setLanguageOpen(false); }}>
+              <li><button type="button" aria-pressed={preference === "auto"}
+                onClick={() => { selectNuboKioskLanguage("auto"); setLanguageOpen(false); }}>
+                {copy.auto}
+              </button></li>
+              {NUBO_KIOSK_LANGUAGES.map(([id, label, shortLabel]) => (
+                <li key={id}><button type="button" lang={NUBO_KIOSK_LOCALES[id]} aria-pressed={preference === id}
+                  onClick={() => { selectNuboKioskLanguage(id); setLanguageOpen(false); }}>
                   {label}<small>{shortLabel}</small>
                 </button></li>
               ))}
@@ -276,6 +314,7 @@ export function NuboConciergeKiosk({
       </nav>
 
       {children}
+      {error ? <div className="error" role="alert">{language === "zh" ? error : copy.error}</div> : null}
 
       <div className="nubo-kiosk-dock">
         <div className="nubo-kiosk-hints">
