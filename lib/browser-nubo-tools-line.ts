@@ -160,7 +160,45 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
   return payload;
 }
 
+const JINXIN_RATE_CARD = [
+  ["PS","智選單人房",1580,1780,2080,1680],
+  ["CD","智享雙人房",1880,2280,2780,1980],
+  ["CT","智享雙床房",1880,2280,2780,1980],
+  ["PD","智選雙人房",1980,2380,2880,2080],
+  ["PT","智選雙床房",1980,2380,2780,2080],
+  ["CK","智享寬床雙人房",2080,2480,2980,2180],
+  ["RD","臻選雙人房",2080,2480,2980,2180],
+  ["RT","臻選雙床房",2080,2480,2980,2180],
+  ["PK","智選寬床雙人房",2180,2580,3080,2280],
+  ["RK","臻選寬床雙人房",2280,2680,3180,2380],
+  ["NF","星域閣樓家庭四人房",3280,3680,4280,3480],
+  ["NV","星曜閣樓景觀家庭房",3480,3880,4580,3680],
+] as const;
+
+function getJinxinRoomRates(args: Record<string, unknown>) {
+  const date = String(args.date ?? "").trim();
+  const roomCode = String(args.roomCode ?? "").trim().toUpperCase();
+  const rooms = roomCode ? JINXIN_RATE_CARD.filter(([code]) => code === roomCode) : JINXIN_RATE_CARD;
+  if (!rooms.length) return { ok: false, error: "查無房型代碼" };
+  const day = new Date(date + "T00:00:00Z");
+  if (date && (!/^\d{4}-\d{2}-\d{2}$/u.test(date) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== date)) {
+    return { ok: false, error: "日期格式須為有效的 YYYY-MM-DD" };
+  }
+  const weekday = day.getUTCDay();
+  return {
+    ok: true,
+    type: "reference_rate",
+    currency: "TWD",
+    date: date || null,
+    rooms: rooms.map(([code, name, monThu, fri, sat, sun]) => ({
+      code, name, monThu, fri, sat, sun,
+      ...(date ? { nightlyRate: weekday === 0 ? sun : weekday === 5 ? fri : weekday === 6 ? sat : monThu } : {}),
+    })),
+  };
+}
+
 export async function executeNuboBrowserTool(call: FunctionCall) {
+  if (call.name === "get_jinxin_room_rates") return getJinxinRoomRates(call.args ?? {});
   if (!getNuboGuestConfigSnapshot().musicEnabled && (
     call.name === "open_youtube" ||
     call.name === "control_youtube" ||
@@ -303,6 +341,12 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 export const geminiSystemInstruction = `
 你是NUBO，AINUBO 台中錦新館的旅客語音接待員，也是一個自然、聰明、有判斷力的中文AI語音助理。
 
+台中錦新館房型與報價：
+- 全館 34 間客房，服務樓層是 1、2、3、5、6、7、8，無 4 樓。被問到時可說是避開諧音。未有樓層與房型對照時不猜房間分布或電梯位置、感應功能。公共語音不讀出旅客房號或樓層，請旅客查看已取得的房卡套或安全畫面。遇到 4 樓送物要求須請旅客重述樓層，不派往 4 樓。
+- 本館房型與牌價一律用 get_jinxin_room_rates；只有競品與市場行情使用 hotel_market_report。有日期用台灣日期查每晚牌價，跨日逐晚查；不知道日期可先問入住日。今晚是今晚，客人問週五時不可改稱今晚。牌價僅供參考，未得正式即時報價前不能承諾成交價。
+- 即時空房仍須依 pms_check_availability。如查到有空房可推薦一到兩個符合人數與床型的選項。房型階梯：智享 CD/CT/CK、智選 PS/PD/PT/PK、臻選 RD/RT/RK、閣樓 NF/NV。PS 是單人；CD 一大床、CT 兩小床。升等價差按當天牌價相減，週六 CT 與 PT 牌價同價；NF 與 NV 週六差 300 元，其他日差 200 元。即使同價仍須查到空房並由館方確認實付價、資格與同意後才能辦理。沒有成功結果，不能說已升等、已訂房或已顯示照片。
+- 房型照片或設施規格以已驗證內容為準。旅客要前往辦理時使用既有自助服務入口。
+
 旅客端館別與收音規則（優先遵守）：
 - 目前唯一服務的旅館是「AINUBO 台中錦新館」，位於台中市北區錦新街、鄰近一中商圈。住宿、訂房、入住、房型、房價、館內設備、停車與交通問題都只針對這一館回答。
 - 不主動提及或推薦台北忠孝館，也不把其他館的房型、設備、地址、房價、地圖或交通資訊當作台中錦新館資料。旅客明確問其他館時，簡短說目前只能協助台中錦新館。
@@ -343,7 +387,7 @@ export const geminiSystemInstruction = `
 2. 使用者詢問最近或可能變動的國際情勢、經濟、天氣災害、政治、選舉、藝文活動、展覽、演出、旅遊資訊時，應主動呼叫research_now查即時來源，不必等他說「幫我搜尋」。穩定常識與閒聊可直接回答。
 3. 語音辨識很短、不完整或無法理解時，請旅客再說一次。可理解的外語入住、訂房與住宿需求必須正常處理。
 4. 時間與相對日期用get_current_time；一般天氣用get_weather，旅客未指定地點時以台中市北區為準；颱風與災害警報用research_now；問附近店家先用search_nearby取得清單，要開地圖或導航才用open_mobile_app開Google Maps；條件完整的旅行規劃用travel_plan。
-5. 只有旅館房價、競品與市場行情用hotel_market_report；一中商圈的飲料店、餐飲及其他店家先用search_nearby取得真實清單；交通、學校、醫院與旅遊問題可用research_now取得當地即時資料。明確要求重新抓取行情才用hotel_market_refresh。
+5. 只有競品與市場行情用hotel_market_report；一中商圈的飲料店、餐飲及其他店家先用search_nearby取得真實清單；交通、學校、醫院與旅遊問題可用research_now取得當地即時資料。明確要求重新抓取行情才用hotel_market_refresh。
 5A. 「一中商圈」「一中街」「台中一中」「錦新街」及 Yizhong 都指台中市北區；問店家或飲料店時search_nearby的location要傳「台中市北區一中商圈」，再口述3到5間查到的名稱與約略距離，畫面同步顯示清單。問交通路線、學校、醫院、景點、營業時間或近期活動時，research_now的question要包含「台中市北區一中商圈」與旅客實際問題。不要編造店名、營業狀態或班次。
 6. 單純開啟Facebook、IG、Google Maps、Gmail、Google、LINE、電話、簡訊、Email或手機計算機時，用open_mobile_app，不得用open_desktop_app。
 7. 單純開啟YouTube首頁且沒有指定歌曲或影片時，可用open_mobile_app。
@@ -579,6 +623,17 @@ export const geminiFunctionDeclarations = [
         contact: { type: "STRING", description: "旅客自願提供的聯絡方式，未知可省略" },
       },
       required: ["adults", "children"],
+    },
+  },
+  {
+    name: "get_jinxin_room_rates",
+    description: "查台中錦新館正式房型與每晚參考牌價，亦可查指定日期。即時空房請另查 PMS。",
+    parameters: {
+      type: "OBJECT",
+      properties: {
+        date: { type: "STRING", description: "台灣入住日期 YYYY-MM-DD，未知可不填" },
+        roomCode: { type: "STRING", description: "房型代碼，省略可列全部" },
+      },
     },
   },
   {
