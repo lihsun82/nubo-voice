@@ -280,10 +280,18 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
         "Content-Type": "application/json",
         ...(call.name === "pms_lookup_reservation" ? {} : { Accept: "application/vnd.nubosci.room-types.v1+json" }),
       },
-      body: JSON.stringify(call.args ?? {}),
+      body: JSON.stringify(call.name === "pms_check_rest_availability"
+        ? { ...call.args, startAt: call.args?.startAt ?? "now", durationMinutes: Number(call.args?.durationMinutes) }
+        : call.args ?? {}),
       cache: "no-store",
-    });
-    const result = await response.json().catch(() => ({ error: "pms_data_unavailable" }));
+    }).catch(() => null);
+    const companyPhone = "04-2223-1157";
+    const fallback = { ok: false, companyPhone, speechText: "貴賓，目前無法確認，請直接撥打公司電話 04-2223-1157。" };
+    if (!response) return fallback;
+    const result = await response.json().catch(() => null);
+    if (!result || (!response.ok && (response.status !== 400 || result.error !== "invalid_payload" || call.name !== "pms_check_availability"))) {
+      return fallback;
+    }
     if (call.name === "pms_check_availability" && response.status === 400) {
       return { ok: false, code: "dates_or_occupancy_needs_clarification",
         bookingConfirmed: false, inventoryConfirmed: false,
@@ -365,7 +373,8 @@ export const geminiSystemInstruction = `
 - 【查房工具角色】pms_check_availability 的 adults 指每間房成人數，不是同團總成人數。需要多房間／團體總量配置時，現有唯讀 PMS 不支援一筆查整團，可先個別查詢適當房型的即時庫存，但不能把單一房型有房推論成整團45位都可入住，必須由館方人工核對房型組合、全部房晚與最終報價。
 - 【團體停車】有配合台安醫院旁停車場，但沒有確認遊覽車尺寸、停車車位或可否進場。不能保證可停遊覽車；需向合作停車場或館方確認。若旅客要現場確認，提供 04-22231157 或 hello@ainubohotels.com。
 - 住宿先取得入住日、退房日或晚數，以及每間房的成人人數，再呼叫 pms_check_availability。用台灣日期查整段住宿，只有 covered=true、source=live 且帶有 guest-room-types-v1 的 roomTypes 才能確認。日期、人數有變要重新查。客人泛問有沒有房時，符合條件的房型中任一可售就簡短回答有房；有完整結果且所有符合房型均為零時，回答該期間與人數目前沒有適合的房。
-- 休息先取得開始時間和時長，再呼叫 pms_check_rest_availability。現在用 startAt=now，指定時段用台灣 +08:00 的 ISO 時刻。時長換成分鐘。只依這次 guest-room-types-v1 的 roomTypes 判斷。400 時請客人確認時段。
+- 「我要休息三個小時」或其他已說明時長、未指定未來時間的現場休息需求，直接用 pms_check_rest_availability(startAt="now", durationMinutes=180)，三小時等於 180 分鐘。其他時長按原話換算。指定未來時間才用台灣 +08:00。缺少時長才補問，切勿把休息查成隔夜住宿。只依本次 guest-room-types-v1 的 roomTypes 判斷。已知旅客條件時務必先呼叫對應的 PMS 工具，不能直接答無法確認。
+- 查過仍無法確認房況，或其他問題確實無法回答時，請直接用語音說「貴賓，目前無法確認，請直接撥打公司電話 04-2223-1157。」電話號碼逐碼清楚唸出。若工具已確認無空房，如實告知，不能把查詢失敗說成客滿。
 - 【時間與日期最高優先】一律以當次 get_current_time 工具回傳 source=server-clock、timezone=Asia/Taipei 的 localDate、weekday、today、tomorrow、dayAfterTomorrow 為準。連線起始時間快照只是參考，過午夜後不得沿用舊快照；不可把 isoUtc 的 UTC 日期當成台灣日期，不可信任手機時鐘、模型記憶或價格雷達的相對日期。
 - 客人問「今天幾號、星期幾、現在幾點、明天、後天、今晚、這週五、下週」或提到入住日期、退房日期、預訂、排程、休息時段等，回答與執行前都要先 get_current_time。工具失敗則不可猜日期，請客人確認或轉現場。使用 YYYY-MM-DD 明確寫出入住日與退房日，並依台灣日期重新算星期。
 - 兩種查房的間數只供內部判斷。依本次 PMS 房型名稱回答有無；資訊不足、只有合計、未回傳指定房型、未知必要條件、逾時或查詢失敗，都說目前無法確認，不能當成售完。已核對指定房型為零時，用兩句話：第一句說該房型在這個時段沒有房；第二句只提一種同次查到可售、符合人數與必要條件的替代房型，問是否願意。優先選相同床型，同等合適時取第一個。若床型不同需說明。說完等客人回答，避免再次推薦被拒絕的選項。沒有合適替代時可問要不要換日期。旅客明確要求清單才列出符合的房型名稱。不得報出剩餘間數、猜價格、承諾立即入住或代為保留。
@@ -667,7 +676,7 @@ export const geminiFunctionDeclarations = [
         startAt: { type: "STRING", description: "now 或 YYYY-MM-DDTHH:mm:00+08:00" },
         durationMinutes: { type: "NUMBER", description: "休息時長，60 至 720 分鐘" },
       },
-      required: ["startAt", "durationMinutes"],
+      required: ["durationMinutes"],
     },
   },
   {
