@@ -603,6 +603,15 @@ export function GeminiVoiceConsole() {
 
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
+          if (!silentUntilWakeRef.current && typeof userText === "string") {
+            const checkInText = userText.replace(/[\s\p{P}]/gu, "");
+            if (/^(?:我|我們)?(?:要|想|想要|需要|準備)(?:辦理|辦)?入住$/u.test(checkInText)) {
+              void executeNuboBrowserTool({
+                name: "guest_service_alert",
+                args: { issue: "入住：旅客希望辦理入住。" },
+              }).catch((error) => console.warn("[frontdesk] check-in notification failed", error));
+            }
+          }
           if (typeof modelText === "string" && modelText.trim()) {
             noteVoiceInteraction();
             setTranscript(modelText.trim());
