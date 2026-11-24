@@ -684,6 +684,16 @@ export function GeminiVoiceConsole() {
           }
 
           const serverContent = message.serverContent;
+          const userText = serverContent?.inputTranscription?.text;
+          const modelText = serverContent?.outputTranscription?.text;
+          if (!silentUntilWakeRef.current && typeof userText === "string") {
+            const phrase = userText.replace(/[\s\p{P}]/gu, "");
+            const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
+            if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
+            if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
+              openSpokenBooking();
+            }
+          }
           if (serverContent?.interrupted) {
             recordServerInterruption();
             playbackRef.current?.interrupt();
@@ -701,16 +711,6 @@ export function GeminiVoiceConsole() {
             }
           }
 
-          const userText = serverContent?.inputTranscription?.text;
-          const modelText = serverContent?.outputTranscription?.text;
-          if (!silentUntilWakeRef.current && typeof userText === "string") {
-            const phrase = userText.replace(/[\s\p{P}]/gu, "");
-            const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
-            if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
-            if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
-              openSpokenBooking();
-            }
-          }
           if (serverContent?.turnComplete) finishIncomingAudioTurn();
           if (typeof modelText === "string" && modelText.trim()) {
             noteVoiceInteraction();
