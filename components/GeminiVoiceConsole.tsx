@@ -1285,7 +1285,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       <div className="status">
         <strong>{state === "connected" ? "通話中 · 正在聆聽" : isRinging ? "撥號中 · 嘟嘟聲…" : state === "connecting" ? "連線中…" : "準備對話"}</strong>
       </div>
-      <div className="actions">
+      <div className="actions" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
         <NuboPhoneAction
           state={isRinging ? "ringing" : state}
           onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
