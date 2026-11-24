@@ -96,6 +96,33 @@ export async function POST(req: NextRequest) {
     const issue = clean(body.issue ?? body.transcript ?? body.text);
     const source = clean(body.source) || "guest_service_alert";
 
+    if (source === "frontdesk_voice_keywords") {
+      const keywords = issue.split("／");
+      const eventId = clean(body.eventId);
+      if (!/^[0-9a-f-]{36}$/u.test(eventId)) {
+        return NextResponse.json({ ok: false, sent: false }, { status: 400 });
+      }
+      const allowed = new Set(["訂房", "住宿", "入住", "休息", "退房"]);
+      if (!keywords.length || keywords.length > allowed.size || keywords.some((keyword) => !allowed.has(keyword))) {
+        return NextResponse.json({ ok: false, sent: false }, { status: 400 });
+      }
+
+      const response = await fetch("https://nubo-cloud.onrender.com/api/notify/guest-service", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, issue: `無人櫃檯語音提及：${[...new Set(keywords)].join("、")}（事件 ${eventId.slice(0, 8)}）` }),
+        signal: AbortSignal.timeout(75_000),
+        cache: "no-store",
+      });
+      const delivery = await response.json();
+      return NextResponse.json({
+        ok: response.ok && delivery.ok === true,
+        sent: delivery.sent === true,
+        duplicate: delivery.duplicate === true,
+        channel: delivery.channel === "telegram" || delivery.channel === "line" ? delivery.channel : undefined,
+      }, { status: response.ok ? 200 : 502 });
+    }
+
     if (!isSubstantiveIssue(issue)) {
       return NextResponse.json(
         {
