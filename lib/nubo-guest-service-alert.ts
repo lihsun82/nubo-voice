@@ -1,3 +1,5 @@
+import { isNuboNavigationRequest } from "@/lib/nubo-voice-follow-up";
+
 export type NuboGuestServiceAlert = {
   matched: boolean;
   category:
@@ -325,7 +327,7 @@ export function classifyNuboGuestServiceTranscript(
 
   const request = matchedKeywords(text, REQUEST_PHRASES);
   const hotelContext = matchedKeywords(text, HOTEL_CONTEXT_KEYWORDS);
-  if (request.length && hotelContext.length) {
+  if (request.length && hotelContext.length && !isNuboNavigationRequest(text)) {
     return {
       matched: true,
       category: "general_request",

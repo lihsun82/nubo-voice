@@ -18,6 +18,7 @@ import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import { reportNuboKioskSpeech } from "@/lib/nubo-kiosk-language";
+import { correctNuboGuestFollowUp, latestNuboQuestion, readNuboShortReply, type NuboFollowUp } from "@/lib/nubo-voice-follow-up";
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
@@ -156,6 +157,8 @@ export function GeminiVoiceConsole() {
   const [transcript, setTranscript] = useState("");
   const [kioskResponse, setKioskResponse] = useState("");
   const kioskResponseBufferRef = useRef("");
+  const lastQuestionRef = useRef("");
+  const followUpRef = useRef<NuboFollowUp | null>(null);
   const [mobileYoutube, setMobileYoutube] = useState<{
     playerUrl: string;
     title: string;
@@ -577,6 +580,8 @@ export function GeminiVoiceConsole() {
 
   const disconnect = async () => {
     setContactCard(null);
+    lastQuestionRef.current = "";
+    followUpRef.current = null;
     kioskResponseBufferRef.current = "";
     setKioskResponse("");
     callTonePendingRef.current = false;
@@ -619,6 +624,8 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
+      lastQuestionRef.current = "";
+      followUpRef.current = null;
       kioskResponseBufferRef.current = "";
       setKioskResponse("");
       if (!isReconnect) guestKeywordNoticeRef.current = null;
@@ -708,9 +715,11 @@ export function GeminiVoiceConsole() {
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
           if (!silentUntilWakeRef.current && typeof userText === "string") {
-            if (socketRef.current === socket && !closingRef.current) {
+            if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
               reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code);
+              const reply = readNuboShortReply(userText);
+              followUpRef.current = reply ? { reply, question: lastQuestionRef.current } : null;
             }
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
@@ -728,7 +737,10 @@ export function GeminiVoiceConsole() {
             kioskResponseBufferRef.current = response;
             setKioskResponse(response.trim());
           }
-          if (serverContent?.turnComplete || serverContent?.interrupted) {
+          if (serverContent?.turnComplete || serverContent?.turn_complete || serverContent?.interrupted) {
+            if (kioskResponseBufferRef.current.trim()) {
+              lastQuestionRef.current = latestNuboQuestion(kioskResponseBufferRef.current);
+            }
             kioskResponseBufferRef.current = "";
           }
 
@@ -863,6 +875,11 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
             const functionResponses = [];
             for (const call of calls as FunctionCall[]) {
               try {
+                const correction = correctNuboGuestFollowUp(call.name, followUpRef.current);
+                if (correction) {
+                  functionResponses.push({ id: call.id, name: call.name, response: { result: correction } });
+                  continue;
+                }
                 if (call.name === "research_now") {
                 }
 

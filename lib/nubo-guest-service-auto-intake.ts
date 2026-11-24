@@ -1,6 +1,7 @@
 "use client";
 
 import { classifyNuboGuestServiceTranscript } from "@/lib/nubo-guest-service-alert";
+import { readNuboShortReply } from "@/lib/nubo-voice-follow-up";
 
 type ComplaintIntakeState = {
   active: boolean;
@@ -200,7 +201,7 @@ function isBareMetadataReply(text: string, roomCandidate: string, surnameCandida
 
 function isSubstantiveIssue(text: string) {
   const normalized = compact(text);
-  if (!normalized) return false;
+  if (!normalized || readNuboShortReply(text)) return false;
 
   if (
     /^(?:尚未提供(?:客訴|抱怨|內容)?|未提供(?:客訴|抱怨|內容)?|沒有提供(?:客訴|抱怨|內容)?|待補(?:充)?|待確認|不知道|沒有|無|n\/?a)$/iu.test(
@@ -333,7 +334,7 @@ export async function processNuboGuestServiceTranscript(
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const text = transcript?.trim();
-  if (!text) return;
+  if (!text || readNuboShortReply(text)) return;
 
   const classification = classifyNuboGuestServiceTranscript(text);
   const state = loadState();
