@@ -152,6 +152,7 @@ export function GeminiVoiceConsole() {
   } | null>(null);
   const guestBookingUrl = "https://nubosci.ainubohub.com/";
   const bookingAttemptedRef = useRef(false);
+  const notifiedGuestKeywords = useRef(new Set<string>());
   const [bookingLink, setBookingLink] = useState<string | null>(null);
 
   function openSpokenBooking() {
@@ -586,6 +587,7 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
+      if (!isReconnect) notifiedGuestKeywords.current.clear();
       bookingAttemptedRef.current = false;
       setBookingLink(null);
     }
@@ -684,6 +686,24 @@ export function GeminiVoiceConsole() {
           const modelText = serverContent?.outputTranscription?.text;
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
+            const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])]
+              .filter((keyword) => !notifiedGuestKeywords.current.has(keyword));
+            if (keywords.length) {
+              const sentKeywords = notifiedGuestKeywords.current;
+              keywords.forEach((keyword) => sentKeywords.add(keyword));
+              void fetch("/api/notify/guest-service", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source: "frontdesk_voice_keywords", issue: keywords.join("／"), eventId: crypto.randomUUID() }),
+                keepalive: true,
+              }).then(async (response) => {
+                const result = await response.json();
+                if (!response.ok || (!result.sent && !result.duplicate)) throw new Error("notification not confirmed");
+              }).catch(() => {
+                keywords.forEach((keyword) => sentKeywords.delete(keyword));
+                console.warn("[frontdesk] keyword notification failed");
+              });
+            }
             if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
               openSpokenBooking();
             }
@@ -1270,6 +1290,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           state={isRinging ? "ringing" : state}
           onClick={() => void (state === "connected" ? disconnect() : startWithCallTones())}
         />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 16, textAlign: "center" }}>
+          <a className="primary" href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer" style={{ position: "static" }}>
+            前往旅客自助服務
+          </a>
+          <small>進入自助頁後，點右下角小兔可使用語音協助。</small>
+        </div>
       </div>
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}
@@ -1277,9 +1303,6 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           {"開啟："}{mobileYoutube.title}
         </a>
       ) : null}
-      <a className="primary" href={bookingLink ?? guestBookingUrl} target="_blank" rel="noopener noreferrer">
-        前往旅客自助服務
-      </a>
       {error ? <div className="error" role="alert">{error}</div> : null}
     </section>
   );
