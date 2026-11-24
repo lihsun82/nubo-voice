@@ -196,20 +196,7 @@ body:has(.nubo-concierge-shell)::after {
 }
 .nubo-concierge-shell .nubo-kiosk-orb-action:disabled { opacity: 1; cursor: wait; }
 
-.nubo-concierge-shell .nubo-kiosk-orbits {
-  position: relative;
-  border: 1px solid #d4af3724;
-  border-radius: 50%;
-}
-.nubo-concierge-shell .nubo-kiosk-orbits::after {
-  position: absolute;
-  content: "";
-  inset: 7px;
-  border: 1px dashed #00f0ff23;
-  border-radius: 50%;
-  pointer-events: none;
-}
-.nubo-concierge-shell .nubo-kiosk-orbits canvas {
+.nubo-concierge-shell .nubo-kiosk-orb {
   width: 100%;
   height: auto;
   aspect-ratio: 1;
