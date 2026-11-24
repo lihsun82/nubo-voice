@@ -685,7 +685,7 @@ export function GeminiVoiceConsole() {
             if (greetOnConnectRef.current && socket.readyState === WebSocket.OPEN) {
               greetOnConnectRef.current = false;
               socket.send(JSON.stringify({
-                realtimeInput: { text: "通話已接通。請立即用語音逐字說出以下開場白，說完停下等待旅客：嗨 您好 我是ai nubo很高興為您服務" },
+                realtimeInput: { text: "通話已接通。請立即用語音逐字說出以下開場白，說完停下等待旅客：hello 歡迎新寶智慧酒店 我是您的智慧管家nubo" },
               }));
             }
           }
