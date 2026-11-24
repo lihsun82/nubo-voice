@@ -139,6 +139,25 @@ export function GeminiVoiceConsole() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
+  const bookingOpenedAtRef = useRef(0);
+  const [bookingLinkVisible, setBookingLinkVisible] = useState(false);
+
+  function openGuestBooking() {
+    const url = "https://nubosci.ainubohub.com/";
+    setBookingLinkVisible(true);
+    if (Date.now() - bookingOpenedAtRef.current < 8000) return;
+    bookingOpenedAtRef.current = Date.now();
+    try {
+      const tab = window.open(url, "nubo_guest_booking");
+      if (tab) {
+        tab.opener = null;
+        tab.focus();
+      }
+    } catch {
+      // Keep the visible link available if the automatic open is blocked.
+    }
+  }
+
   const [mobileYoutube, setMobileYoutube] = useState<{
     playerUrl: string;
     title: string;
@@ -605,6 +624,9 @@ export function GeminiVoiceConsole() {
           const modelText = serverContent?.outputTranscription?.text;
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             const checkInText = userText.replace(/[\s\p{P}]/gu, "");
+            if (/^(?:請問|你好)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎)?$/u.test(checkInText)) {
+              openGuestBooking();
+            }
             if (/^(?:我|我們)?(?:要|想|想要|需要|準備)(?:辦理|辦)?入住$/u.test(checkInText)) {
               void executeNuboBrowserTool({
                 name: "guest_service_alert",
@@ -791,10 +813,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   const keepVoiceTab = targetUrl === "https://nubosci.ainubohub.com/";
                   setTranscript(keepVoiceTab ? "若未自動開啟，請點下方連結，並保留 NUBO 語音分頁。" : `正在開啟${label}…`);
 
-                  if (
-                    mobileAction.autoOpen !==
-                    false
-                  ) {
+                  if (keepVoiceTab) {
+                    openGuestBooking();
+                  } else if (mobileAction.autoOpen !== false) {
                     window.localStorage.setItem(
                       NUBO_AUTO_RESUME_STORAGE_KEY,
                       "true",
@@ -1160,6 +1181,11 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           結束對話
         </button>
       </div>
+      {bookingLinkVisible ? (
+        <a className="primary mobile-youtube-action" href="https://nubosci.ainubohub.com/" target="_blank" rel="noopener noreferrer">
+          開啟旅客自助訂房
+        </a>
+      ) : null}
       {mobileYoutube ? (
         <a
           className="primary mobile-youtube-action"
