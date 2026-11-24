@@ -140,7 +140,7 @@ async function delegatedWorkStatus(args: Record<string, unknown>) {
 
 let recentCheckIn: { promise: ReturnType<typeof postGuestServiceAlert>; until: number } | undefined;
 
-function sendGuestServiceAlert(args: Record<string, unknown>) {
+async function sendGuestServiceAlert(args: Record<string, unknown>) {
   const issue = String(args.issue ?? "").replace(/[\s\p{P}]/gu, "");
   if (!/^(?:入住|(?:我|旅客)?(?:要|想|希望)(?:辦理|辦)?入住)/u.test(issue) || args.roomNumber || args.surname || args.contact) {
     return postGuestServiceAlert(args);
