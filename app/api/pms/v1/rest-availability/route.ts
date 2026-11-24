@@ -47,7 +47,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { headers });
   } catch (error) {
     if (error instanceof PmsLiveError && error.code === "invalid_query") {
-      return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
+      console.warn("[pms/rest-availability] upstream rejected valid rest query");
+      return NextResponse.json({ error: "pms_upstream_query_rejected" }, { status: 502, headers });
     }
     if (error instanceof PmsLiveError && error.code === "rate_limited") {
       return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });
