@@ -145,10 +145,10 @@ export function GeminiVoiceConsole() {
   const ecoRecognitionRestartRef = useRef<number | null>(null);
   const [state, setState] = useState<ConnectionState>("idle");
   const [isRinging, setIsRinging] = useState(false);
-  const [contactCard, setContactCard] = useState<{ qr: boolean; phone: boolean } | null>(null);
+  const [contactCard, setContactCard] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!contactCard) return;
+    if (contactCard === null) return;
     const timeout = window.setTimeout(() => setContactCard(null), 60_000);
     return () => window.clearTimeout(timeout);
   }, [contactCard]);
@@ -705,7 +705,7 @@ export function GeminiVoiceConsole() {
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
             const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE|加(?:入)?(?:你們|飯店|酒店|館方|櫃檯|官方)*(?:LINE|賴)|LINE(?:怎麼加|如何加|可以加|好友|QRCode|二維碼|帳號)|(?:加|加入)(?:好友|官方帳號)/iu.test(phrase);
-            if (qr || phone) setContactCard({ qr: true, phone });
+            if (qr || phone) setContactCard(performance.now());
             const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
             if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
             if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
@@ -1307,18 +1307,15 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
   return (
     <section className="console nubo-guest-console" aria-live="polite" style={{ position: "relative" }}>
-      {contactCard && (
+      {contactCard !== null && (
         <aside aria-label="飯店聯絡方式" style={{ position: "absolute", zIndex: 20, top: 8, right: 8, width: "min(210px, calc(100% - 16px))", padding: 12, borderRadius: 14, color: "#152016", background: "#fff", boxShadow: "0 4px 24px #0005" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <strong>{contactCard.qr ? "飯店官方 LINE" : "飯店電話"}</strong>
+            <strong>飯店官方 LINE</strong>
             <button type="button" onClick={() => setContactCard(null)} aria-label="關閉聯絡卡" style={{ border: 0, background: "transparent", color: "inherit", fontSize: 22, lineHeight: 1, padding: 6, cursor: "pointer" }}>×</button>
           </div>
-          {contactCard.qr && (
-            <img src="/images/jinxin-official-line-qr.png" alt="掃描 QR Code 聯絡新寶智慧酒店官方 LINE" width={492} height={492} style={{ display: "block", width: "100%", height: "auto" }} />
-          )}
-          {contactCard.phone && (
-            <a href="tel:+886422231157" style={{ display: "block", color: "#17472c", fontSize: 21, fontWeight: 700, padding: "8px 0" }}>04-2223-1157</a>
-          )}
+          <img src="/images/jinxin-official-line-qr.png" alt="掃描 QR Code 聯絡新寶智慧酒店官方 LINE" width={492} height={492} style={{ display: "block", width: "100%", height: "auto" }} />
+          <a href="tel:+886422231157" style={{ display: "block", color: "#17472c", fontSize: 21, fontWeight: 700, padding: "8px 0" }}>04-2223-1157</a>
+
         </aside>
       )}
       <div className="orb-wrap"><NuboEnergyOrb /></div>
