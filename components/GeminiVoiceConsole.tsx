@@ -152,7 +152,26 @@ export function GeminiVoiceConsole() {
   } | null>(null);
   const guestBookingUrl = "https://nubosci.ainubohub.com/";
   const bookingAttemptedRef = useRef(false);
-  const guestKeywordNoticeSentRef = useRef(false);
+  const guestKeywordNoticeRef = useRef<Promise<{ ok: boolean; sent: boolean; duplicate?: boolean }> | null>(null);
+
+  function notifyGuestKeywords(issue: string) {
+    if (!guestKeywordNoticeRef.current) {
+      guestKeywordNoticeRef.current = fetch("/api/notify/guest-service", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "frontdesk_voice_keywords", issue, eventId: crypto.randomUUID() }),
+        keepalive: true,
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || (!result.sent && !result.duplicate)) throw new Error("notification not confirmed");
+        return { ok: true, sent: result.sent === true, duplicate: result.duplicate === true };
+      }).catch(() => {
+        console.warn("[frontdesk] keyword notification failed");
+        return { ok: false, sent: false };
+      });
+    }
+    return guestKeywordNoticeRef.current;
+  }
   const [bookingLink, setBookingLink] = useState<string | null>(null);
 
   function openSpokenBooking() {
@@ -587,7 +606,7 @@ export function GeminiVoiceConsole() {
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
-      if (!isReconnect) guestKeywordNoticeSentRef.current = false;
+      if (!isReconnect) guestKeywordNoticeRef.current = null;
       bookingAttemptedRef.current = false;
       setBookingLink(null);
     }
@@ -687,20 +706,7 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
-            if (keywords.length && !guestKeywordNoticeSentRef.current) {
-              guestKeywordNoticeSentRef.current = true;
-              void fetch("/api/notify/guest-service", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source: "frontdesk_voice_keywords", issue: keywords.join("／"), eventId: crypto.randomUUID() }),
-                keepalive: true,
-              }).then(async (response) => {
-                const result = await response.json();
-                if (!response.ok || (!result.sent && !result.duplicate)) throw new Error("notification not confirmed");
-              }).catch(() => {
-                console.warn("[frontdesk] keyword notification failed");
-              });
-            }
+            if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
             if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
               openSpokenBooking();
             }
@@ -844,7 +850,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                       route: "local-youtube-fast-route-v33",
                       query: recentFastRoute?.query ?? toolQuery,
                     }
-                  : await executeNuboBrowserTool(call);
+                  : call.name === "notify_arrival_intent"
+                    ? await notifyGuestKeywords(call.args?.intent === "booking" ? "訂房" : call.args?.intent === "lodging" ? "住宿" : "入住")
+                    : await executeNuboBrowserTool(call);
 
                 // NUBO_MOBILE_APP_AUTO_OPEN_V1
                 const mobileAction =
