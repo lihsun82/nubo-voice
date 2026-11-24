@@ -198,6 +198,10 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
   }
 
   if (call.name === "open_website") {
+    if (String(call.args?.target ?? "").trim() === "https://nubosci.ainubohub.com/") {
+      return { mobileUrl: "https://nubosci.ainubohub.com/", mobileLabel: "旅客自助服務", autoOpen: true };
+    }
+
     return forceDirectMobileOpen(
       resolveWebsiteMobileResult(call),
       call.name,
@@ -256,15 +260,15 @@ export const geminiSystemInstruction = `
 10. open_youtube取得videoId後，直接開啟YouTube App；App無法處理時開啟精確影片網址。不得在NUBO頁面內嵌播放。
 11. 使用者在播放期間指定另一首歌時，立即再次呼叫open_youtube，不詢問確認。
 12. 一般HTTP/HTTPS網址、網站或搜尋關鍵字用open_website。
-12A. 錦新館是無人櫃檯。旅客明確要辦入住、現場訂房或休息時，呼叫 open_website，target 固定為 https://nubosci.ainubohub.com/，並用語音陪旅客逐步操作。已有訂房點「我有訂房」，現場訂房或休息點「現場住宿／休息」。一次說一個動作，依旅客說出的畫面繼續。需要查即時房況、由後台建單或處理客訴時，用 guest_service_alert 通知後台，同時繼續帶旅客完成可操作的步驟。只有工具確認送出才說已通知。
+12A. 錦新館旅客說到自己的訂房、住宿、入住、休息或退房需求時，立即用 guest_service_alert 通知後台一次，issue 以對應的關鍵字開頭並摘要需求，無需等待姓氏、房號或電話。不可因 NUBO 自己說出關鍵字或重複確認同一需求而重送。旅客要辦理時用 open_website 開啟 https://nubosci.ainubohub.com/，一次引導一個畫面動作。每一步可主動問「您現在看到哪個畫面？哪一步需要我幫忙？」。退房若頁面尚未支援，說明下一步並通知後台。
 13. 只有明確要求Windows桌面程式時才用open_desktop_app；關閉Windows程式或桌面瀏覽器才用close_desktop_app或close_webpage。
 14. 查信先用gmail_search，必要時gmail_read；草稿用gmail_create_draft。
 15. 正式寄信先用gmail_prepare_send；使用者再次確認後才用gmail_confirm_send，不得跳過確認。
 16. 排程用create_task、list_tasks與task_action；複雜完整交付用delegate_work；查交辦成果用delegated_work_status。
 17. 音量與亮度用device_setting。已有專用工具時不得改用research_now或delegate_work。
 18. 使用者說開燈、關燈、打開燈、關掉燈、開房間燈、關房間燈，或任何明確燈光開關要求時，一律立即呼叫google_home_light。沒有指定房間時不要追問，直接控制這台NUBO綁定的預設Google Home房間；有指定房間或房號時才傳room。不得只用口頭回答「已開燈／已關燈」而不呼叫工具。
-19. 客人提出客訴、抱怨、設備異常、清潔、噪音、退款帳務、遺失物、服務需求、特殊協助或任何需要現場人員介入的需求時，立即進入客務建檔流程。必須先取得四項資料：客人姓氏、房號、聯絡方式、客訴或需求內容。客人已經說過的資料不要重問，只補問缺少的欄位。
-20. 四項客務資料未齊全前禁止呼叫guest_service_alert，也禁止用一般gmail_prepare_send寄客訴通知。四項齊全後立即呼叫guest_service_alert，不需要再詢問客人是否確認寄出。
+19. 旅客提出明確客訴或客務需求即通知後台一次，保留已知房號與需求重點。
+20. 不必等待身分、聯絡資料或二次確認。客務通知統一用 guest_service_alert。
 21. 聯絡方式可接受手機、電話、LINE或其他可讓現場人員聯絡到客人的方式。若客人拒絕提供必要資料，清楚說明需要資料才能完成客務通報，不可自行捏造。
 22. guest_service_alert成功後，簡短告知客人「好的，已經幫您通知現場人員處理。」不得朗讀內部收件信箱。
 
@@ -282,7 +286,7 @@ export const geminiSystemInstruction = `
 - 簡單問題直接回答。執行工具或思考期間禁止說「請稍等」「等一下」「我正在處理」或「我正在查找」。
 - research_now若skipped=true，請使用者重說或直接回答；若timeout=true，先回答可確定內容，不重試同一工具。
 - 不得捏造工具結果，不得宣稱失敗或未串接操作已完成。
-- guest_service_alert是固定授權的客務升級通道，四項資料齊全後可直接執行，不適用一般寄信二次確認。
+- guest_service_alert是固定授權的客務升級通道，有明確需求可直接執行，不適用一般寄信二次確認。
 - 付款、轉帳、刪除、改價、取消訂單、發布與正式PMS操作必須再次確認。
 - 只能開啟固定白名單或HTTP/HTTPS網址，不得執行任意程式、路徑或陌生命令。
 `;
@@ -368,7 +372,7 @@ export const geminiFunctionDeclarations = [
   {
     name: "guest_service_alert",
     description:
-      "客人客訴或客務需求的正式升級工具。只有在已取得客人姓氏、房號、聯絡方式與完整客訴/需求內容四項資料後才可呼叫；呼叫後會立即通知現場管理者，不需一般郵件二次確認。",
+      "通知後台旅客的訂房、住宿、入住、休息、退房或其他明確客務需求。",
     parameters: {
       type: "OBJECT",
       properties: {
@@ -389,7 +393,7 @@ export const geminiFunctionDeclarations = [
           description: "完整保留客人客訴或需求內容，包括設備、清潔、噪音、服務、帳務或其他需要處理事項。",
         },
       },
-      required: ["surname", "roomNumber", "contact", "issue"],
+      required: ["issue"],
     },
   },
   {

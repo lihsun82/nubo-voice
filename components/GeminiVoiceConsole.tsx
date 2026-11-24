@@ -779,9 +779,8 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                     title: label,
                   });
 
-                  setTranscript(
-                    `正在開啟${label}…`,
-                  );
+                  const keepVoiceTab = targetUrl === "https://nubosci.ainubohub.com/";
+                  setTranscript(keepVoiceTab ? "若未自動開啟，請點下方連結，並保留 NUBO 語音分頁。" : `正在開啟${label}…`);
 
                   if (
                     mobileAction.autoOpen !==
@@ -825,9 +824,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                          * 才使用目前頁面開啟。
                          * 返回時仍會自動恢復NUBO。
                          */
-                        window.location.assign(
-                          targetUrl,
-                        );
+                        if (!keepVoiceTab) window.location.assign(targetUrl);
                       } catch {
                         setTranscript(
                           `請按下方按鈕開啟${label}。`,
