@@ -287,7 +287,7 @@ body:has(.nubo-concierge-shell)::after {
   text-align: start;
   text-decoration: none;
 }
-.nubo-concierge-shell .nubo-kiosk-tile:hover { border-color: var(--tile-accent); }
+.nubo-concierge-shell :is(a, button).nubo-kiosk-tile:hover { border-color: var(--tile-accent); }
 .nubo-concierge-shell .nubo-kiosk-cyan {
   --tile-accent: var(--kiosk-cyan);
   --tile-edge: #00f0ff48;
@@ -322,6 +322,11 @@ body:has(.nubo-concierge-shell)::after {
   color: var(--kiosk-muted);
   font-size: 11px;
   line-height: 1.35;
+}
+.nubo-concierge-shell .nubo-kiosk-wifi bdi {
+  color: #f1f5f9;
+  font-weight: 600;
+  user-select: all;
 }
 
 .nubo-concierge-shell .nubo-kiosk-dock {

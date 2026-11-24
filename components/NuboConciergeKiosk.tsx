@@ -8,6 +8,7 @@ import type { NuboVoicePhase } from "@/lib/nubo-voice-phase";
 const GUEST_SERVICE_URL = "https://nubosci.ainubohub.com/";
 const FOOD_MAP_URL = "https://www.google.com/maps/search/?api=1&query=" +
   encodeURIComponent("台中市北區錦新街18號附近美食");
+const GUEST_WIFI = { network: "NUBO-Hotels🌞", password: "0422231157" };
 
 const LANGUAGES = [
   ["zh", "繁體中文", "繁中"],
@@ -26,17 +27,16 @@ const COPY = {
     ring: "正在撥號…", sleeping: "語音暫停收音，待喚醒",
     cards: [
       ["訂房／入住", "查詢訂房、住宿與休息"],
-      ["備品與送物", "詢問毛巾、礦泉水與備品"],
+      ["LINE QR Code", "掃碼加入飯店官方 LINE"],
       ["周邊景點與美食", "查看錦新館附近的店家"],
       ["客房設備", "詢問冷氣、照明或設備問題"],
-      ["Wi-Fi 與設施", "查看連線及旅宿服務說明"],
       ["聯絡飯店", "官方 LINE 與電話"],
     ],
+    wifi: { title: "Wi-Fi 密碼", network: "帳號", password: "密碼" },
     hints: ["我要辦理入住", "請送兩瓶礦泉水", "附近有什麼美食？"],
     help: [
       "接通後，可以說「請送兩瓶礦泉水」或告訴 NUBO 您需要的備品。",
       "接通後，可以詢問客房設備的操作方式，或請飯店人員協助。",
-      "Wi-Fi 連線資訊請查看房內指引。也可以詢問 NUBO 館內設施。",
     ],
     controls: ["點我說話", "掛斷電話", "連線中"], close: "關閉", continue: "返回通話",
     contact: "飯店官方 LINE", qr: "掃描 QR Code 聯絡新寶智慧酒店官方 LINE",
@@ -48,17 +48,16 @@ const COPY = {
     ring: "Ringing…", sleeping: "Voice paused. Say the wake word to continue.",
     cards: [
       ["Booking / Check-in", "Find a reservation, stay or rest"],
-      ["Guest Amenities", "Ask for towels, bottled water or supplies"],
+      ["LINE QR Code", "Scan to add the hotel on LINE"],
       ["Nearby Food & Sights", "Explore places near the hotel"],
       ["Room Equipment", "Help with AC, lighting or other equipment"],
-      ["Wi-Fi & Facilities", "Connection and hotel information"],
       ["Contact the Hotel", "Official LINE and phone number"],
     ],
+    wifi: { title: "Wi-Fi Password", network: "Network", password: "Password" },
     hints: ["I’d like to check in", "Can I have two bottles of water?", "What food is nearby?"],
     help: [
       "Start a call and tell NUBO which items you need, such as two bottles of water.",
       "Start a call to ask about room equipment or request help from hotel staff.",
-      "See the in-room instructions for Wi-Fi, or ask NUBO about hotel facilities.",
     ],
     controls: ["Tap to talk", "End call", "Connecting"], close: "Close", continue: "Return to call",
     contact: "Official Hotel LINE", qr: "Scan to contact the hotel on LINE",
@@ -70,17 +69,16 @@ const COPY = {
     ring: "呼び出し中…", sleeping: "音声待機中。呼びかけて再開できます。",
     cards: [
       ["予約・チェックイン", "ご予約・宿泊・休憩のご案内"],
-      ["客室備品", "タオル・お水などのご依頼"],
+      ["LINE QRコード", "ホテル公式 LINE を友だち追加"],
       ["周辺観光・グルメ", "ホテル周辺のお店を探す"],
       ["客室設備", "空調・照明などの使い方"],
-      ["Wi-Fi・施設案内", "接続方法と施設のご案内"],
       ["ホテルに連絡", "公式 LINE・電話番号"],
     ],
+    wifi: { title: "Wi-Fi パスワード", network: "SSID", password: "パスワード" },
     hints: ["チェックインしたい", "お水を2本ください", "近くに飲食店はありますか？"],
     help: [
       "通話を開始し、お水2本など必要な備品を NUBO にお伝えください。",
       "客室設備の使い方や不具合について、NUBO にご相談ください。",
-      "Wi-Fi の接続情報は客室内の案内をご覧ください。施設については NUBO にも質問できます。",
     ],
     controls: ["タップして話す", "通話を終了", "接続中"], close: "閉じる", continue: "通話に戻る",
     contact: "ホテル公式 LINE", qr: "QR コードを読み取ってホテルの LINE に連絡",
@@ -92,17 +90,16 @@ const COPY = {
     ring: "호출 중…", sleeping: "음성 대기 중입니다. 호출어로 다시 시작할 수 있어요.",
     cards: [
       ["예약 / 체크인", "예약 조회, 숙박 및 대실 안내"],
-      ["객실 비품", "수건, 생수 등 비품 요청"],
+      ["LINE QR 코드", "호텔 공식 LINE 친구 추가"],
       ["주변 맛집 및 명소", "호텔 근처 장소 검색"],
       ["객실 설비", "냉방, 조명 등 사용 문의"],
-      ["Wi-Fi 및 시설", "연결 방법과 시설 안내"],
       ["호텔에 연락", "공식 LINE 및 전화번호"],
     ],
+    wifi: { title: "Wi-Fi 비밀번호", network: "SSID", password: "비밀번호" },
     hints: ["체크인하고 싶어요", "생수 두 병 주세요", "근처에 맛집이 있나요?"],
     help: [
       "음성 통화를 시작한 뒤 필요한 객실 비품을 NUBO에게 말씀해 주세요.",
       "객실 설비 사용법이나 직원의 도움이 필요하면 NUBO에게 물어보세요.",
-      "Wi-Fi 연결 정보는 객실 안내를 확인하세요. 호텔 시설도 NUBO에게 문의할 수 있어요.",
     ],
     controls: ["눌러서 말하기", "통화 종료", "연결 중"], close: "닫기", continue: "통화로 돌아가기",
     contact: "호텔 공식 LINE", qr: "QR 코드를 스캔하여 LINE으로 호텔에 연락",
@@ -110,6 +107,7 @@ const COPY = {
 } satisfies Record<Language, {
   location: string; language: string; response: string; services: string; greeting: string;
   phases: string[]; ring: string; sleeping: string; cards: Array<[string, string]>; hints: string[];
+  wifi: { title: string; network: string; password: string };
   help: string[]; controls: string[]; close: string; continue: string; contact: string; qr: string;
 }>;
 
@@ -126,7 +124,7 @@ const DATE = new Intl.DateTimeFormat("en-US", {
 const ICONS = {
   hotel: "M4 21h16M6 21V5h12v16M10 21v-5h4v5M9 8h1m4 0h1m-6 4h1m4 0h1",
   key: "M15.5 3a5.5 5.5 0 0 0-5 7.8L3 18.3V21h3v-2h2v-2h2.5l3.2-3.2A5.5 5.5 0 1 0 15.5 3zM16 7h.01",
-  robot: "M12 4v3m-2-3h4M5 10a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3Zm-2 2h2m14 0h2m-12 0h.01m6 0h.01m-6 4h6",
+  qr: "M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15v3h3v3m3-6v3m-6 3h.01M12 12h.01",
   map: "m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zm6-3v15m6-12v15",
   sliders: "M6 3v4m0 4v10m6-18v10m0 4v4m6-18v6m0 4v8M3 7h6m0 10h6m0-8h6",
   wifi: "M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0m-11 4a6 6 0 0 1 8 0m-4 4h.01",
@@ -140,7 +138,7 @@ function Icon({ name }: { name: keyof typeof ICONS }) {
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICONS[name]} /></svg>;
 }
 
-type HelpIndex = 0 | 1 | 2;
+type HelpIndex = 0 | 1;
 type Props = {
   state: CallState;
   transcript?: string;
@@ -235,7 +233,7 @@ export function NuboConciergeKiosk({
       </header>
 
       {contactVisible && (
-        <aside className="nubo-kiosk-contact" aria-label={copy.contact}>
+        <aside id="nubo-kiosk-contact" className="nubo-kiosk-contact" aria-label={copy.contact}>
           <div><strong>{copy.contact}</strong>
             <button type="button" onClick={closeContact} aria-label={copy.close}>×</button>
           </div>
@@ -261,11 +259,19 @@ export function NuboConciergeKiosk({
         <h2 id="nubo-kiosk-services-title">{copy.services}</h2>
         <div className="nubo-kiosk-grid">
           <a className="nubo-kiosk-tile" href={bookingUrl} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
-          <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setHelp(0)}>{card(1, "robot")}</button>
+          <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
+            aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
           <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
           <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setHelp(1)}>{card(3, "sliders")}</button>
-          <button className="nubo-kiosk-tile" type="button" onClick={() => setHelp(2)}>{card(4, "wifi")}</button>
-          <button className="nubo-kiosk-tile nubo-kiosk-green" type="button" onClick={openContact}>{card(5, "headset")}</button>
+          <div className="nubo-kiosk-tile nubo-kiosk-wifi">
+            <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
+            <span>
+              <strong>{copy.wifi.title}</strong>
+              <small>{copy.wifi.network} <bdi>{GUEST_WIFI.network}</bdi><br />
+                {copy.wifi.password} <bdi>{GUEST_WIFI.password}</bdi></small>
+            </span>
+          </div>
+          <button className="nubo-kiosk-tile nubo-kiosk-green" type="button" onClick={openContact}>{card(4, "headset")}</button>
         </div>
       </nav>
 
@@ -281,7 +287,7 @@ export function NuboConciergeKiosk({
       </div>
 
       {help !== null && (
-        <KioskHelp title={copy.cards[[1, 3, 4][help]][0]} message={copy.help[help]} close={copy.close}
+        <KioskHelp title={help === 0 ? copy.hints[1] : copy.cards[3][0]} message={copy.help[help]} close={copy.close}
           label={state === "connected" ? copy.continue : copy.controls[0]} busy={busy}
           onClose={() => setHelp(null)}
           onTalk={() => {
