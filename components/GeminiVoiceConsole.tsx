@@ -858,7 +858,10 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                       query: recentFastRoute?.query ?? toolQuery,
                     }
                   : call.name === "notify_arrival_intent"
-                    ? await notifyGuestKeywords(call.args?.intent === "booking" ? "訂房" : call.args?.intent === "lodging" ? "住宿" : "入住")
+                    ? (() => {
+                        void notifyGuestKeywords(call.args?.intent === "booking" ? "訂房" : call.args?.intent === "lodging" ? "住宿" : "入住");
+                        return { ok: true, notificationStatus: "pending", sent: false };
+                      })()
                     : await executeNuboBrowserTool(call);
 
                 // NUBO_MOBILE_APP_AUTO_OPEN_V1
@@ -997,8 +1000,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                     room && typeof room === "object" && "availableCount" in room &&
                     typeof room.availableCount === "number" && room.availableCount > 0);
                 if (call.name === "pms_check_availability" && !bookingAttemptedRef.current) setBookingLink(null);
-                if (availableRooms ||
-                    (call.name === "notify_arrival_intent" && call.args?.intent === "booking")) {
+                if (availableRooms) {
                   const bookingPageReady = await revealBookingLink();
                   responseResult = result && typeof result === "object"
                     ? { ...result, bookingPageReady }
