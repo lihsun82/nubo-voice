@@ -122,6 +122,7 @@ export function GeminiVoiceConsole() {
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
   const callTonePendingRef = useRef(false);
+  const greetOnConnectRef = useRef(false);
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -681,6 +682,12 @@ export function GeminiVoiceConsole() {
               recordSocketBuffer(socket.bufferedAmount);
             });
             setState("connected");
+            if (greetOnConnectRef.current && socket.readyState === WebSocket.OPEN) {
+              greetOnConnectRef.current = false;
+              socket.send(JSON.stringify({
+                realtimeInput: { text: "通話已接通。請立即用語音逐字說出以下開場白，說完停下等待旅客：嗨 您好 我是ai nubo很高興為您服務" },
+              }));
+            }
           }
 
           const serverContent = message.serverContent;
@@ -1263,6 +1270,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   const startWithCallTones = async () => {
     if (callTonePendingRef.current) return;
     callTonePendingRef.current = true;
+    greetOnConnectRef.current = true;
     clearReconnectTimer();
     setState("connecting");
     setIsRinging(true);
