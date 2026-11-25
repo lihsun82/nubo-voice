@@ -1,0 +1,30 @@
+name: Yating Taiwanese TTS A/B - offline unit tests
+
+on:
+  push:
+    branches:
+      - test/yating-taigi-female-ab-20261122
+    paths:
+      - scripts/yating-taigi-ab.py
+      - tests/test_yating_taigi_ab.py
+      - .github/workflows/yating-taigi-ab-check.yml
+  pull_request:
+    paths:
+      - scripts/yating-taigi-ab.py
+      - tests/test_yating_taigi_ab.py
+      - .github/workflows/yating-taigi-ab-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate both voices and WAV decoding without paid calls
+        run: python3 -m unittest discover -s tests -p "test_yating_taigi_ab.py" -v
