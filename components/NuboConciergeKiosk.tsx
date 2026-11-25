@@ -36,11 +36,8 @@ const COPY = {
       ["聯絡飯店", "官方 LINE 與電話"],
     ],
     wifi: { title: "Wi-Fi 密碼", network: "帳號", password: "密碼" },
-    hints: ["我要辦理入住", "請送兩瓶礦泉水", "附近有什麼美食？"],
-    help: [
-      "接通後，可以說「請送兩瓶礦泉水」或告訴 NUBO 您需要的備品。",
-      "接通後，可以詢問客房設備的操作方式，或請飯店人員協助。",
-    ],
+    hints: ["我要辦理入住", "附近有什麼美食？"],
+    equipmentHelp: "接通後，可以詢問客房設備的操作方式，或請飯店人員協助。",
     controls: ["點我說話", "掛斷電話", "連線中"], close: "關閉", continue: "返回通話",
     contact: "飯店官方 LINE", qr: "掃描 QR Code 聯絡新寶智慧酒店官方 LINE",
   },
@@ -59,11 +56,8 @@ const COPY = {
       ["Contact the Hotel", "Official LINE and phone number"],
     ],
     wifi: { title: "Wi-Fi Password", network: "Network", password: "Password" },
-    hints: ["I’d like to check in", "Two bottles of water, please", "Nearby food?"],
-    help: [
-      "Start a call and tell NUBO which items you need, such as two bottles of water.",
-      "Start a call to ask about room equipment or request help from hotel staff.",
-    ],
+    hints: ["I’d like to check in", "Nearby food?"],
+    equipmentHelp: "Start a call to ask about room equipment or request help from hotel staff.",
     controls: ["Tap to talk", "End call", "Connecting"], close: "Close", continue: "Return to call",
     contact: "Official Hotel LINE", qr: "Scan to contact the hotel on LINE",
   },
@@ -82,11 +76,8 @@ const COPY = {
       ["ホテルに連絡", "公式 LINE・電話番号"],
     ],
     wifi: { title: "Wi-Fi パスワード", network: "SSID", password: "パスワード" },
-    hints: ["チェックインしたい", "お水を2本ください", "近くの飲食店は？"],
-    help: [
-      "通話を開始し、お水2本など必要な備品を NUBO にお伝えください。",
-      "客室設備の使い方や不具合について、NUBO にご相談ください。",
-    ],
+    hints: ["チェックインしたい", "近くの飲食店は？"],
+    equipmentHelp: "客室設備の使い方や不具合について、NUBO にご相談ください。",
     controls: ["タップして話す", "通話を終了", "接続中"], close: "閉じる", continue: "通話に戻る",
     contact: "ホテル公式 LINE", qr: "QR コードを読み取ってホテルの LINE に連絡",
   },
@@ -105,11 +96,8 @@ const COPY = {
       ["호텔에 연락", "공식 LINE 및 전화번호"],
     ],
     wifi: { title: "Wi-Fi 비밀번호", network: "SSID", password: "비밀번호" },
-    hints: ["체크인하고 싶어요", "생수 두 병 주세요", "근처에 맛집이 있나요?"],
-    help: [
-      "음성 통화를 시작한 뒤 필요한 객실 비품을 NUBO에게 말씀해 주세요.",
-      "객실 설비 사용법이나 직원의 도움이 필요하면 NUBO에게 물어보세요.",
-    ],
+    hints: ["체크인하고 싶어요", "근처에 맛집이 있나요?"],
+    equipmentHelp: "객실 설비 사용법이나 직원의 도움이 필요하면 NUBO에게 물어보세요.",
     controls: ["눌러서 말하기", "통화 종료", "연결 중"], close: "닫기", continue: "통화로 돌아가기",
     contact: "호텔 공식 LINE", qr: "QR 코드를 스캔하여 LINE으로 호텔에 연락",
   },
@@ -117,9 +105,9 @@ const COPY = {
   location: string; language: string; response: string; services: string; greeting: string;
   brandRole: string; title: string;
   auto: string; error: string;
-  phases: string[]; ring: string; sleeping: string; cards: Array<[string, string]>; hints: string[];
+  phases: string[]; ring: string; sleeping: string; cards: Array<[string, string]>; hints: [string, string];
   wifi: { title: string; network: string; password: string };
-  help: string[]; controls: string[]; close: string; continue: string; contact: string; qr: string;
+  equipmentHelp: string; controls: string[]; close: string; continue: string; contact: string; qr: string;
 }>;
 
 const PHASE_INDEX: Record<NuboVoicePhase, number> = {
@@ -146,7 +134,6 @@ function Icon({ name }: { name: keyof typeof ICONS }) {
     strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICONS[name]} /></svg>;
 }
 
-type HelpIndex = 0 | 1;
 type Props = {
   state: CallState;
   transcript?: string;
@@ -171,7 +158,7 @@ export function NuboConciergeKiosk({
   const wasConnected = useRef(false);
   const [clock, setClock] = useState<Date | null>(null);
   const [voicePhase, setVoicePhase] = useState<NuboVoicePhase>("idle");
-  const [help, setHelp] = useState<HelpIndex | null>(null);
+  const [equipmentHelpOpen, setEquipmentHelpOpen] = useState(false);
   const [localContactAt, setLocalContactAt] = useState<number | null>(null);
   const copy = COPY[language];
   const phase = state === "connected" ? (
@@ -290,12 +277,9 @@ export function NuboConciergeKiosk({
             </button>
           </section>
           <div className="nubo-kiosk-dock">
+            <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
             <NuboPhoneAction state={state} onClick={onToggleCall} kioskLabels={copy.controls} />
-            <div className="nubo-kiosk-hints">
-              <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
-              <button type="button" onClick={() => setHelp(0)}>{copy.hints[1]}</button>
-              <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[2]}</a>
-            </div>
+            <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[1]}</a>
           </div>
         </div>
 
@@ -312,7 +296,7 @@ export function NuboConciergeKiosk({
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
                 aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
               <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
-              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setHelp(1)}>{card(3, "sliders")}</button>
+              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setEquipmentHelpOpen(true)}>{card(3, "sliders")}</button>
               <div className="nubo-kiosk-tile nubo-kiosk-wifi">
                 <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
                 <span>
@@ -330,12 +314,12 @@ export function NuboConciergeKiosk({
         </div>
       </div>
 
-      {help !== null && (
-        <KioskHelp title={help === 0 ? copy.hints[1] : copy.cards[3][0]} message={copy.help[help]} close={copy.close}
+      {equipmentHelpOpen && (
+        <KioskHelp title={copy.cards[3][0]} message={copy.equipmentHelp} close={copy.close}
           label={state === "connected" ? copy.continue : copy.controls[0]} busy={busy}
-          onClose={() => setHelp(null)}
+          onClose={() => setEquipmentHelpOpen(false)}
           onTalk={() => {
-            setHelp(null);
+            setEquipmentHelpOpen(false);
             if (state !== "connected") onToggleCall();
           }} />
       )}
