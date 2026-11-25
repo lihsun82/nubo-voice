@@ -79,6 +79,7 @@ test("requests a one-use Gemini grant with the full AUDIO setup locked", async (
   assert.equal("parameters" in tool || "parametersJsonSchema" in tool, false);
   assert.equal("sessionResumption" in optionsLocked, false);
   assert.match(optionsLocked.systemInstruction.parts[0].text, /聯絡櫃檯/);
+  assert.match(optionsLocked.systemInstruction.parts[0].text, /休息三小時（180 分鐘）共新臺幣 890 元/);
   assert.equal(options.body.includes(SESSION_ID), false);
 });
 
@@ -125,6 +126,7 @@ test("declares stay and rest tools only when the nubosci client is ready", async
   assert.match(instruction, /room_catalogue_incomplete/);
   assert.match(instruction, /目前無法確認住宿房況，請洽櫃檯/);
   assert.match(instruction, /開始時間與休息時長/);
+  assert.match(instruction, /休息三小時（180 分鐘）共新臺幣 890 元。旅客只問休息房價時直接報/);
   assert.match(instruction, /不報庫存間數/);
   assert.match(instruction, /挑一個有房/);
   assert.match(instruction, /不要重薦客人拒絕/);

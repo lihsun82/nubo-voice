@@ -1,4 +1,4 @@
-import { NUBO_JINXIN_LOCAL_GUIDE } from "./nubo-jinxin-local-guide";
+import { NUBO_JINXIN_LOCAL_GUIDE } from "./nubo-jinxin-local-guide.ts";
 /**
  * AINUBO HOTEL 台中錦新館：館方於 2026-11-23 提供之房型／房價截圖。
  * 不是即時訂房報價、庫存或官網爬取結果。
@@ -30,6 +30,9 @@ export const NUBO_JINXIN_CONTACT = {
   email: "hello@ainubohotels.com",
 } as const;
 
+export const NUBO_JINXIN_REST_RATE_INSTRUCTION =
+  "錦新館休息三小時（180 分鐘）共新臺幣 890 元。旅客只問休息房價時直接報這個三小時方案，無須先查房況。詢問其他時長的價格時請旅客洽櫃檯確認。";
+
 export const NUBO_JINXIN_REFERENCE = `
 
 【館方最新確認的基本聯絡資訊（2026-11-24）】
@@ -39,6 +42,10 @@ export const NUBO_JINXIN_REFERENCE = `
 - 公司／官方聯絡信箱：${NUBO_JINXIN_CONTACT.email}（完整地址必須準確；可用英文逐字拼讀）
 - 旅客詢問「飯店在哪裡」、「地址」、「導航目的地」、「聯絡電話」、「櫃檯電話」、「客服電話」、「公司 Email」、「如何聯絡飯店」時，可以直接回答這三項館方已確認的資訊，不必重新查房況或詢問入住日期。
 - 旅客要求打電話或寄信時，僅提供號碼及信箱，除非已確實啟用且成功執行相應工具，否則不可宣稱已撥通電話、已寄出郵件或已通知櫃檯。
+
+【館方確認的休息房價格】
+- ${NUBO_JINXIN_REST_RATE_INSTRUCTION}
+
 AINUBO HOTEL 新寶智慧酒店｜台中錦新館館方基礎資料（館方 2026-11-23 截圖，非官網或 PMS 即時資料）：
 - 地址：台中市北區錦新街18號。對外官網網址 https://ainubohotels.com/；目前未能在線上完整驗證官網所有頁面，不得冒稱已核對。
 - 房價為新臺幣每房每晚的「館方價格表參考價」，須先知道入住日期、退房日期、房型和人數才可對應星期；特殊日、連假、旺季、方案與動態調價可能不同。
