@@ -235,7 +235,7 @@ export function NuboConciergeKiosk({
   const languageLabel = NUBO_KIOSK_LANGUAGES.find(([id]) => id === language)?.[2];
 
   return (
-    <section className="console nubo-guest-console nubo-concierge" lang={locale}>
+    <section className="nubo-guest-console nubo-concierge" lang={locale}>
       <header className="nubo-kiosk-header">
         <div className="nubo-kiosk-brand">
           <span className="nubo-kiosk-brand-mark"><Icon name="hotel" /></span>
@@ -280,49 +280,54 @@ export function NuboConciergeKiosk({
         </aside>
       )}
 
-      <section className="nubo-kiosk-stage" data-phase={phase}>
-        <div className="nubo-kiosk-status" role="status"><span aria-hidden="true" />{status}</div>
-        <button type="button" className="nubo-kiosk-orb-action" onClick={onToggleCall} disabled={busy}
-          aria-label={state === "connected" ? copy.controls[1] : copy.controls[0]}>
-          <NuboKioskOrb phase={phase} />
-        </button>
-      </section>
-
-      <section className="nubo-kiosk-response" aria-labelledby="nubo-kiosk-response-title">
-        <h2 id="nubo-kiosk-response-title"><Icon name="sparkle" />{copy.response}</h2>
-        <p className="voice-transcript">{transcript || (state === "idle" ? copy.greeting : status)}</p>
-      </section>
-
-      <nav aria-labelledby="nubo-kiosk-services-title" className="nubo-kiosk-services">
-        <h2 id="nubo-kiosk-services-title">{copy.services}</h2>
-        <div className="nubo-kiosk-grid">
-          <a className="nubo-kiosk-tile" href={bookingUrl} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
-          <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
-            aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
-          <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
-          <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setHelp(1)}>{card(3, "sliders")}</button>
-          <div className="nubo-kiosk-tile nubo-kiosk-wifi">
-            <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
-            <span>
-              <strong>{copy.wifi.title}</strong>
-              <small>{copy.wifi.network} <bdi>{GUEST_WIFI.network}</bdi><br />
-                {copy.wifi.password} <bdi>{GUEST_WIFI.password}</bdi></small>
-            </span>
+      <div className="nubo-kiosk-content">
+        <div className="nubo-kiosk-call-panel">
+          <section className="nubo-kiosk-stage" data-phase={phase}>
+            <div className="nubo-kiosk-status" role="status"><span aria-hidden="true" />{status}</div>
+            <button type="button" className="nubo-kiosk-orb-action" onClick={onToggleCall} disabled={busy}
+              aria-label={state === "connected" ? copy.controls[1] : copy.controls[0]}>
+              <NuboKioskOrb phase={phase} />
+            </button>
+          </section>
+          <div className="nubo-kiosk-dock">
+            <NuboPhoneAction state={state} onClick={onToggleCall} kioskLabels={copy.controls} />
+            <div className="nubo-kiosk-hints">
+              <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
+              <button type="button" onClick={() => setHelp(0)}>{copy.hints[1]}</button>
+              <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[2]}</a>
+            </div>
           </div>
-          <button className="nubo-kiosk-tile nubo-kiosk-green" type="button" onClick={openContact}>{card(4, "headset")}</button>
         </div>
-      </nav>
 
-      {children}
-      {error ? <div className="error" role="alert">{language === "zh" ? error : copy.error}</div> : null}
+        <div className="nubo-kiosk-details">
+          <section className="nubo-kiosk-response" aria-labelledby="nubo-kiosk-response-title">
+            <h2 id="nubo-kiosk-response-title"><Icon name="sparkle" />{copy.response}</h2>
+            <p className="voice-transcript">{transcript || (state === "idle" ? copy.greeting : status)}</p>
+          </section>
 
-      <div className="nubo-kiosk-dock">
-        <div className="nubo-kiosk-hints">
-          <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
-          <button type="button" onClick={() => setHelp(0)}>{copy.hints[1]}</button>
-          <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[2]}</a>
+          <nav aria-labelledby="nubo-kiosk-services-title" className="nubo-kiosk-services">
+            <h2 id="nubo-kiosk-services-title">{copy.services}</h2>
+            <div className="nubo-kiosk-grid">
+              <a className="nubo-kiosk-tile" href={bookingUrl} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
+              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
+                aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
+              <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
+              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setHelp(1)}>{card(3, "sliders")}</button>
+              <div className="nubo-kiosk-tile nubo-kiosk-wifi">
+                <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
+                <span>
+                  <strong>{copy.wifi.title}</strong>
+                  <small>{copy.wifi.network} <bdi>{GUEST_WIFI.network}</bdi><br />
+                    {copy.wifi.password} <bdi>{GUEST_WIFI.password}</bdi></small>
+                </span>
+              </div>
+              <button className="nubo-kiosk-tile nubo-kiosk-green" type="button" onClick={openContact}>{card(4, "headset")}</button>
+            </div>
+          </nav>
+
+          {children}
+          {error ? <div className="error" role="alert">{language === "zh" ? error : copy.error}</div> : null}
         </div>
-        <NuboPhoneAction state={state} onClick={onToggleCall} kioskLabels={copy.controls} />
       </div>
 
       {help !== null && (

@@ -196,11 +196,6 @@ export function NuboKioskOrb({ phase }: { phase: NuboVoicePhase }) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(SIZE * dpr);
-    canvas.height = canvas.width;
-    ctx.scale(canvas.width / SIZE, canvas.height / SIZE);
-
     const particles = createParticles();
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const levels = {
@@ -208,6 +203,7 @@ export function NuboKioskOrb({ phase }: { phase: NuboVoicePhase }) {
       output: { value: 0, at: -Infinity },
     };
     let onscreen = true;
+    let needsResize = true;
     let frame: number | null = null;
     let lastPaint = -Infinity;
     let previousPhase = phaseRef.current;
@@ -225,7 +221,18 @@ export function NuboKioskOrb({ phase }: { phase: NuboVoicePhase }) {
       if (!onscreen || document.hidden || !ctx) return;
       const current = phaseRef.current;
       const elapsed = timestamp - lastPaint;
-      if (elapsed >= FRAME_INTERVAL - 0.5 || motion.matches || current !== previousPhase) {
+      if (needsResize || elapsed >= FRAME_INTERVAL - 0.5 || motion.matches || current !== previousPhase) {
+        if (needsResize) {
+          const { canvas } = ctx;
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          const pixels = Math.round((canvas.getBoundingClientRect().width || SIZE) * dpr);
+          if (canvas.width !== pixels || canvas.height !== pixels) {
+            canvas.width = pixels;
+            canvas.height = pixels;
+          }
+          ctx.setTransform(pixels / SIZE, 0, 0, pixels / SIZE, 0, 0);
+          needsResize = false;
+        }
         const delta = Number.isFinite(elapsed) ? Math.min(elapsed / 1000, 0.05) : 0;
         lastPaint = timestamp;
         previousPhase = current;
@@ -264,6 +271,11 @@ export function NuboKioskOrb({ phase }: { phase: NuboVoicePhase }) {
       if (onscreen) schedule();
     });
     observer.observe(canvas);
+    const resizeObserver = new ResizeObserver(() => {
+      needsResize = true;
+      schedule();
+    });
+    resizeObserver.observe(canvas);
     window.addEventListener("nubo:voice-level", onVoiceLevel);
     document.addEventListener("visibilitychange", schedule);
     motion.addEventListener("change", schedule);
@@ -273,6 +285,7 @@ export function NuboKioskOrb({ phase }: { phase: NuboVoicePhase }) {
     return () => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       observer.disconnect();
+      resizeObserver.disconnect();
       window.removeEventListener("nubo:voice-level", onVoiceLevel);
       document.removeEventListener("visibilitychange", schedule);
       motion.removeEventListener("change", schedule);
