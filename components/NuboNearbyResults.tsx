@@ -8,6 +8,7 @@ const COPY = {
   en: { places: "Places", location: "your location", heading: (query: string, location: string) => `${query} near ${location}`, distance: (meters: number) => `About ${meters} m` },
   ja: { places: "お店", location: "現在地", heading: (query: string, location: string) => `${location}周辺の${query}`, distance: (meters: number) => `約 ${meters} m` },
   ko: { places: "매장", location: "현재 위치", heading: (query: string, location: string) => `${location} 주변 ${query}`, distance: (meters: number) => `약 ${meters} m` },
+  vi: { places: "Địa điểm", location: "vị trí hiện tại", heading: (query: string, location: string) => `${query} gần ${location}`, distance: (meters: number) => `Khoảng ${meters} m` },
 };
 
 type NearbyPlace = {

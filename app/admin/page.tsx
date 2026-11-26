@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { NuboRoomPhotoSettings } from "@/components/NuboRoomPhotoSettings";
 import {
   NUBO_DEFAULT_VOICE_PROFILE,
   NUBO_GEMINI_VOICES,
@@ -223,6 +224,9 @@ export default function AdminPage() {
                 <span>已登入：{session.email}</span>
                 <button type="button" style={button} onClick={() => void logout()}>登出</button>
               </div>
+            </section>
+            <section id="room-photos" style={card}>
+              <NuboRoomPhotoSettings fieldStyle={input} buttonStyle={button} />
             </section>
             <section style={card}>
               <h2>LINE 群組通知</h2>

@@ -339,7 +339,7 @@ body:has(.nubo-concierge-shell)::after {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   justify-self: center;
-  gap: clamp(5px, 1.4vw, 12px);
+  gap: clamp(12px, 2.5vw, 28px);
   width: min(100%, 420px);
 }
 .nubo-concierge-shell .nubo-kiosk-dock > a {
@@ -416,7 +416,7 @@ body:has(.nubo-concierge-shell)::after {
   box-shadow: 0 6px 28px #0009;
 }
 .nubo-concierge-shell .nubo-kiosk-contact > div,
-.nubo-concierge-shell .nubo-kiosk-help header {
+.nubo-concierge-shell .nubo-kiosk-gallery header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -433,7 +433,7 @@ body:has(.nubo-concierge-shell)::after {
   font-size: 20px;
   min-height: 44px;
 }
-.nubo-concierge-shell :is(.nubo-kiosk-contact, .nubo-kiosk-help) button[aria-label] {
+.nubo-concierge-shell :is(.nubo-kiosk-contact, .nubo-kiosk-gallery) button[aria-label] {
   border: 0;
   background: transparent;
   color: inherit;
@@ -444,29 +444,54 @@ body:has(.nubo-concierge-shell)::after {
   cursor: pointer;
 }
 
-.nubo-concierge-shell .nubo-kiosk-help {
-  width: min(460px, calc(100vw - var(--kiosk-inset-start) - var(--kiosk-inset-end)));
+.nubo-concierge-shell .nubo-kiosk-gallery {
+  width: min(860px, calc(100vw - var(--kiosk-inset-start) - var(--kiosk-inset-end)));
   max-height: calc(100svh - var(--kiosk-inset-top) - var(--kiosk-inset-bottom));
   overflow-y: auto;
-  padding: 19px;
+  overscroll-behavior: contain;
+  padding: clamp(14px, 2.6vw, 24px);
   border: 1px solid #d4af3759;
   border-radius: 20px;
   background: var(--kiosk-surface);
   color: #f1f5f9;
 }
-.nubo-concierge-shell .nubo-kiosk-help::backdrop { background: #020617c7; }
-.nubo-concierge-shell .nubo-kiosk-help h2 { font-size: 16px; color: var(--kiosk-pale) !important; margin: 0; }
-.nubo-concierge-shell .nubo-kiosk-help p { line-height: 1.55; color: #e3e8f3; }
-.nubo-concierge-shell .nubo-kiosk-help-action {
+.nubo-concierge-shell .nubo-kiosk-gallery::backdrop { background: #020617c7; }
+.nubo-concierge-shell .nubo-kiosk-gallery h2 { font-size: clamp(16px, 2vw, 20px); color: var(--kiosk-pale) !important; margin: 0; }
+.nubo-concierge-shell .nubo-kiosk-gallery p { line-height: 1.55; color: #e3e8f3; }
+.nubo-concierge-shell .nubo-kiosk-gallery-floors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 16px;
+}
+.nubo-concierge-shell .nubo-kiosk-gallery-floors button {
   min-height: 44px;
-  padding-inline: 14px;
-  width: 100%;
-  border: 0;
-  border-radius: 12px;
-  background: var(--kiosk-gold);
-  color: #181102;
+  min-width: 52px;
+  padding: 6px 12px;
+  border: 1px solid #d4af3759;
+  border-radius: 999px;
+  background: #111827;
+  color: var(--kiosk-pale);
   font: inherit;
   font-weight: 700;
+  cursor: pointer;
+}
+.nubo-concierge-shell .nubo-kiosk-gallery-floors button[aria-pressed="true"] {
+  background: var(--kiosk-gold);
+  color: #181102;
+}
+.nubo-concierge-shell .nubo-kiosk-gallery-images {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 12px;
+}
+.nubo-concierge-shell .nubo-kiosk-gallery-images img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #07090e;
 }
 .nubo-concierge-shell .nubo-kiosk-details > .error { margin: 0; }
 .nubo-concierge-shell .nubo-concierge :is(a, button):focus-visible {

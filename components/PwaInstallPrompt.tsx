@@ -8,6 +8,7 @@ const COPY = {
   en: { title: "Install NUBO on your phone", ios: "In Safari, tap Share, then Add to Home Screen.", prompt: "Open NUBO directly from your home screen.", install: "Install", later: "Later" },
   ja: { title: "スマートフォンに NUBO を追加", ios: "Safari の共有メニューで「ホーム画面に追加」を選択してください。", prompt: "ホーム画面から NUBO を直接開けます。", install: "追加", later: "後で" },
   ko: { title: "휴대전화에 NUBO 설치", ios: "Safari에서 공유를 누른 후 홈 화면에 추가를 선택하세요.", prompt: "홈 화면에서 NUBO를 바로 열 수 있습니다.", install: "설치", later: "나중에" },
+  vi: { title: "Thêm NUBO vào màn hình chính", ios: "Trên Safari, chạm Chia sẻ rồi chọn Thêm vào màn hình chính.", prompt: "Mở NUBO ngay từ màn hình chính.", install: "Cài đặt", later: "Để sau" },
 };
 
 interface BeforeInstallPromptEvent extends Event {

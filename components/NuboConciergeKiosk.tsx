@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NuboKioskOrb } from "@/components/NuboKioskOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
+import { NuboRoomPhotoGallery } from "@/components/NuboRoomPhotoGallery";
 import {
   NUBO_KIOSK_LANGUAGES,
   NUBO_KIOSK_LOCALES,
@@ -32,13 +33,12 @@ const COPY = {
       ["訂房／入住", "查詢訂房、住宿與休息"],
       ["LINE QR Code", "掃碼加入飯店官方 LINE"],
       ["周邊景點與美食", "查看錦新館附近的店家"],
-      ["客房設備", "詢問冷氣、照明或設備問題"],
+      ["客房照片", "依樓層瀏覽客房"],
       ["聯絡飯店", "官方 LINE 與電話"],
     ],
     wifi: { title: "Wi-Fi 密碼", network: "帳號", password: "密碼" },
     hints: ["我要辦理入住", "附近有什麼美食？"],
-    equipmentHelp: "接通後，可以詢問客房設備的操作方式，或請飯店人員協助。",
-    controls: ["點我說話", "掛斷電話", "連線中"], close: "關閉", continue: "返回通話",
+    controls: ["點我說話", "掛斷電話", "連線中"], close: "關閉",
     contact: "飯店官方 LINE", qr: "掃描 QR Code 聯絡新寶智慧酒店官方 LINE",
   },
   en: {
@@ -52,13 +52,12 @@ const COPY = {
       ["Booking / Check-in", "Find a reservation, stay or rest"],
       ["LINE QR Code", "Scan to add the hotel on LINE"],
       ["Nearby Food & Sights", "Explore places near the hotel"],
-      ["Room Equipment", "Help with AC, lighting or other equipment"],
+      ["Room Photos", "Explore guest rooms by floor"],
       ["Contact the Hotel", "Official LINE and phone number"],
     ],
     wifi: { title: "Wi-Fi Password", network: "Network", password: "Password" },
     hints: ["I’d like to check in", "Nearby food?"],
-    equipmentHelp: "Start a call to ask about room equipment or request help from hotel staff.",
-    controls: ["Tap to talk", "End call", "Connecting"], close: "Close", continue: "Return to call",
+    controls: ["Tap to talk", "End call", "Connecting"], close: "Close",
     contact: "Official Hotel LINE", qr: "Scan to contact the hotel on LINE",
   },
   ja: {
@@ -72,13 +71,12 @@ const COPY = {
       ["予約・チェックイン", "予約・宿泊・休憩の案内"],
       ["LINE QRコード", "公式 LINE を追加"],
       ["周辺観光・グルメ", "ホテル周辺のお店を探す"],
-      ["客室設備", "空調・照明などの使い方"],
+      ["客室の写真", "フロア別に客室を見る"],
       ["ホテルに連絡", "公式 LINE・電話番号"],
     ],
     wifi: { title: "Wi-Fi パスワード", network: "SSID", password: "パスワード" },
     hints: ["チェックインしたい", "近くの飲食店は？"],
-    equipmentHelp: "客室設備の使い方や不具合について、NUBO にご相談ください。",
-    controls: ["タップして話す", "通話を終了", "接続中"], close: "閉じる", continue: "通話に戻る",
+    controls: ["タップして話す", "通話を終了", "接続中"], close: "閉じる",
     contact: "ホテル公式 LINE", qr: "QR コードを読み取ってホテルの LINE に連絡",
   },
   ko: {
@@ -92,14 +90,32 @@ const COPY = {
       ["예약 / 체크인", "예약 조회, 숙박 및 대실 안내"],
       ["LINE QR 코드", "호텔 공식 LINE 친구 추가"],
       ["주변 맛집 및 명소", "호텔 근처 장소 검색"],
-      ["객실 설비", "냉방, 조명 등 사용 문의"],
+      ["객실 사진", "층별 객실 사진 보기"],
       ["호텔에 연락", "공식 LINE 및 전화번호"],
     ],
     wifi: { title: "Wi-Fi 비밀번호", network: "SSID", password: "비밀번호" },
     hints: ["체크인하고 싶어요", "근처에 맛집이 있나요?"],
-    equipmentHelp: "객실 설비 사용법이나 직원의 도움이 필요하면 NUBO에게 물어보세요.",
-    controls: ["눌러서 말하기", "통화 종료", "연결 중"], close: "닫기", continue: "통화로 돌아가기",
+    controls: ["눌러서 말하기", "통화 종료", "연결 중"], close: "닫기",
     contact: "호텔 공식 LINE", qr: "QR 코드를 스캔하여 LINE으로 호텔에 연락",
+  },
+  vi: {
+    location: "Taichung Jinxin", language: "Ngôn ngữ giao diện", response: "NUBO trả lời", services: "Dịch vụ nhanh",
+    brandRole: "LỄ TÂN AI", title: "Lễ tân AI của khách sạn AINUBO",
+    auto: "Theo ngôn ngữ đang nói", error: "NUBO chưa xử lý được yêu cầu. Vui lòng thử lại hoặc liên hệ khách sạn.",
+    greeting: "Xin chào, tôi là NUBO, trợ lý lễ tân của quý khách. Tôi có thể giúp gì cho quý khách?",
+    phases: ["NUBO sẵn sàng", "Đang kết nối…", "Đang lắng nghe…", "Đang xử lý yêu cầu…", "NUBO đang trả lời…", "Đã ngắt kết nối"],
+    ring: "Đang gọi…", sleeping: "Đã tạm dừng nghe. Hãy nói từ đánh thức để tiếp tục.",
+    cards: [
+      ["Đặt phòng / Nhận phòng", "Tra cứu đặt phòng, lưu trú và nghỉ theo giờ"],
+      ["Mã QR LINE", "Quét mã để thêm LINE của khách sạn"],
+      ["Ăn uống và tham quan", "Khám phá các địa điểm gần khách sạn"],
+      ["Ảnh phòng", "Xem ảnh phòng theo tầng"],
+      ["Liên hệ khách sạn", "LINE và số điện thoại của khách sạn"],
+    ],
+    wifi: { title: "Mật khẩu Wi-Fi", network: "Tên mạng", password: "Mật khẩu" },
+    hints: ["Tôi muốn nhận phòng", "Gần đây có món gì ngon?"],
+    controls: ["Nhấn để nói", "Kết thúc", "Đang kết nối"], close: "Đóng",
+    contact: "LINE của khách sạn", qr: "Quét mã QR để liên hệ khách sạn qua LINE",
   },
 } satisfies Record<NuboKioskLanguage, {
   location: string; language: string; response: string; services: string; greeting: string;
@@ -107,7 +123,7 @@ const COPY = {
   auto: string; error: string;
   phases: string[]; ring: string; sleeping: string; cards: Array<[string, string]>; hints: [string, string];
   wifi: { title: string; network: string; password: string };
-  equipmentHelp: string; controls: string[]; close: string; continue: string; contact: string; qr: string;
+  controls: string[]; close: string; contact: string; qr: string;
 }>;
 
 const PHASE_INDEX: Record<NuboVoicePhase, number> = {
@@ -122,7 +138,7 @@ const ICONS = {
   key: "M15.5 3a5.5 5.5 0 0 0-5 7.8L3 18.3V21h3v-2h2v-2h2.5l3.2-3.2A5.5 5.5 0 1 0 15.5 3zM16 7h.01",
   qr: "M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15v3h3v3m3-6v3m-6 3h.01M12 12h.01",
   map: "m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zm6-3v15m6-12v15",
-  sliders: "M6 3v4m0 4v10m6-18v10m0 4v4m6-18v6m0 4v8M3 7h6m0 10h6m0-8h6",
+  camera: "M4 7h4l2-3h4l2 3h4a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM15 13a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
   wifi: "M2 8a16 16 0 0 1 20 0M5 12a11 11 0 0 1 14 0m-11 4a6 6 0 0 1 8 0m-4 4h.01",
   headset: "M3 13v-2a9 9 0 0 1 18 0v5a5 5 0 0 1-5 5h-4M3 13h4v5H5a2 2 0 0 1-2-2zm18 0h-4v5h2a2 2 0 0 0 2-2z",
   globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2c5 5 5 15 0 20-5-5-5-15 0-20z",
@@ -158,7 +174,7 @@ export function NuboConciergeKiosk({
   const wasConnected = useRef(false);
   const [clock, setClock] = useState<Date | null>(null);
   const [voicePhase, setVoicePhase] = useState<NuboVoicePhase>("idle");
-  const [equipmentHelpOpen, setEquipmentHelpOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const [localContactAt, setLocalContactAt] = useState<number | null>(null);
   const copy = COPY[language];
   const phase = state === "connected" ? (
@@ -296,7 +312,8 @@ export function NuboConciergeKiosk({
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
                 aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
               <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
-              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={() => setEquipmentHelpOpen(true)}>{card(3, "sliders")}</button>
+              <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" aria-haspopup="dialog"
+                onClick={() => setPhotosOpen(true)}>{card(3, "camera")}</button>
               <div className="nubo-kiosk-tile nubo-kiosk-wifi">
                 <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
                 <span>
@@ -314,36 +331,10 @@ export function NuboConciergeKiosk({
         </div>
       </div>
 
-      {equipmentHelpOpen && (
-        <KioskHelp title={copy.cards[3][0]} message={copy.equipmentHelp} close={copy.close}
-          label={state === "connected" ? copy.continue : copy.controls[0]} busy={busy}
-          onClose={() => setEquipmentHelpOpen(false)}
-          onTalk={() => {
-            setEquipmentHelpOpen(false);
-            if (state !== "connected") onToggleCall();
-          }} />
+      {photosOpen && (
+        <NuboRoomPhotoGallery language={language} title={copy.cards[3][0]} close={copy.close}
+          onClose={() => setPhotosOpen(false)} />
       )}
     </section>
-  );
-}
-
-function KioskHelp({ title, message, close, label, busy, onClose, onTalk }: {
-  title: string; message: string; close: string; label: string; busy: boolean;
-  onClose: () => void; onTalk: () => void;
-}) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
-
-  return (
-    <dialog className="nubo-kiosk-help" ref={dialogRef} aria-labelledby="nubo-kiosk-help-title" onClose={onClose}>
-      <header><h2 id="nubo-kiosk-help-title">{title}</h2>
-        <form method="dialog"><button aria-label={close}>×</button></form>
-      </header>
-      <p>{message}</p>
-      <button className="nubo-kiosk-help-action" type="button" onClick={onTalk} disabled={busy}>{label}</button>
-    </dialog>
   );
 }

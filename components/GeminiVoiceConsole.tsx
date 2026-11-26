@@ -717,7 +717,10 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
-              reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code);
+              if (reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code)) {
+                kioskResponseBufferRef.current = "";
+                setKioskResponse("");
+              }
               const reply = readNuboShortReply(userText);
               followUpRef.current = reply ? { reply, question: lastQuestionRef.current } : null;
             }

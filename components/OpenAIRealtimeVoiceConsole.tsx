@@ -18,6 +18,7 @@ import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { NuboRealtimeEcoGate, type NuboEcoMode } from "@/lib/nubo-realtime-eco";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
+import { reportNuboKioskSpeech } from "@/lib/nubo-kiosk-language";
 import {
   getNuboPersonalityInstruction,
   type NuboVoiceProfile,
@@ -293,8 +294,9 @@ export function OpenAIRealtimeVoiceConsole({
     ) {
       noteEcoActivity();
       const text = event.transcript.trim();
+      reportNuboKioskSpeech(text);
       recordNuboQuestion(text);
-      setTranscript(`你：${text}`);
+      setTranscript(text);
       void sendTranscriptToNameAlert(text);
       void runLocalVoiceCommand(text).catch(() => {
         // Realtime conversation continues even if a local shortcut fails.

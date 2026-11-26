@@ -7,13 +7,14 @@ export const NUBO_KIOSK_LANGUAGES = [
   ["en", "English", "EN"],
   ["ja", "日本語", "JA"],
   ["ko", "한국어", "KO"],
+  ["vi", "Tiếng Việt", "VI"],
 ] as const;
 
 export type NuboKioskLanguage = (typeof NUBO_KIOSK_LANGUAGES)[number][0];
 type LanguagePreference = NuboKioskLanguage | "auto";
 
 export const NUBO_KIOSK_LOCALES: Record<NuboKioskLanguage, string> = {
-  zh: "zh-Hant-TW", en: "en", ja: "ja", ko: "ko",
+  zh: "zh-Hant-TW", en: "en", ja: "ja", ko: "ko", vi: "vi-VN",
 };
 
 const NEUTRAL_WORDS = new Set(["nubo", "ainubo", "hotel", "hotels", "line", "qr", "code", "wi", "fi", "wifi", "ai", "ok", "okay", "yes", "no", "um", "uh"]);
@@ -34,6 +35,9 @@ function detectSpokenLanguage(text: string, languageCode: unknown, previous: Nub
   // Kana and Hangul also disambiguate transcripts with missing or incorrect language metadata.
   if (hangul >= 2 && hangul > kana) return "ko";
   if (kana >= 2 || (kana > 0 && han > 0)) return "ja";
+  const plain = normalized.normalize("NFD").replace(/\p{M}/gu, "").replaceAll("đ", "d");
+  if (supported === "vi" || /[ăđơư\u1ea0-\u1ef9]/u.test(normalized) ||
+    /\b(?:xin chao|cam on|toi muon|cho toi|dat phong|khach san|phong nghi|bao nhieu|o dau)\b/u.test(plain)) return "vi";
   if (primary && !supported && primary !== "und") return null;
   if (han >= 2) {
     if (supported && supported !== "en") return supported;
@@ -70,9 +74,11 @@ function updatePreference(preference: LanguagePreference) {
 
 export function reportNuboKioskSpeech(text: string, languageCode?: unknown) {
   const next = detectSpokenLanguage(text, languageCode, spokenLanguage);
-  if (!next || next === spokenLanguage) return;
+  if (!next || next === spokenLanguage) return false;
+  const current = snapshot.language;
   spokenLanguage = next;
   updatePreference(snapshot.preference);
+  return snapshot.language !== current;
 }
 
 export function selectNuboKioskLanguage(preference: LanguagePreference) {

@@ -8,23 +8,24 @@ const MUSIC_COPY = {
   en: { switchTrack: "New tracks play automatically", pause: "Pause", resume: "Resume", auto: "Autoplaying", stop: "Stop" },
   ja: { switchTrack: "新しい曲は自動で再生されます", pause: "一時停止", resume: "再開", auto: "自動再生中", stop: "停止" },
   ko: { switchTrack: "새 곡이 자동으로 재생됩니다", pause: "일시 정지", resume: "재개", auto: "자동 재생 중", stop: "정지" },
+  vi: { switchTrack: "Bài mới sẽ tự động phát", pause: "Tạm dừng", resume: "Tiếp tục", auto: "Đang tự động phát", stop: "Dừng" },
 };
 
-const STATUS_TRANSLATIONS: Record<string, { en: string; ja: string; ko: string }> = {
-  "正在準備播放器…": { en: "Preparing player…", ja: "プレーヤーを準備中…", ko: "플레이어 준비 중…" },
-  "背景播放中": { en: "Playing in background", ja: "バックグラウンド再生中", ko: "백그라운드 재생 중" },
-  "播放中": { en: "Playing", ja: "再生中", ko: "재생 중" },
-  "正在自動啟動有聲播放…": { en: "Starting audio…", ja: "音声を再生しています…", ko: "오디오 시작 중…" },
-  "正在自動恢復播放器…": { en: "Restoring player…", ja: "プレーヤーを復旧中…", ko: "플레이어 복구 중…" },
-  "正在自動恢復播放…": { en: "Resuming playback…", ja: "再生を再開しています…", ko: "재생 재개 중…" },
-  "已暫停": { en: "Paused", ja: "一時停止中", ko: "일시 정지됨" },
-  "已停止": { en: "Stopped", ja: "停止しました", ko: "정지됨" },
-  "載入中…": { en: "Loading…", ja: "読み込み中…", ko: "로딩 중…" },
-  "播放完畢": { en: "Playback ended", ja: "再生が終了しました", ko: "재생 완료" },
-  "正在自動解除播放限制…": { en: "Starting playback…", ja: "再生を開始しています…", ko: "재생 시작 중…" },
-  "這支影片無法內嵌播放，請重新指定歌曲。": { en: "This video can’t play here. Choose another track.", ja: "この動画は再生できません。別の曲を選んでください。", ko: "이 영상은 여기서 재생할 수 없습니다. 다른 곡을 선택해 주세요." },
-  "YouTube 連線失敗，正在等待重新連線…": { en: "Waiting to reconnect to YouTube…", ja: "YouTube への再接続を待っています…", ko: "YouTube 재연결 대기 중…" },
-  "正在重新連線 YouTube 播放器…": { en: "Reconnecting to YouTube…", ja: "YouTube に再接続中…", ko: "YouTube 재연결 중…" },
+const STATUS_TRANSLATIONS: Record<string, { en: string; ja: string; ko: string; vi: string }> = {
+  "正在準備播放器…": { en: "Preparing player…", ja: "プレーヤーを準備中…", ko: "플레이어 준비 중…", vi: "Đang chuẩn bị trình phát…" },
+  "背景播放中": { en: "Playing in background", ja: "バックグラウンド再生中", ko: "백그라운드 재생 중", vi: "Đang phát trong nền" },
+  "播放中": { en: "Playing", ja: "再生中", ko: "재생 중", vi: "Đang phát" },
+  "正在自動啟動有聲播放…": { en: "Starting audio…", ja: "音声を再生しています…", ko: "오디오 시작 중…", vi: "Đang bật âm thanh…" },
+  "正在自動恢復播放器…": { en: "Restoring player…", ja: "プレーヤーを復旧中…", ko: "플레이어 복구 중…", vi: "Đang khôi phục trình phát…" },
+  "正在自動恢復播放…": { en: "Resuming playback…", ja: "再生を再開しています…", ko: "재생 재개 중…", vi: "Đang phát tiếp…" },
+  "已暫停": { en: "Paused", ja: "一時停止中", ko: "일시 정지됨", vi: "Đã tạm dừng" },
+  "已停止": { en: "Stopped", ja: "停止しました", ko: "정지됨", vi: "Đã dừng" },
+  "載入中…": { en: "Loading…", ja: "読み込み中…", ko: "로딩 중…", vi: "Đang tải…" },
+  "播放完畢": { en: "Playback ended", ja: "再生が終了しました", ko: "재생 완료", vi: "Đã phát xong" },
+  "正在自動解除播放限制…": { en: "Starting playback…", ja: "再生を開始しています…", ko: "재생 시작 중…", vi: "Đang bắt đầu phát…" },
+  "這支影片無法內嵌播放，請重新指定歌曲。": { en: "This video can’t play here. Choose another track.", ja: "この動画は再生できません。別の曲を選んでください。", ko: "이 영상은 여기서 재생할 수 없습니다. 다른 곡을 선택해 주세요.", vi: "Không phát được video này. Vui lòng chọn bài khác." },
+  "YouTube 連線失敗，正在等待重新連線…": { en: "Waiting to reconnect to YouTube…", ja: "YouTube への再接続を待っています…", ko: "YouTube 재연결 대기 중…", vi: "Đang chờ kết nối lại với YouTube…" },
+  "正在重新連線 YouTube 播放器…": { en: "Reconnecting to YouTube…", ja: "YouTube に再接続中…", ko: "YouTube 재연결 중…", vi: "Đang kết nối lại với YouTube…" },
 };
 
 type InlineSong = {
