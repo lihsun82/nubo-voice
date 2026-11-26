@@ -26,7 +26,7 @@ export const NUBO_DEFAULT_VOICE_TUNING: NuboVoiceTuning = {
   emotion: 72,
   fillers: 94,
   relaxed: 42,
-  perceivedPitch: 10,
+  perceivedPitch: 0,
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -47,7 +47,7 @@ export function normalizeNuboVoiceTuning(
     emotion: clamp(Number(value?.emotion ?? 72), 0, 100),
     fillers: clamp(Number(value?.fillers ?? 94), 0, 100),
     relaxed: clamp(Number(value?.relaxed ?? 42), 0, 100),
-    perceivedPitch: clamp(Number(value?.perceivedPitch ?? 10), -30, 30),
+    perceivedPitch: clamp(Number(value?.perceivedPitch ?? 0), -30, 30),
   };
 }
 
@@ -84,7 +84,7 @@ export function buildNuboVoicePerformanceInstruction(tuning: NuboVoiceTuning) {
     tuning.emotion,
     "情緒表達克制，保持自然親切。",
     "依內容帶出溫柔、關心、驚喜或認真等自然情緒，不要整段同一表情。",
-    "情感反應鮮明、有共感，可以更甜、更黏、更會撒嬌，但不得改變資訊本身。",
+    "語氣有親和力，依交流內容自然起伏，咬字保持清楚。",
   );
   const fillers = intensity(
     tuning.fillers,
@@ -94,13 +94,13 @@ export function buildNuboVoicePerformanceInstruction(tuning: NuboVoiceTuning) {
   );
   const relaxed = intensity(
     tuning.relaxed,
-    "保持清爽俐落，語助詞可依情境拉長。",
-    "帶放鬆慵懶感，語尾可以柔軟延伸，撒嬌感可更明顯。",
-    "呈現明顯的慵懶、柔軟、黏人與撒嬌感；可以拉長語尾並帶一點油膩感，但關鍵資訊需完整說出。",
+    "保持清楚俐落，照完整詞語發音。",
+    "語氣放鬆，詞句銜接自然，關鍵詞清楚說完。",
+    "語氣從容柔和，句尾平順收束，讓旅客聽清每句重點。",
   );
   const pitch = pitchInstruction(tuning.perceivedPitch);
 
-  return `LEO LLM V15.6.22 動態真人語氣核心：\n- 請用年輕、自然、溫柔的女性語氣說話，整體親切、聰明、柔軟、有陪伴感，不要老成，不要像客服，不要像播報員，也不要像在背稿。\n- 保留自然音調與節奏，回答以短句為主，先講重點，再補充一句必要說明。\n- ${pitch}\n- ${cadence}\n- ${emotion}\n- ${fillers}\n- ${relaxed}\n- 音量與能量要像真人自然變化，不要整段固定音量：肯定、驚喜、提醒、抓到重點時可以稍微大聲、有精神；一般說明維持正常音量。\n- 以答案開頭，依正在使用的語言自然發音。思考時省去自言自語，回答前後省去客套收尾和額外服務邀請。查詢進度只有在需要時簡短交代一次。\n- 涉及日期、價格、地址、付款、安全、醫療、法律或操作指令時，關鍵資訊仍要完整、可辨識地說完。\n- 目前參數：語速 ${tuning.speed.toFixed(2)}、頓挫感 ${Math.round(tuning.cadence)}%、情感 ${Math.round(tuning.emotion)}%、語助詞 ${Math.round(tuning.fillers)}%、慵懶感 ${Math.round(tuning.relaxed)}%。\n- 感知音高數值為 ${tuning.perceivedPitch}，只調整聽感與表達，不使用數位變調，不改變播放速度。\n- 以上參數只調整表達方式，不得改變事實、身份、安全規則或工具使用準確度。`;
+  return `LEO LLM V15.6.22 動態真人語氣核心：\n- 請用年輕、自然、溫柔的女性語氣說話，親切清楚、像平常交談，不要老成，不要像客服，不要像播報員，也不要像在背稿。\n- 保留自然音調與節奏，回答以短句為主，先講重點，再補充一句必要說明。\n- ${pitch}\n- ${cadence}\n- ${emotion}\n- ${fillers}\n- ${relaxed}\n- 音量與能量要像真人自然變化，不要整段固定音量：肯定、驚喜、提醒、抓到重點時可以稍微大聲、有精神；一般說明維持正常音量。\n- 以答案開頭，依正在使用的語言自然發音。思考時省去自言自語，回答前後省去客套收尾和額外服務邀請。查詢進度只有在需要時簡短交代一次。\n- 涉及日期、價格、地址、付款、安全、醫療、法律或操作指令時，關鍵資訊仍要完整、可辨識地說完。\n- 目前參數：語速 ${tuning.speed.toFixed(2)}、頓挫感 ${Math.round(tuning.cadence)}%、情感 ${Math.round(tuning.emotion)}%、語助詞 ${Math.round(tuning.fillers)}%、慵懶感 ${Math.round(tuning.relaxed)}%。\n- 感知音高數值為 ${tuning.perceivedPitch}，只調整聽感與表達，不使用數位變調，不改變播放速度。\n- 以上參數只調整表達方式，不得改變事實、身份、安全規則或工具使用準確度。`;
 }
 
 export function readNuboVoiceTuning(): NuboVoiceTuning {
