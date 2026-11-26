@@ -398,6 +398,10 @@ export class PcmPlaybackQueue {
     return this.context;
   }
 
+  async prepare() {
+    await this.ensureContext();
+  }
+
   async resume() {
     if (this.retired || !this.context) return false;
     await preferMultimediaAudioContext(this.context);
