@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
 import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
@@ -22,6 +23,8 @@ import { correctNuboGuestFollowUp, latestNuboQuestion, readNuboShortReply, type 
 import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
+
+const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
 
 async function requestJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
@@ -122,7 +125,7 @@ export function GeminiVoiceConsole() {
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
-  const callTonePendingRef = useRef(false);
+  const callToneRef = useRef<Promise<void> | null>(null);
   const greetOnConnectRef = useRef(false);
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -253,6 +256,7 @@ export function GeminiVoiceConsole() {
   }, []);
 
   useEffect(() => {
+    preconnect(`https://${GEMINI_LIVE_HOST}`, { crossOrigin: "anonymous" });
     void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
       // Token prewarm is optional. NUBO can still request a token when connecting.
     });
@@ -584,7 +588,8 @@ export function GeminiVoiceConsole() {
     followUpRef.current = null;
     kioskResponseBufferRef.current = "";
     setKioskResponse("");
-    callTonePendingRef.current = false;
+    callToneRef.current = null;
+    greetOnConnectRef.current = false;
     setIsRinging(false);
     window.localStorage.removeItem(
       NUBO_AUTO_RESUME_STORAGE_KEY,
@@ -640,8 +645,9 @@ export function GeminiVoiceConsole() {
         requestJson("/api/gemini-token", { cache: "no-store" }),
         loadNuboSessionClockInstruction(),
       ]);
+      if (closingRef.current) return;
       const endpoint =
-        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained";
+        `wss://${GEMINI_LIVE_HOST}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained`;
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
       socket.binaryType = "arraybuffer";
       socketRef.current = socket;
@@ -687,12 +693,19 @@ export function GeminiVoiceConsole() {
           }
 
           if (message.setupComplete) {
+            // Dialing and the handshake overlap. Keep the ringtone out of the microphone.
+            if (callToneRef.current) await callToneRef.current;
+            if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
+            if (greetOnConnectRef.current && document.visibilityState !== "visible") {
+              socket.close(1000, "NUBO dial interrupted");
+              return;
+            }
             reconnectAttemptsRef.current = 0;
             noteVoiceInteraction();
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
             await microphone.start((data) => {
-              if (socket.readyState !== WebSocket.OPEN) return;
+              if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
               socket.send(
                 JSON.stringify({
                   realtimeInput: {
@@ -702,6 +715,10 @@ export function GeminiVoiceConsole() {
               );
               recordSocketBuffer(socket.bufferedAmount);
             });
+            if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) {
+              await microphone.stop();
+              return;
+            }
             setState("connected");
             if (greetOnConnectRef.current && socket.readyState === WebSocket.OPEN) {
               greetOnConnectRef.current = false;
@@ -717,7 +734,7 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
-              if (reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code)) {
+              if (reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code ?? input?.language)) {
                 kioskResponseBufferRef.current = "";
                 setKioskResponse("");
               }
@@ -1172,7 +1189,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           silentUntilWakeRef.current ||
           ecoSleepingRef.current ||
           resumeInProgress ||
-          callTonePendingRef.current
+          callToneRef.current
         ) {
           return;
         }
@@ -1321,27 +1338,17 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   }, []);
 
   const startWithCallTones = async () => {
-    if (callTonePendingRef.current) return;
-    callTonePendingRef.current = true;
+    const socket = socketRef.current;
+    if (callToneRef.current || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     greetOnConnectRef.current = true;
     clearReconnectTimer();
-    setState("connecting");
     setIsRinging(true);
-    setError("");
-
+    const tone = playNuboCallTones().then(() => setIsRinging(false));
+    callToneRef.current = tone;
     try {
-      await playNuboCallTones();
-      setIsRinging(false);
-      if (!callTonePendingRef.current || document.visibilityState !== "visible") {
-        setState("idle");
-        return;
-      }
-      const socket = socketRef.current;
-      if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
-      await connect(false);
+      await Promise.all([tone, connect(false)]);
     } finally {
-      setIsRinging(false);
-      callTonePendingRef.current = false;
+      if (callToneRef.current === tone) callToneRef.current = null;
     }
   };
 

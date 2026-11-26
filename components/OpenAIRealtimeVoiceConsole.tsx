@@ -30,6 +30,7 @@ export const NUBO_OPENAI_VOICE_ACCESS_STORAGE_KEY = "nubo_openai_voice_access_v1
 type RealtimeEvent = {
   type?: string;
   transcript?: string;
+  language?: string;
   delta?: string;
   name?: string;
   arguments?: string;
@@ -294,7 +295,7 @@ export function OpenAIRealtimeVoiceConsole({
     ) {
       noteEcoActivity();
       const text = event.transcript.trim();
-      reportNuboKioskSpeech(text);
+      reportNuboKioskSpeech(text, event.language);
       recordNuboQuestion(text);
       setTranscript(text);
       void sendTranscriptToNameAlert(text);
@@ -535,8 +536,6 @@ export function OpenAIRealtimeVoiceConsole({
           input: {
             transcription: {
               model: "gpt-4o-mini-transcribe",
-              language: "zh",
-              prompt: "繁體中文、台灣用語、NUBO、旅館營運、Gmail、YouTube",
             },
             noise_reduction: { type: "near_field" },
             turn_detection: {

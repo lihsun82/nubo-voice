@@ -89,7 +89,7 @@ export function NuboVoiceProfileRuntime() {
       data: string | ArrayBufferLike | Blob | ArrayBufferView,
     ) {
       const outgoing =
-        typeof data === "string" &&
+        typeof data === "string" && data.startsWith('{"setup":') &&
         this.url.includes("generativelanguage.googleapis.com")
           ? configureGeminiSetupPayload(data)
           : data;

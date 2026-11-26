@@ -66,19 +66,7 @@ if (!prime.includes(marker)) {
   fs.writeFileSync(primePath, prime);
 }
 
-// 3) The lookup filler patch injects browser speechSynthesis during build. On
-// mobile web use text-only acknowledgement; Gemini remains the only speaking path.
-const voicePath = 'components/GeminiVoiceConsole.tsx';
-let voice = fs.readFileSync(voicePath, 'utf8');
-if (!voice.includes(marker)) {
-  const anchor = `    // Browser fallback is retained for desktop/web, but Android should not\n    // depend on speechSynthesis because WebView may expose it without audio.`;
-  const replacement = `    // ${marker}: no browser TTS on phones/touch devices. Keeping Gemini as\n    // the only audio producer prevents capture/playback/TTS audio-focus churn.\n    if (\n      /Android|iPhone|iPad|iPod|Mobile/i.test(window.navigator.userAgent) ||\n      window.navigator.maxTouchPoints > 0 ||\n      window.matchMedia?.(\"(pointer: coarse)\")?.matches === true\n    ) {\n      return;\n    }\n\n${anchor}`;
-  if (!voice.includes(anchor)) throw new Error('pure pcm: lookup filler anchor missing');
-  voice = voice.replace(anchor, replacement);
-  fs.writeFileSync(voicePath, voice);
-}
-
-for (const path of [audioPath, primePath, voicePath]) {
+for (const path of [audioPath, primePath]) {
   if (!fs.readFileSync(path, 'utf8').includes(marker)) {
     throw new Error(`pure pcm verification failed: ${path}`);
   }

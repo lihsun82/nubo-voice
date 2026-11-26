@@ -108,6 +108,7 @@ function buildRealtimeSession(rawSession: string) {
     model: getRealtimeModel(),
     output_modalities: ["audio"],
     audio: {
+      input: { transcription: { model: "gpt-4o-mini-transcribe" } },
       output: {
         voice: getLeoRealtimeVoice(source),
         speed: parseRequestedSpeed(source),
@@ -191,6 +192,7 @@ export async function GET(request: NextRequest) {
         model: getRealtimeModel(),
         output_modalities: ["audio"],
         audio: {
+          input: { transcription: { model: "gpt-4o-mini-transcribe" } },
           output: {
             voice: getLeoRealtimeVoice(source),
             speed: parseRequestedSpeed(source),

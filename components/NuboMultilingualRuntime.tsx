@@ -125,7 +125,7 @@ export function NuboMultilingualRuntime() {
     window.fetch = patchedFetch;
 
     WebSocket.prototype.send = function patchedSend(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
-      if (typeof data === "string") {
+      if (typeof data === "string" && data.startsWith('{"setup":')) {
         return Reflect.apply(previousWebSocketSend, this, [patchGeminiSetup(data)]);
       }
       return Reflect.apply(previousWebSocketSend, this, [data]);
