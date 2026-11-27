@@ -28,23 +28,30 @@ export const NUBO_KIOSK_GREETING_PROMPTS: Record<NuboKioskLanguage, string> = {
 
 const NEUTRAL_WORDS = new Set(["nubo", "ainubo", "hotel", "hotels", "line", "qr", "code", "wi", "fi", "wifi", "ai", "ok", "okay", "yes", "no", "um", "uh"]);
 const ENGLISH_WORDS = new Set(["the", "this", "my", "you", "your", "we", "our", "with", "need", "would", "please", "where", "what", "how", "have", "want", "there", "are", "can", "could"]);
+const ENGLISH_HOTEL_WORDS = /\b(?:breakfast|parking|room|tonight|tomorrow|check[ -]?(?:in|out)|booking|reservation|luggage|available)\b/iu;
+const ENGLISH_REPLY_WORDS = /\b(?:am|is|are|was|were|do|does|did|will|let|would|could|can|have|has|the|this|your|we|please|yes|no|here|thank|hello|welcome|sure|certainly|sorry|unfortunately|good|of|at|to)\b/iu;
 const TRANSCRIPT_LANGUAGE_CODES = new Map<string, NuboKioskLanguage>([
   ["chi", "zh"], ["cmn", "zh"], ["nan", "zh"], ["yue", "zh"], ["zho", "zh"],
   ["eng", "en"], ["jpn", "ja"], ["kor", "ko"], ["vie", "vi"],
 ]);
-const REQUESTED_LANGUAGE_NAMES = new Map<string, NuboKioskLanguage>([
+const REQUESTED_LANGUAGE_NAMES = new Map<string, NuboKioskLanguage | "nan">([
   ["中文", "zh"], ["國語", "zh"], ["国语", "zh"], ["chinese", "zh"], ["mandarin", "zh"],
   ["英文", "en"], ["英語", "en"], ["英语", "en"], ["english", "en"],
   ["日文", "ja"], ["日語", "ja"], ["日语", "ja"], ["日本語", "ja"], ["japanese", "ja"],
   ["韓文", "ko"], ["韩文", "ko"], ["韓語", "ko"], ["韩语", "ko"], ["korean", "ko"],
   ["越南文", "vi"], ["越南語", "vi"], ["越南语", "vi"], ["vietnamese", "vi"],
+  ["台語", "nan"], ["臺語", "nan"], ["台灣台語", "nan"], ["臺灣台語", "nan"],
+  ["taiwanese", "nan"], ["taiwanese hokkien", "nan"], ["hokkien", "nan"],
 ]);
 
 function requestedLanguage(text: string) {
-  const chinese = text.replace(/[\s\p{P}]+/gu, "").match(
-    /^(?:請|请|麻煩|麻烦)?(?:你|您)?(?:切[換换](?:到|成|為|为)?|[換换]成|改[用講讲說说]|[用講讲說说])(\p{L}+?)(?:和我[說说][話话]|回答我?|回[覆复]我?)?(?:可以[嗎吗]|好[嗎吗]|謝謝|谢谢)?$/u,
+  const firstClause = text.split(/[。！？?!;；\n]/u, 1)[0].trim();
+  const chineseClause = firstClause.replace(/^(?:你好|您好)[、，,\s]+/u, "").split(/[，,]/u, 1)[0];
+  const chinese = chineseClause.replace(/[\s\p{P}]+/gu, "").match(
+    /^(?:請|请|麻煩|麻烦)?(?:你|您|我)?(?:可(?:不可以|以))?(?:切[換换](?:到|成|為|为)?|[換换]成|改[用講讲說说]|[用講讲說说])(\p{L}+?)(?:和我[說说][話话]|回答我?|回[覆复]我?)?(?:可以[嗎吗]|好[嗎吗]|[嗎吗]|謝謝|谢谢)?$/u,
   );
-  const english = text.match(/^(?:please\s+|could you\s+|can you\s+)?(?:switch to|speak|answer in|reply in)\s+(\w+)(?:\s+please)?[\s.!?]*$/u);
+  const english = firstClause.match(/^(?:(?:please|could you|can you|would you)\s+)*(?:switch to|use|speak|answer in|reply in|continue in)\s+([a-z]+(?: hokkien)?)(?:\s*,?\s*please)?(?:[.,]|$)/iu)
+    ?? firstClause.match(/^([a-z]+(?: hokkien)?)(?:\s*,?\s*please)?[. ]*$/iu);
   return REQUESTED_LANGUAGE_NAMES.get(chinese?.[1] ?? english?.[1] ?? "");
 }
 
@@ -53,7 +60,7 @@ function detectSpokenLanguage(text: string, languageCode: unknown, readLanguageR
   const words = normalized.match(/\p{L}+/gu) ?? [];
   if (!words.length || words.every((word) => NEUTRAL_WORDS.has(word))) return null;
   const requested = readLanguageRequest ? requestedLanguage(normalized) : null;
-  if (requested) return requested;
+  if (requested) return requested === "nan" ? "zh" : requested;
 
   const primary = typeof languageCode === "string" ? languageCode.trim().toLowerCase().split(/[-_]/)[0] : "";
   const supported = TRANSCRIPT_LANGUAGE_CODES.get(primary) ?? NUBO_KIOSK_LANGUAGES.find(([id]) => id === primary)?.[0];
@@ -79,6 +86,7 @@ function detectSpokenLanguage(text: string, languageCode: unknown, readLanguageR
 
   const englishWords = new Set(words.filter((word) => ENGLISH_WORDS.has(word)));
   if (englishWords.size >= 2 || (supported === "en" && words.length >= 2) ||
+      (ENGLISH_HOTEL_WORDS.test(plain) && (englishWords.size > 0 || words.length === 1)) ||
       (words.length >= 2 && /^(?:where|when|what|how|please)\b/u.test(normalized)) ||
       /^(?:hi|hello|thanks|thank you|good (?:morning|afternoon|evening)|check (?:in|out))[\s.!?]*$/u.test(normalized)) return "en";
   return null;
@@ -94,7 +102,23 @@ let guestSpeechLanguage: string | null = null;
 export function detectNuboGuestSpeechLanguage(text: string, languageCode?: unknown) {
   const reported = normalizeNuboGuestLanguage(languageCode);
   if ((!reported || reported === "zh") && /我欲|歇睏|歇暝|一暝|佇遮|偌濟|佗位|欲睏/u.test(text)) return "nan";
-  return reported ?? detectSpokenLanguage(text, undefined, false);
+  const detected = detectSpokenLanguage(text, undefined, false);
+  if (detected === "en" && !/[^\p{Script=Latin}\P{L}]/u.test(text)) return "en";
+  return reported ?? detected;
+}
+
+export function detectNuboGuestReplyLanguage(text: string, languageCode?: unknown) {
+  return requestedLanguage(text.normalize("NFKC").trim().toLowerCase()) ?? detectNuboGuestSpeechLanguage(text, languageCode);
+}
+
+export function checkNuboEnglishReply(text: string, complete: boolean) {
+  const normalized = text.normalize("NFKC").trim();
+  if (/[^\p{Script=Latin}\P{L}]/u.test(normalized)) return "mismatch";
+  if (detectSpokenLanguage(normalized, undefined, false) === "vi") return "mismatch";
+  const words = normalized.match(/[a-z]+/giu) ?? [];
+  const hasEnglishWords = ENGLISH_REPLY_WORDS.test(normalized) || ENGLISH_HOTEL_WORDS.test(normalized);
+  if (hasEnglishWords && (words.length >= 2 || (words.length === 1 && (complete || /[.!?]$/u.test(normalized))))) return "match";
+  return "waiting";
 }
 
 export function getNuboGuestSpeechLanguage() {

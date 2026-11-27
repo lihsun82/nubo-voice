@@ -13,6 +13,7 @@ import {
   buildNuboVoicePerformanceInstruction,
   readNuboVoiceTuning,
 } from "@/lib/nubo-voice-tuning";
+import { hasNuboKioskLanguageInstruction } from "@/lib/nubo-native-language";
 
 const PROFILE_MARKER = "NUBO_VOICE_PROFILE_V15";
 const TUNING_MARKER = "NUBO_SHARED_VOICE_TUNING_V15_6_15";
@@ -60,9 +61,14 @@ function configureGeminiSetupPayload(value: string) {
   const personality = getNuboPersonalityInstruction(profile.personality);
   const tuning = readNuboVoiceTuning();
   const performance = buildNuboVoicePerformanceInstruction(tuning);
-  const language = buildNuboLanguageInstruction(readNuboLanguageMode());
-  const sharedInstruction = `${PROFILE_MARKER}\n${personality}\n\n${TUNING_MARKER}\n${performance}\n\n${LANGUAGE_MARKER}\n${language}`;
   const parts = setup.systemInstruction?.parts;
+  const includesKioskLanguage = Array.isArray(parts) && parts.some(({ text }) => hasNuboKioskLanguageInstruction(text ?? ""));
+  const language = includesKioskLanguage ? "" : buildNuboLanguageInstruction(readNuboLanguageMode());
+  const sharedInstruction = [
+    `${PROFILE_MARKER}\n${personality}`,
+    `${TUNING_MARKER}\n${performance}`,
+    `${LANGUAGE_MARKER}\n${language}`.trim(),
+  ].join("\n\n");
 
   if (Array.isArray(parts) && parts.length > 0) {
     const current = String(parts[0]?.text ?? "");

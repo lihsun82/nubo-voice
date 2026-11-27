@@ -19,9 +19,11 @@ import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { formatNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import {
-  NUBO_KIOSK_GREETING_PROMPTS, clearNuboGuestSpeechLanguage, detectNuboGuestSpeechLanguage,
+  NUBO_KIOSK_GREETING_PROMPTS, checkNuboEnglishReply, clearNuboGuestSpeechLanguage,
+  detectNuboGuestReplyLanguage, detectNuboGuestSpeechLanguage,
   getNuboGuestSpeechLanguage, reportNuboKioskSpeech, type NuboKioskLanguage,
 } from "@/lib/nubo-kiosk-language";
+import { NUBO_KIOSK_LANGUAGE_INSTRUCTION } from "@/lib/nubo-native-language";
 import { classifyNuboArrivalIntent } from "@/lib/nubo-arrival-intent";
 import {
   correctNuboGuestFollowUp,
@@ -37,6 +39,7 @@ type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
 const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
+const ENGLISH_REPLY_REPAIR = "Answer the same guest turn again entirely in natural spoken English. Keep the answer and any verified tool results. Do not call any tools, repeat prior actions, or mention this language correction. Speak only the corrected answer.";
 const TAIWANESE_REST_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇睏|歇|睏)[一二兩三四五六七八九十\d]+(?:个|個)?(?:點鐘|鐘頭|小時)/u;
 const TAIWANESE_OVERNIGHT_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇暝|歇一暝|住一暝|睏一暝)/u;
 const TAIWANESE_BOOKING_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲)(?:佇遮|這馬|現場)?(?:訂房|訂(?:一間|間)?房(?:間)?)(?:敢會使|會使無|好無)?$/u;
@@ -728,7 +731,13 @@ export function GeminiVoiceConsole() {
       let guestTurn = 0;
       let hasModelAudio = false;
       let lookupCuePlayed = false;
-      let heardTaiwanese = false;
+      let replyLanguage: string | null = greetingLanguageRef.current;
+      let spokenTurnLanguage: string | null = null;
+      let awaitingGuestTranscript = false;
+      let englishRepairRequested = false;
+      let rawReplyText = "";
+      let rejectedEnglishReply = false;
+      const unplayedAudio: string[] = [];
       let roomPhotosRequested = false;
       let confirmedRoomsAvailable = false;
       let configuredBookingLink: string | null = null;
@@ -746,9 +755,14 @@ export function GeminiVoiceConsole() {
       })[]) {
         if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
         socket.send(JSON.stringify({ toolResponse: {
-          functionResponses: functionResponses.map((entry) => asyncArrivalNotice && entry.name === "notify_arrival_intent"
-            ? { ...entry, response: { ...entry.response, scheduling: "SILENT" } }
-            : entry),
+          functionResponses: functionResponses.map((entry) => ({
+            ...entry,
+            response: {
+              ...entry.response,
+              ...(replyLanguage === "en" ? { spokenReplyLanguage: "English" } : {}),
+              ...(asyncArrivalNotice && entry.name === "notify_arrival_intent" ? { scheduling: "SILENT" } : {}),
+            },
+          })),
         } }));
       }
 
@@ -771,10 +785,7 @@ export function GeminiVoiceConsole() {
 
       async function executeVoiceTool(call: FunctionCall) {
         if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos();
-        const requested = call.args?.replyLanguage;
-        const language = requested === "nan" || requested === "zh"
-          ? requested
-          : requested !== "other" && heardTaiwanese ? "nan" : null;
+        const language = spokenTurnLanguage === "nan" || spokenTurnLanguage === "zh" ? spokenTurnLanguage : null;
         const cue = language && lookupCueAudioRef.current[language];
         if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name) || !cue || !language || hasModelAudio || lookupCuePlayed) {
           return executeNuboBrowserTool(call);
@@ -782,7 +793,7 @@ export function GeminiVoiceConsole() {
         const turn = guestTurn;
         const timer = window.setTimeout(() => {
           if (socketRef.current !== socket || closingRef.current || silentUntilWakeRef.current ||
-              turn !== guestTurn || hasModelAudio || lookupCuePlayed) return;
+              turn !== guestTurn || spokenTurnLanguage !== language || hasModelAudio || lookupCuePlayed) return;
           lookupCuePlayed = true;
           markSpeaking();
           setKioskResponse(LOOKUP_CUES[language]);
@@ -804,7 +815,7 @@ export function GeminiVoiceConsole() {
           ? `【查房與查訂單的進度】請直接呼叫 PMS，replyLanguage 填當下的語音語言。櫃檯會用 ${cueLanguages.join("、")} 語言自動播放簡短的等待提示；這些語言只需在收到 PMS 結果後報重點。不需重複等待的話。`
           : "";
         const photoInstruction = "旅客想看本館房間照片時呼叫 show_room_photos。回傳 shown=true 後，用旅客的語言簡短說已開啟客房相簿、可以點選樓層和照片。";
-        const sessionInstruction = [geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction]
+        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction]
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
@@ -849,7 +860,12 @@ export function GeminiVoiceConsole() {
             quietReply = false;
             hasModelAudio = false;
             lookupCuePlayed = false;
-            heardTaiwanese = false;
+            spokenTurnLanguage = null;
+            awaitingGuestTranscript = true;
+            englishRepairRequested = false;
+            rawReplyText = "";
+            rejectedEnglishReply = false;
+            unplayedAudio.length = 0;
             roomPhotosRequested = false;
           }
 
@@ -910,8 +926,9 @@ export function GeminiVoiceConsole() {
             if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
               const language = input?.languageCode ?? input?.language_code ?? input?.language;
-              heardTaiwanese ||= (typeof language === "string" && /^nan(?:[-_]|$)/iu.test(language)) ||
-                /歇睏|歇暝|一暝|佇遮|偌濟|佗位|欲睏|(?:欲|愛)歇|台語|臺語/u.test(userText);
+              spokenTurnLanguage = detectNuboGuestReplyLanguage(userText, language) ?? spokenTurnLanguage;
+              replyLanguage = spokenTurnLanguage ?? replyLanguage;
+              awaitingGuestTranscript = false;
               if (reportNuboKioskSpeech(userText, language)) {
                 kioskResponseBufferRef.current = "";
                 setKioskResponse("");
@@ -943,10 +960,35 @@ export function GeminiVoiceConsole() {
               openSpokenBooking();
             }
           }
+          const completed = !!(serverContent?.turnComplete || serverContent?.turn_complete);
+          const interrupted = !!serverContent?.interrupted;
+          if (typeof modelText === "string" && modelText.trim()) {
+            rawReplyText = modelText.startsWith(rawReplyText) ? modelText : rawReplyText + modelText;
+          }
+          const parts = serverContent?.modelTurn?.parts;
+          // The audio and its transcript can arrive in separate frames. Hold
+          // audio when the current language or the first English words are pending.
+          if (Array.isArray(parts) && !rejectedEnglishReply && !interrupted && !quietReply) {
+            for (const part of parts) {
+              if (part?.inlineData?.data && unplayedAudio.length < 96) unplayedAudio.push(part.inlineData.data);
+            }
+          }
+          const englishCheck = replyLanguage === "en"
+            ? checkNuboEnglishReply(rawReplyText, completed || !!serverContent?.generationComplete)
+            : "match";
+          if (!awaitingGuestTranscript && englishCheck === "mismatch" && !rejectedEnglishReply) {
+            rejectedEnglishReply = true;
+            unplayedAudio.length = 0;
+            playback.interrupt();
+            kioskResponseBufferRef.current = "";
+            setKioskResponse("");
+          }
+          const canPlayReply = !quietReply && !interrupted && !rejectedEnglishReply &&
+            englishCheck === "match" && (!awaitingGuestTranscript || completed);
           let visibleModelText = "";
-          if (!quietReply && typeof modelText === "string" && modelText.trim()) {
+          if (canPlayReply && rawReplyText && (typeof modelText === "string" || !kioskResponseBufferRef.current)) {
             const previous = kioskResponseBufferRef.current;
-            const response = modelText.startsWith(previous) ? modelText : previous + modelText;
+            const response = rawReplyText;
             kioskResponseBufferRef.current = response;
             const filtered = stripNuboStockClosing(response);
             const previousAnswer = stripNuboStockClosing(previous).text.replace(/[，,；;]+$/u, "").trim();
@@ -958,30 +1000,46 @@ export function GeminiVoiceConsole() {
             visibleModelText = filtered.text;
             if (visibleModelText) setKioskResponse(visibleModelText);
           }
-          const playModelAudio = !quietReply && !skipStockAudio && !serverContent?.interrupted;
-          if (serverContent?.turnComplete || serverContent?.turn_complete || serverContent?.interrupted) {
+          const availableAudio = canPlayReply ? unplayedAudio.splice(0) : [];
+          const needsEnglishRepair = replyLanguage === "en" && !quietReply && !interrupted &&
+            (rejectedEnglishReply || (englishCheck !== "match" && (unplayedAudio.length > 0 || rawReplyText.trim().length > 0)));
+          const playModelAudio = !skipStockAudio && !silentUntilWakeRef.current;
+          if (completed || interrupted) {
             if (!quietReply && kioskResponseBufferRef.current.trim()) {
               lastQuestionRef.current = latestNuboQuestion(kioskResponseBufferRef.current);
             }
             kioskResponseBufferRef.current = "";
             skipStockAudio = false;
+            rawReplyText = "";
+            rejectedEnglishReply = false;
+            unplayedAudio.length = 0;
           }
 
-          if (serverContent?.interrupted) {
+          if (interrupted) {
             recordServerInterruption();
             playbackRef.current?.interrupt();
             notifyNuboVoicePhase("listening");
           }
-          const parts = serverContent?.modelTurn?.parts;
-          if (!silentUntilWakeRef.current && playModelAudio && Array.isArray(parts)) {
-            for (const part of parts) {
-              if (part?.inlineData?.data) {
-                hasModelAudio = true;
-                noteVoiceInteraction();
-                recordIncomingAudioChunk();
-                markSpeaking();
-                await playbackRef.current?.enqueue(part.inlineData.data, 24000);
-              }
+          if (playModelAudio) {
+            const turn = guestTurn;
+            for (const audio of availableAudio) {
+              if (turn !== guestTurn || socketRef.current !== socket) break;
+              hasModelAudio = true;
+              noteVoiceInteraction();
+              recordIncomingAudioChunk();
+              markSpeaking();
+              await playbackRef.current?.enqueue(audio, 24_000);
+            }
+          }
+          if (completed && needsEnglishRepair && serverContent?.interactionStatus !== "IN_PROGRESS" && activeToolRequests === 0 &&
+              socket.readyState === WebSocket.OPEN && !silentUntilWakeRef.current) {
+            if (!englishRepairRequested) {
+              englishRepairRequested = true;
+              notifyNuboVoicePhase("thinking");
+              socket.send(JSON.stringify({ realtimeInput: { text: ENGLISH_REPLY_REPAIR } }));
+            } else {
+              setKioskResponse("Could you repeat your question in English?");
+              notifyNuboVoicePhase("listening");
             }
           }
 
@@ -1097,7 +1155,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
           const calls = message.toolCall?.functionCalls;
           if (Array.isArray(calls) && calls.length > 0) {
-            if (quietReply) {
+            if (quietReply || englishRepairRequested) {
               sendToolResponses(calls.map((call: FunctionCall) => ({
                 id: call.id,
                 name: call.name,

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  checkNuboEnglishReply,
+  detectNuboGuestReplyLanguage,
   detectNuboGuestSpeechLanguage,
   getNuboGuestSpeechLanguage,
   reportNuboKioskSpeech,
@@ -52,4 +54,23 @@ test("staff labels accept language aliases and reject arbitrary text", () => {
   assert.equal(formatNuboGuestLanguage("vi_VN"), "越南文");
   assert.equal(formatNuboGuestLanguage("fr-FR"), "法文");
   assert.equal(formatNuboGuestLanguage("ja\n任意訊息"), "未辨識");
+});
+
+test("the latest clear speech or explicit request selects the spoken reply language", () => {
+  assert.equal(detectNuboGuestReplyLanguage("我欲歇睏三點鐘。", "cmn"), "nan");
+  assert.equal(detectNuboGuestReplyLanguage("Could I book a room for tonight?", "zh-TW"), "en");
+  assert.equal(detectNuboGuestReplyLanguage("English, please."), "en");
+  assert.equal(detectNuboGuestReplyLanguage("您好，請用英文回答。請問有早餐嗎？", "zh"), "en");
+  assert.equal(detectNuboGuestReplyLanguage("你可以講台語嗎？"), "nan");
+  assert.equal(detectNuboGuestReplyLanguage("請問幾點退房？"), "zh");
+});
+
+test("English playback waits for clear words and rejects Mandarin and Taiwanese output", () => {
+  assert.equal(checkNuboEnglishReply("Sure,", false), "waiting");
+  assert.equal(checkNuboEnglishReply("This hotel does ", false), "match");
+  assert.equal(checkNuboEnglishReply("Yes.", true), "match");
+  assert.equal(checkNuboEnglishReply("我來共你查一下。", true), "mismatch");
+  assert.equal(checkNuboEnglishReply("Okay, 我幫您查一下。", false), "mismatch");
+  assert.equal(checkNuboEnglishReply("我先幫您查一下。", true), "mismatch");
+  assert.equal(checkNuboEnglishReply("", true), "waiting");
 });
