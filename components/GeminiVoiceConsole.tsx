@@ -18,7 +18,11 @@ import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { formatNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
-import { reportNuboKioskSpeech } from "@/lib/nubo-kiosk-language";
+import {
+  NUBO_KIOSK_GREETING_PROMPTS, clearNuboGuestSpeechLanguage, detectNuboGuestSpeechLanguage,
+  getNuboGuestSpeechLanguage, reportNuboKioskSpeech, type NuboKioskLanguage,
+} from "@/lib/nubo-kiosk-language";
+import { classifyNuboArrivalIntent } from "@/lib/nubo-arrival-intent";
 import {
   correctNuboGuestFollowUp,
   isNuboConversationCloser,
@@ -44,6 +48,20 @@ const LOOKUP_REPLY_LANGUAGE = {
   enum: ["nan", "zh", "other"],
   description: "本輪語音的回答語言。臺灣台語填 nan，臺灣華語填 zh，其他語言填 other。台語音訊轉成華語逐字稿時仍填 nan。",
 };
+const ARRIVAL_KEYWORDS = { booking: "訂房", lodging: "住宿", checkin: "入住" } as const;
+const ROOM_PHOTO_TOOL = {
+  name: "show_room_photos",
+  description: "旅客想看本館房間照片時顯示現有客房相簿，旅客可點選樓層與照片。地圖、景點或其他旅館的照片不使用此工具。",
+};
+
+function asksForRoomPhotos(text: string) {
+  if (/不要看|不想看|不用看|其他飯店|別家飯店|唔使睇|don.t (?:need|want)|no need|見たくない|いりません|보고 싶지 않|không muốn xem/iu.test(text)) return false;
+  return /(?:客房|房間|房型).{0,9}(?:照片|相片|圖片)|(?:照片|相片|圖片).{0,9}(?:客房|房間|房型)/u.test(text) ||
+    /(?:部屋|客室|ルーム).{0,9}(?:写真|画像)|(?:写真|画像).{0,9}(?:部屋|客室|ルーム)/u.test(text) ||
+    /(?:객실|방).{0,9}(?:사진|이미지)|(?:사진|이미지).{0,9}(?:객실|방)/u.test(text) ||
+    /\b(?:room(?:s)? (?:photos?|pictures?|images?)|(?:photos?|pictures?|images?) of (?:a |the |your )?rooms?)\b/iu.test(text) ||
+    /(?:ảnh|hình).{0,9}phòng|phòng.{0,9}(?:ảnh|hình)/iu.test(text);
+}
 
 async function loadGuestBookingLink() {
   try {
@@ -178,7 +196,7 @@ export function GeminiVoiceConsole() {
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
   const callToneRef = useRef<Promise<void> | null>(null);
-  const greetOnConnectRef = useRef(false);
+  const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -202,6 +220,7 @@ export function GeminiVoiceConsole() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [isRinging, setIsRinging] = useState(false);
   const [contactCard, setContactCard] = useState<number | null>(null);
+  const [roomPhotoRequest, setRoomPhotoRequest] = useState<number | null>(null);
 
   useEffect(() => {
     if (contactCard === null) return;
@@ -223,12 +242,15 @@ export function GeminiVoiceConsole() {
   const bookingAttemptedRef = useRef(false);
   const guestKeywordNoticeRef = useRef<Promise<{ ok: boolean; sent: boolean; duplicate?: boolean }> | null>(null);
 
-  function notifyGuestKeywords(issue: string) {
+  function notifyGuestKeywords(issue: string, originalSpeech?: string) {
     if (!guestKeywordNoticeRef.current) {
       guestKeywordNoticeRef.current = fetch("/api/notify/guest-service", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "frontdesk_voice_keywords", issue, eventId: crypto.randomUUID() }),
+        body: JSON.stringify({
+          source: "frontdesk_voice_keywords", issue, eventId: crypto.randomUUID(),
+          guestLanguage: getNuboGuestSpeechLanguage() ?? (originalSpeech ? detectNuboGuestSpeechLanguage(originalSpeech) : null),
+        }),
         keepalive: true,
       }).then(async (response) => {
         const result = await response.json();
@@ -637,7 +659,7 @@ export function GeminiVoiceConsole() {
     kioskResponseBufferRef.current = "";
     setKioskResponse("");
     callToneRef.current = null;
-    greetOnConnectRef.current = false;
+    greetingLanguageRef.current = null;
     setIsRinging(false);
     window.localStorage.removeItem(
       NUBO_AUTO_RESUME_STORAGE_KEY,
@@ -674,6 +696,7 @@ export function GeminiVoiceConsole() {
     );
     if (!isReconnect) {
       startVoiceDiagnostics();
+      clearNuboGuestSpeechLanguage();
       sessionHandleRef.current = null;
       reconnectAttemptsRef.current = 0;
       setTranscript("");
@@ -706,6 +729,7 @@ export function GeminiVoiceConsole() {
       let hasModelAudio = false;
       let lookupCuePlayed = false;
       let heardTaiwanese = false;
+      let roomPhotosRequested = false;
       let confirmedRoomsAvailable = false;
       let configuredBookingLink: string | null = null;
       const asyncArrivalNotice = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
@@ -736,7 +760,17 @@ export function GeminiVoiceConsole() {
         return { ...lookup, contactCardShown: true };
       }
 
+      function showRoomPhotos() {
+        if (socketRef.current !== socket || closingRef.current) return { ok: false, shown: false };
+        if (!roomPhotosRequested) {
+          roomPhotosRequested = true;
+          setRoomPhotoRequest(performance.now());
+        }
+        return { ok: true, shown: true };
+      }
+
       async function executeVoiceTool(call: FunctionCall) {
+        if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos();
         const requested = call.args?.replyLanguage;
         const language = requested === "nan" || requested === "zh"
           ? requested
@@ -769,7 +803,8 @@ export function GeminiVoiceConsole() {
         const lookupCueInstruction = cueLanguages.length
           ? `【查房與查訂單的進度】請直接呼叫 PMS，replyLanguage 填當下的語音語言。櫃檯會用 ${cueLanguages.join("、")} 語言自動播放簡短的等待提示；這些語言只需在收到 PMS 結果後報重點。不需重複等待的話。`
           : "";
-        const sessionInstruction = [geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction]
+        const photoInstruction = "旅客想看本館房間照片時呼叫 show_room_photos。回傳 shown=true 後，用旅客的語言簡短說已開啟客房相簿、可以點選樓層和照片。";
+        const sessionInstruction = [geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction]
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
@@ -794,7 +829,7 @@ export function GeminiVoiceConsole() {
               systemInstruction: { parts: [{ text: musicEnabled
                 ? sessionInstruction
                 : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${sessionInstruction}` }] },
-              tools: [{ functionDeclarations: tools }],
+              tools: [{ functionDeclarations: [...tools, ROOM_PHOTO_TOOL] }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               contextWindowCompression: { slidingWindow: {} },
@@ -815,6 +850,7 @@ export function GeminiVoiceConsole() {
             hasModelAudio = false;
             lookupCuePlayed = false;
             heardTaiwanese = false;
+            roomPhotosRequested = false;
           }
 
           const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
@@ -833,7 +869,7 @@ export function GeminiVoiceConsole() {
             // Dialing and the handshake overlap. Keep the ringtone out of the microphone.
             if (callToneRef.current) await callToneRef.current;
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
-            if (greetOnConnectRef.current && document.visibilityState !== "visible") {
+            if (greetingLanguageRef.current && document.visibilityState !== "visible") {
               socket.close(1000, "NUBO dial interrupted");
               return;
             }
@@ -858,10 +894,11 @@ export function GeminiVoiceConsole() {
             }
             void playback.prepare().catch(() => undefined);
             setState("connected");
-            if (greetOnConnectRef.current && socket.readyState === WebSocket.OPEN) {
-              greetOnConnectRef.current = false;
+            const greetingLanguage = greetingLanguageRef.current;
+            if (greetingLanguage && socket.readyState === WebSocket.OPEN) {
+              greetingLanguageRef.current = null;
               socket.send(JSON.stringify({
-                realtimeInput: { text: "通話已接通。請立即用語音逐字說出以下開場白，說完停下等待旅客：hello 歡迎新寶智慧酒店 我是您的智慧管家nubo" },
+                realtimeInput: { text: NUBO_KIOSK_GREETING_PROMPTS[greetingLanguage] },
               }));
             }
           }
@@ -892,11 +929,16 @@ export function GeminiVoiceConsole() {
             const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE|加(?:入)?(?:你們|飯店|酒店|館方|櫃檯|官方)*(?:LINE|賴)|LINE(?:怎麼加|如何加|可以加|好友|QRCode|二維碼|帳號)|(?:加|加入)(?:好友|官方帳號)/iu.test(phrase);
             if (qr || phone) setContactCard(performance.now());
             const keywords = new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? []);
+            const arrivalIntent = classifyNuboArrivalIntent(userText);
+            if (arrivalIntent) keywords.add(ARRIVAL_KEYWORDS[arrivalIntent]);
+            if (/チェックアウト|체크아웃|trả phòng|\bcheck[ -]?out\b/iu.test(userText)) keywords.add("退房");
+            if (/休憩利用|ショートステイ|대실|thuê phòng theo giờ|\b(?:hourly room|day use)\b/iu.test(userText)) keywords.add("休息");
             if (TAIWANESE_REST_REQUEST.test(phrase)) keywords.add("休息");
             if (TAIWANESE_OVERNIGHT_REQUEST.test(phrase)) keywords.add("住宿");
             const taiwaneseBooking = TAIWANESE_BOOKING_REQUEST.test(phrase);
             if (taiwaneseBooking) keywords.add("訂房");
             if (keywords.size) void notifyGuestKeywords([...keywords].join("／"));
+            if (asksForRoomPhotos(userText)) showRoomPhotos();
             if (taiwaneseBooking || /^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
               openSpokenBooking();
             }
@@ -1100,7 +1142,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                     }
                   : call.name === "notify_arrival_intent"
                     ? (() => {
-                        void notifyGuestKeywords(call.args?.intent === "booking" ? "訂房" : call.args?.intent === "lodging" ? "住宿" : "入住");
+                        const intent = call.args?.intent === "booking" || call.args?.intent === "lodging" ? call.args.intent : "checkin";
+                        const speech = typeof call.args?.transcript === "string" ? call.args.transcript : undefined;
+                        void notifyGuestKeywords(ARRIVAL_KEYWORDS[intent], speech);
                         return { ok: true, notificationStatus: "pending", sent: false };
                       })()
                     : await executeVoiceTool(call);
@@ -1512,10 +1556,10 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     };
   }, []);
 
-  const startWithCallTones = async () => {
+  const startWithCallTones = async (language: NuboKioskLanguage) => {
     const socket = socketRef.current;
     if (callToneRef.current || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
-    greetOnConnectRef.current = true;
+    greetingLanguageRef.current = language;
     clearReconnectTimer();
     setIsRinging(true);
     const tone = playNuboCallTones().then(() => setIsRinging(false));
@@ -1533,12 +1577,13 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       transcript={kioskResponse}
       error={error}
       bookingUrl={bookingLink ?? guestBookingUrl}
+      roomPhotoRequest={roomPhotoRequest}
       contact={{
         visible: contactCard !== null,
         open: () => setContactCard(performance.now()),
         close: () => setContactCard(null),
       }}
-      onToggleCall={() => void (state === "connected" ? disconnect() : startWithCallTones())}
+      onToggleCall={(language) => void (state === "connected" ? disconnect() : startWithCallTones(language))}
     >
       {getNuboGuestConfigSnapshot().musicEnabled && mobileYoutube ? (
         <a className="primary mobile-youtube-action" href={mobileYoutube.playerUrl}

@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  detectNuboGuestSpeechLanguage,
+  getNuboGuestSpeechLanguage,
   reportNuboKioskSpeech,
   resetNuboKioskLanguage,
   selectNuboKioskLanguage,
 } from "../lib/nubo-kiosk-language.ts";
+import { formatNuboGuestLanguage } from "../lib/nubo-guest-language.ts";
 
 test("Japanese speech takes over a manually selected welcome language", () => {
   resetNuboKioskLanguage();
@@ -28,4 +31,25 @@ test("locale metadata recognizes Japanese even when the transcript is romanized"
   assert.equal(reportNuboKioskSpeech("onamae?", "jpn"), true);
   assert.equal(reportNuboKioskSpeech("電話番号"), false);
   assert.equal(reportNuboKioskSpeech("How much is a room?"), true);
+});
+
+test("staff notification language follows the actual speaker, independently of the greeting selection", () => {
+  resetNuboKioskLanguage();
+  selectNuboKioskLanguage("ja");
+  assert.equal(getNuboGuestSpeechLanguage(), null);
+  reportNuboKioskSpeech("호텔에 체크인하고 싶어요.", "kor");
+  assert.equal(formatNuboGuestLanguage(getNuboGuestSpeechLanguage()), "韓文");
+  reportNuboKioskSpeech("日文也可以嗎？");
+  assert.equal(formatNuboGuestLanguage(getNuboGuestSpeechLanguage()), "中文");
+  assert.equal(detectNuboGuestSpeechLanguage("請用日文回答"), "zh");
+  assert.equal(detectNuboGuestSpeechLanguage("我欲歇睏三點鐘。", "zh-TW"), "nan");
+  resetNuboKioskLanguage();
+  assert.equal(getNuboGuestSpeechLanguage(), null);
+});
+
+test("staff labels accept language aliases and reject arbitrary text", () => {
+  assert.equal(formatNuboGuestLanguage("jpn-JP"), "日文");
+  assert.equal(formatNuboGuestLanguage("vi_VN"), "越南文");
+  assert.equal(formatNuboGuestLanguage("fr-FR"), "法文");
+  assert.equal(formatNuboGuestLanguage("ja\n任意訊息"), "未辨識");
 });

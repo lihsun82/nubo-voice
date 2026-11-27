@@ -485,6 +485,26 @@ body:has(.nubo-concierge-shell)::after {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
   gap: 12px;
 }
+.nubo-concierge-shell .nubo-kiosk-gallery-images[data-enlarged] { grid-template-columns: minmax(0, 1fr); }
+.nubo-concierge-shell .nubo-kiosk-gallery-images button {
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: zoom-in;
+}
+.nubo-concierge-shell .nubo-kiosk-gallery-images[data-enlarged] button { cursor: zoom-out; }
+.nubo-concierge-shell .nubo-kiosk-gallery-back {
+  min-height: 44px;
+  margin: 0 0 12px;
+  padding: 4px 12px;
+  border: 1px solid #d4af3759;
+  border-radius: 999px;
+  background: #111827;
+  color: var(--kiosk-pale);
+  font: inherit;
+  cursor: pointer;
+}
 .nubo-concierge-shell .nubo-kiosk-gallery-images img {
   display: block;
   width: 100%;

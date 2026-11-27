@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendGmailMessage } from "@/lib/gmail";
 import { pushHotelLineText } from "@/lib/nubo-hotel-line";
+import { formatNuboGuestLanguage } from "@/lib/nubo-guest-language";
 import {
   classifyNuboGuestServiceTranscript,
   getNuboGuestServiceCategoryLabel,
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
     const contact = clean(body.contact);
     const issue = clean(body.issue ?? body.transcript ?? body.text);
     const source = clean(body.source) || "guest_service_alert";
+    const guestLanguageLine = `旅客語言：${formatNuboGuestLanguage(body.guestLanguage)}`;
 
     if (source === "frontdesk_voice_keywords") {
       const keywords = issue.split("／");
@@ -110,7 +112,7 @@ export async function POST(req: NextRequest) {
       const response = await fetch("https://nubo-cloud.onrender.com/api/notify/guest-service", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source, issue: `無人櫃檯語音提及：${[...new Set(keywords)].join("、")}（事件 ${eventId.slice(0, 8)}）` }),
+        body: JSON.stringify({ source, issue: `無人櫃檯語音提及：${[...new Set(keywords)].join("、")}（事件 ${eventId.slice(0, 8)}）\n${guestLanguageLine}` }),
         signal: AbortSignal.timeout(75_000),
         cache: "no-store",
       });
@@ -188,6 +190,7 @@ export async function POST(req: NextRequest) {
       `${urgencyIcon} NUBO 即時客務通知`,
       `時間：${getTaipeiTime()}（Asia/Taipei）`,
       `類型：${categoryLabel}`,
+      guestLanguageLine,
       `優先級：${urgencyLabel}`,
       `房號：${roomNumber || "未提供"}`,
       surname ? `客人姓氏：${surname}` : "",

@@ -1,6 +1,7 @@
 "use client";
 
 import { classifyNuboArrivalIntent, isNuboArrivalCancellation, type NuboArrivalIntent } from "@/lib/nubo-arrival-intent";
+import { detectNuboGuestSpeechLanguage, getNuboGuestSpeechLanguage } from "@/lib/nubo-kiosk-language";
 
 const DEVICE_KEY = "nubo_arrival_alert_device_v1";
 const DEBOUNCE_MS = 1000;
@@ -75,6 +76,7 @@ export async function sendNuboArrivalIntent(
     body: JSON.stringify({
       transcript: transcript.trim().slice(0, 500),
       intent,
+      guestLanguage: detectNuboGuestSpeechLanguage(transcript) ?? getNuboGuestSpeechLanguage(),
       source,
       deviceId: deviceId(),
       utteranceId: requestUtteranceId,

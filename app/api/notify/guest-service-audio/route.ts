@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeNuboGuestLanguage } from "@/lib/nubo-guest-language";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ type AudioDecision = {
   confidence: number;
   roomNumber: string;
   issue: string;
+  guestLanguage: string | null;
   urgency: "normal" | "high" | "critical";
 };
 
@@ -124,6 +126,7 @@ function parseDecision(text: string): AudioDecision | null {
         ? "high"
         : "normal";
     return {
+      guestLanguage: normalizeNuboGuestLanguage(payload?.guestLanguage),
       guestService: payload?.guestService === true,
       confidence: clampConfidence(payload?.confidence),
       roomNumber: clean(payload?.roomNumber),
@@ -152,8 +155,9 @@ async function analyzeGuestAudio(wavBase64: string) {
     "只要語意明確是旅館客務，即使品項有一兩個字聽不清楚，也 guestService=true，issue 可寫『旅客要求送物到房間，品項語音不確定，請現場確認』，不要因此漏報。",
     "若只是聊天、查資料、播放音樂、打電話、一般手機控制、詢問日期時間，guestService=false。",
     "房號若聽到三零五、305、三樓五號房等，盡量正規化成最可能的房號；真的不確定可留空。",
+    "guestLanguage 依旅客原始語音填語言代碼，例如日文 ja、韓文 ko、台語 nan、華語 zh、英文 en、越南文 vi。翻譯後的摘要不能作為判斷依據；無法辨識時填 null。",
     "只回 JSON，不要加任何說明。格式：",
-    '{"guestService":true,"confidence":0.0,"roomNumber":"","issue":"","urgency":"normal"}',
+    '{"guestService":true,"confidence":0.0,"roomNumber":"","issue":"","guestLanguage":null,"urgency":"normal"}',
   ].join("\n");
 
   const response = await fetchWithTransientRetry(
@@ -208,6 +212,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const pcmBase64 = clean(body.pcmBase64);
+    const guestLanguage = normalizeNuboGuestLanguage(body.guestLanguage);
     const sampleRateRaw = Number(body.sampleRate ?? DEFAULT_SAMPLE_RATE);
     const sampleRate = Number.isFinite(sampleRateRaw)
       ? Math.min(48_000, Math.max(8_000, Math.round(sampleRateRaw)))
@@ -257,6 +262,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           roomNumber: decision.roomNumber,
           issue,
+          guestLanguage: decision.guestLanguage ?? guestLanguage,
           source: "raw-audio-semantic-second-pass-v2-internal-forward",
         }),
       },

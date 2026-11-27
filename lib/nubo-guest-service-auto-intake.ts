@@ -2,6 +2,7 @@
 
 import { classifyNuboGuestServiceTranscript } from "@/lib/nubo-guest-service-alert";
 import { readNuboShortReply } from "@/lib/nubo-voice-follow-up";
+import { getNuboGuestSpeechLanguage } from "@/lib/nubo-kiosk-language";
 
 type ComplaintIntakeState = {
   active: boolean;
@@ -306,6 +307,7 @@ function scheduleCompletedIntakeSend() {
         surname: latest.surname,
         roomNumber: latest.roomNumber,
         issue,
+        guestLanguage: getNuboGuestSpeechLanguage(),
         source: "complaint-three-field-intake-v2-carryover",
       }),
       keepalive: true,

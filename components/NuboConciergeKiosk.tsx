@@ -155,15 +155,16 @@ type Props = {
   transcript?: string;
   error?: string;
   sleeping?: boolean;
-  onToggleCall: () => void;
+  onToggleCall: (language: NuboKioskLanguage) => void;
   bookingUrl?: string;
+  roomPhotoRequest?: number | null;
   contact?: { visible: boolean; open: () => void; close: () => void };
   children?: ReactNode;
 };
 
 export function NuboConciergeKiosk({
   state, transcript, error, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
-  contact, children,
+  contact, roomPhotoRequest, children,
 }: Props) {
   const { language, preference } = useNuboKioskLanguage();
   const locale = NUBO_KIOSK_LOCALES[language];
@@ -177,6 +178,9 @@ export function NuboConciergeKiosk({
   const [photosOpen, setPhotosOpen] = useState(false);
   const [localContactAt, setLocalContactAt] = useState<number | null>(null);
   const copy = COPY[language];
+  useEffect(() => {
+    if (roomPhotoRequest != null) setPhotosOpen(true);
+  }, [roomPhotoRequest]);
   const phase = state === "connected" ? (
     sleeping ? "idle" : voicePhase === "speaking" || voicePhase === "thinking" ? voicePhase : "listening"
   ) : state === "ringing" || state === "connecting" ? "connecting" : state;
@@ -287,14 +291,14 @@ export function NuboConciergeKiosk({
         <div className="nubo-kiosk-call-panel">
           <section className="nubo-kiosk-stage" data-phase={phase}>
             <div className="nubo-kiosk-status" role="status"><span aria-hidden="true" />{status}</div>
-            <button type="button" className="nubo-kiosk-orb-action" onClick={onToggleCall} disabled={busy}
+            <button type="button" className="nubo-kiosk-orb-action" onClick={() => onToggleCall(language)} disabled={busy}
               aria-label={state === "connected" ? copy.controls[1] : copy.controls[0]}>
               <NuboKioskOrb phase={phase} />
             </button>
           </section>
           <div className="nubo-kiosk-dock">
             <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
-            <NuboPhoneAction state={state} onClick={onToggleCall} kioskLabels={copy.controls} />
+            <NuboPhoneAction state={state} onClick={() => onToggleCall(language)} kioskLabels={copy.controls} />
             <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[1]}</a>
           </div>
         </div>

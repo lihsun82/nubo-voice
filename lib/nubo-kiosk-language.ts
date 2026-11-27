@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { normalizeNuboGuestLanguage } from "./nubo-guest-language.ts";
 
 export const NUBO_KIOSK_LANGUAGES = [
   ["zh", "繁體中文", "繁中"],
@@ -15,6 +16,14 @@ type LanguagePreference = NuboKioskLanguage | "auto";
 
 export const NUBO_KIOSK_LOCALES: Record<NuboKioskLanguage, string> = {
   zh: "zh-Hant-TW", en: "en", ja: "ja", ko: "ko", vi: "vi-VN",
+};
+
+export const NUBO_KIOSK_GREETING_PROMPTS: Record<NuboKioskLanguage, string> = {
+  zh: "通話已接通。請立即用臺灣華語逐字說出以下開場白，說完停下等待旅客：hello 歡迎新寶智慧酒店 我是您的智慧管家nubo",
+  en: "The call is connected. Say only this greeting in natural English, then wait for the guest: “Hello, welcome to AINUBO Smart Hotel. I'm NUBO, your AI concierge.”",
+  ja: "通話がつながりました。次のあいさつだけを自然な日本語で話し、その後はお客様のお話をお待ちください。「こんにちは。AINUBOスマートホテルへようこそ。AIコンシェルジュのヌーボです。」",
+  ko: "통화가 연결되었습니다. 다음 인사만 자연스러운 한국어로 말한 뒤 고객의 말을 기다리세요. “안녕하세요. 아이누보 스마트 호텔에 오신 것을 환영합니다. 저는 AI 컨시어지 누보입니다.”",
+  vi: "Cuộc gọi đã kết nối. Hãy nói đúng lời chào sau bằng tiếng Việt tự nhiên rồi chờ khách nói: “Xin chào, chào mừng quý khách đến với khách sạn thông minh AINUBO. Tôi là NUBO, trợ lý thông minh của quý khách.”",
 };
 
 const NEUTRAL_WORDS = new Set(["nubo", "ainubo", "hotel", "hotels", "line", "qr", "code", "wi", "fi", "wifi", "ai", "ok", "okay", "yes", "no", "um", "uh"]);
@@ -39,11 +48,11 @@ function requestedLanguage(text: string) {
   return REQUESTED_LANGUAGE_NAMES.get(chinese?.[1] ?? english?.[1] ?? "");
 }
 
-function detectSpokenLanguage(text: string, languageCode: unknown): NuboKioskLanguage | null {
+function detectSpokenLanguage(text: string, languageCode: unknown, readLanguageRequest = true): NuboKioskLanguage | null {
   const normalized = text.normalize("NFKC").trim().toLowerCase();
   const words = normalized.match(/\p{L}+/gu) ?? [];
   if (!words.length || words.every((word) => NEUTRAL_WORDS.has(word))) return null;
-  const requested = requestedLanguage(normalized);
+  const requested = readLanguageRequest ? requestedLanguage(normalized) : null;
   if (requested) return requested;
 
   const primary = typeof languageCode === "string" ? languageCode.trim().toLowerCase().split(/[-_]/)[0] : "";
@@ -80,6 +89,21 @@ const initial: Snapshot = { language: "zh", preference: "auto" };
 const listeners = new Set<() => void>();
 let snapshot = initial;
 let spokenLanguage: NuboKioskLanguage = "zh";
+let guestSpeechLanguage: string | null = null;
+
+export function detectNuboGuestSpeechLanguage(text: string, languageCode?: unknown) {
+  const reported = normalizeNuboGuestLanguage(languageCode);
+  if ((!reported || reported === "zh") && /我欲|歇睏|歇暝|一暝|佇遮|偌濟|佗位|欲睏/u.test(text)) return "nan";
+  return reported ?? detectSpokenLanguage(text, undefined, false);
+}
+
+export function getNuboGuestSpeechLanguage() {
+  return guestSpeechLanguage;
+}
+
+export function clearNuboGuestSpeechLanguage() {
+  guestSpeechLanguage = null;
+}
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -94,6 +118,7 @@ function updatePreference(preference: LanguagePreference) {
 }
 
 export function reportNuboKioskSpeech(text: string, languageCode?: unknown) {
+  guestSpeechLanguage = detectNuboGuestSpeechLanguage(text, languageCode) ?? guestSpeechLanguage;
   const next = detectSpokenLanguage(text, languageCode);
   if (!next) return false;
   const current = snapshot.language;
@@ -108,6 +133,7 @@ export function selectNuboKioskLanguage(preference: LanguagePreference) {
 }
 
 export function resetNuboKioskLanguage() {
+  clearNuboGuestSpeechLanguage();
   spokenLanguage = "zh";
   updatePreference("auto");
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatNuboGuestLanguage } from "@/lib/nubo-guest-language";
 import { classifyNuboArrivalIntent, isNuboArrivalCancellation, type NuboArrivalIntent } from "@/lib/nubo-arrival-intent";
 import { pushHotelLineText, getHotelLineStatus } from "@/lib/nubo-hotel-line";
 import { getAdminSession } from "@/lib/nubo-admin-auth";
@@ -132,6 +133,7 @@ export async function POST(request: NextRequest) {
     "🛎️ NUBO 旅客到店需求",
     `時間：${taipeiTime()}（台灣時間）`,
     `類型：${label}`,
+    `旅客語言：${formatNuboGuestLanguage(body.guestLanguage)}`,
     "來源：NUBO 平板語音",
     "請現場人員主動協助旅客。",
   ].join("\n");

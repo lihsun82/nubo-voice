@@ -11,6 +11,7 @@ import { controlGoogleHome } from "@/lib/google-home-native";
 import { runVoiceResearchWithTimeout } from "@/lib/nubo-voice-tool-guard";
 import { sendNuboArrivalIntent } from "@/lib/nubo-arrival-alert-client";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
+import { getNuboGuestSpeechLanguage } from "@/lib/nubo-kiosk-language";
 import {
   forceDirectMobileOpen,
   resolveWebsiteMobileResult,
@@ -151,6 +152,7 @@ async function sendGuestServiceAlert(args: Record<string, unknown>) {
       roomNumber: String(args.roomNumber ?? "").trim(),
       contact: String(args.contact ?? "").trim(),
       issue: String(args.issue ?? "").trim(),
+      guestLanguage: getNuboGuestSpeechLanguage(),
     }),
   });
   const payload = await response.json().catch(() => ({}));
