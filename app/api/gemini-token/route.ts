@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getNuboClockSnapshot } from "@/lib/nubo-clock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -135,6 +136,7 @@ export async function GET(request: NextRequest) {
       usesRemaining: cache.usesRemaining,
       cached: elapsedMs < 50,
       elapsedMs,
+      clock: getNuboClockSnapshot(),
     });
   } catch (error) {
     return NextResponse.json(

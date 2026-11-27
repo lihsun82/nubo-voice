@@ -16,7 +16,7 @@ import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
-import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
+import { formatNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import { reportNuboKioskSpeech } from "@/lib/nubo-kiosk-language";
 import {
@@ -33,6 +33,25 @@ type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
 const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
+const TAIWANESE_REST_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇睏|歇|睏)[一二兩三四五六七八九十\d]+(?:个|個)?(?:點鐘|鐘頭|小時)/u;
+const TAIWANESE_OVERNIGHT_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇暝|歇一暝|住一暝|睏一暝)/u;
+const TAIWANESE_BOOKING_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲)(?:佇遮|這馬|現場)?(?:訂房|訂(?:一間|間)?房(?:間)?)(?:敢會使|會使無|好無)?$/u;
+
+async function loadGuestBookingLink() {
+  try {
+    const response = await fetch("/api/guest-booking-link", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) return null;
+    const data: { enabled?: unknown; url?: unknown } = await response.json();
+    if (data.enabled !== true || typeof data.url !== "string" ||
+        new URL(data.url).protocol !== "https:") return null;
+    return data.url;
+  } catch {
+    return null;
+  }
+}
 
 function bookingLookupNeedsContact(call: FunctionCall, result: Record<string, unknown>) {
   if (call.name === "pms_lookup_reservation") {
@@ -229,20 +248,6 @@ export function GeminiVoiceConsole() {
       // The link remains available when the browser blocks the new tab.
     }
   }
-
-  const revealBookingLink = async () => {
-    try {
-      const response = await fetch("/api/guest-booking-link", { cache: "no-store" });
-      if (!response.ok) return false;
-      const data: { enabled?: unknown; url?: unknown } = await response.json();
-      if (data.enabled !== true || typeof data.url !== "string" ||
-          new URL(data.url).protocol !== "https:") return false;
-      setBookingLink(data.url);
-      return true;
-    } catch {
-      return false;
-    }
-  };
 
   const stopNuboOutput = () => {
     playbackRef.current?.interrupt();
@@ -666,10 +671,8 @@ export function GeminiVoiceConsole() {
     closingRef.current = false;
 
     try {
-      const [tokenData, sessionClockInstruction] = await Promise.all([
-        requestJson("/api/gemini-token", { cache: "no-store" }),
-        loadNuboSessionClockInstruction(),
-      ]);
+      const bookingLinkRequest = loadGuestBookingLink();
+      const tokenData = await requestJson("/api/gemini-token", { cache: "no-store" });
       if (closingRef.current) return;
       const endpoint =
         `wss://${GEMINI_LIVE_HOST}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained`;
@@ -681,6 +684,27 @@ export function GeminiVoiceConsole() {
       let quietReply = false;
       let skipStockAudio = false;
       let activeToolRequests = 0;
+      let confirmedRoomsAvailable = false;
+      let configuredBookingLink: string | null = null;
+      const asyncArrivalNotice = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
+
+      // Fetch the optional booking URL while dialing, off the PMS response path.
+      void bookingLinkRequest.then((url) => {
+        if (!url || socketRef.current !== socket || closingRef.current) return;
+        configuredBookingLink = url;
+        if (confirmedRoomsAvailable && !bookingAttemptedRef.current) setBookingLink(url);
+      });
+
+      function sendToolResponses(functionResponses: (Pick<FunctionCall, "id" | "name"> & {
+        response: Record<string, unknown>;
+      })[]) {
+        if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
+        socket.send(JSON.stringify({ toolResponse: {
+          functionResponses: functionResponses.map((entry) => asyncArrivalNotice && entry.name === "notify_arrival_intent"
+            ? { ...entry, response: { ...entry.response, scheduling: "SILENT" } }
+            : entry),
+        } }));
+      }
 
       function showBookingSupport(call: FunctionCall, result: unknown) {
         if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
@@ -693,7 +717,13 @@ export function GeminiVoiceConsole() {
       socket.onopen = () => {
         if (socketRef.current !== socket) return;
         const musicEnabled = getNuboGuestConfigSnapshot().musicEnabled;
+        const sessionClockInstruction = formatNuboSessionClockInstruction(tokenData.clock);
         const sessionInstruction = `${geminiSystemInstruction}\n\n${sessionClockInstruction}\n\n${BOOKING_SUPPORT_INSTRUCTION}`;
+        const tools = geminiFunctionDeclarations
+          .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
+          .map((tool) => asyncArrivalNotice && tool.name === "notify_arrival_intent"
+            ? { ...tool, behavior: "NON_BLOCKING" }
+            : tool);
         socket.send(
           JSON.stringify({
             setup: {
@@ -702,9 +732,7 @@ export function GeminiVoiceConsole() {
               systemInstruction: { parts: [{ text: musicEnabled
                 ? sessionInstruction
                 : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${sessionInstruction}` }] },
-              tools: [{ functionDeclarations: musicEnabled
-                ? geminiFunctionDeclarations
-                : geminiFunctionDeclarations.filter((tool) => tool.name !== "open_youtube" && tool.name !== "control_youtube") }],
+              tools: [{ functionDeclarations: tools }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               contextWindowCompression: { slidingWindow: {} },
@@ -791,9 +819,13 @@ export function GeminiVoiceConsole() {
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
             const qr = /(?:找|聯絡|聯繫|通知|呼叫|請|轉接|叫)(?:一下|你們|館方|飯店|酒店|旅館|現場|值班|真人)*(?:服務人員|飯店人員|工作人員|櫃檯|人員|經理|客服|真人)|(?:飯店|酒店|館方|櫃檯)(?:的)?(?:聯絡方式|LINE)|官方LINE|加(?:入)?(?:你們|飯店|酒店|館方|櫃檯|官方)*(?:LINE|賴)|LINE(?:怎麼加|如何加|可以加|好友|QRCode|二維碼|帳號)|(?:加|加入)(?:好友|官方帳號)/iu.test(phrase);
             if (qr || phone) setContactCard(performance.now());
-            const keywords = [...new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? [])];
-            if (keywords.length) void notifyGuestKeywords(keywords.join("／"));
-            if (/^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
+            const keywords = new Set(phrase.match(/訂房|住宿|入住|休息|退房/gu) ?? []);
+            if (TAIWANESE_REST_REQUEST.test(phrase)) keywords.add("休息");
+            if (TAIWANESE_OVERNIGHT_REQUEST.test(phrase)) keywords.add("住宿");
+            const taiwaneseBooking = TAIWANESE_BOOKING_REQUEST.test(phrase);
+            if (taiwaneseBooking) keywords.add("訂房");
+            if (keywords.size) void notifyGuestKeywords([...keywords].join("／"));
+            if (taiwaneseBooking || /^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
               openSpokenBooking();
             }
           }
@@ -951,11 +983,11 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           const calls = message.toolCall?.functionCalls;
           if (Array.isArray(calls) && calls.length > 0) {
             if (quietReply) {
-              socket.send(JSON.stringify({ toolResponse: { functionResponses: calls.map((call: FunctionCall) => ({
+              sendToolResponses(calls.map((call: FunctionCall) => ({
                 id: call.id,
                 name: call.name,
                 response: { result: { ok: false, code: "no_new_guest_request" } },
-              })) } }));
+              })));
               return;
             }
             activeToolRequests += 1;
@@ -1136,12 +1168,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   result.roomTypes.some((room: unknown) =>
                     room && typeof room === "object" && "availableCount" in room &&
                     typeof room.availableCount === "number" && room.availableCount > 0);
-                if (call.name === "pms_check_availability" && !bookingAttemptedRef.current) setBookingLink(null);
+                if (call.name === "pms_check_availability") {
+                  confirmedRoomsAvailable = !!availableRooms;
+                  if (!bookingAttemptedRef.current) setBookingLink(availableRooms ? configuredBookingLink : null);
+                }
                 if (availableRooms) {
-                  const bookingPageReady = await revealBookingLink();
-                  responseResult = result && typeof result === "object"
-                    ? { ...result, bookingPageReady }
-                    : { value: result, bookingPageReady };
+                  responseResult = { ...result, bookingPageReady: !!configuredBookingLink };
                 }
                 functionResponses.push({
                   id: call.id,
@@ -1159,7 +1191,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
               }
             }
             activeToolRequests -= 1;
-            socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+            sendToolResponses(functionResponses);
           }
         } catch (cause) {
           console.error("NUBO voice message decode failed", cause, event.data);
