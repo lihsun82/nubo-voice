@@ -36,6 +36,14 @@ const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShow
 const TAIWANESE_REST_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇睏|歇|睏)[一二兩三四五六七八九十\d]+(?:个|個)?(?:點鐘|鐘頭|小時)/u;
 const TAIWANESE_OVERNIGHT_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇暝|歇一暝|住一暝|睏一暝)/u;
 const TAIWANESE_BOOKING_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲)(?:佇遮|這馬|現場)?(?:訂房|訂(?:一間|間)?房(?:間)?)(?:敢會使|會使無|好無)?$/u;
+const LOOKUP_CUE_TOOLS = new Set(["pms_check_availability", "pms_check_rest_availability", "pms_lookup_reservation"]);
+const LOOKUP_CUES = { nan: "我來共你查一下。", zh: "我幫您查一下。" } as const;
+type LookupCueLanguage = keyof typeof LOOKUP_CUES;
+const LOOKUP_REPLY_LANGUAGE = {
+  type: "STRING",
+  enum: ["nan", "zh", "other"],
+  description: "本輪語音的回答語言。臺灣台語填 nan，臺灣華語填 zh，其他語言填 other。台語音訊轉成華語逐字稿時仍填 nan。",
+};
 
 async function loadGuestBookingLink() {
   try {
@@ -203,6 +211,7 @@ export function GeminiVoiceConsole() {
   const [error, setError] = useState("");
   const [transcript, setTranscript] = useState("");
   const [kioskResponse, setKioskResponse] = useState("");
+  const lookupCueAudioRef = useRef<Partial<Record<LookupCueLanguage, string>>>({});
   const kioskResponseBufferRef = useRef("");
   const lastQuestionRef = useRef("");
   const followUpRef = useRef<NuboFollowUp | null>(null);
@@ -290,6 +299,15 @@ export function GeminiVoiceConsole() {
     void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
       // Token prewarm is optional. NUBO can still request a token when connecting.
     });
+    for (const language of ["nan", "zh"] as const) {
+      void fetch(`/audio/nubo-lookup-${language}.b64`, { cache: "force-cache", priority: "low" })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const pcm = (await response.text()).trim();
+          if (/^[A-Za-z0-9+/]+={0,2}$/u.test(pcm)) lookupCueAudioRef.current[language] = pcm;
+        })
+        .catch(() => undefined);
+    }
   }, []);
 
   useEffect(() => {
@@ -684,6 +702,10 @@ export function GeminiVoiceConsole() {
       let quietReply = false;
       let skipStockAudio = false;
       let activeToolRequests = 0;
+      let guestTurn = 0;
+      let hasModelAudio = false;
+      let lookupCuePlayed = false;
+      let heardTaiwanese = false;
       let confirmedRoomsAvailable = false;
       let configuredBookingLink: string | null = null;
       const asyncArrivalNotice = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
@@ -714,16 +736,56 @@ export function GeminiVoiceConsole() {
         return { ...lookup, contactCardShown: true };
       }
 
+      async function executeVoiceTool(call: FunctionCall) {
+        const requested = call.args?.replyLanguage;
+        const language = requested === "nan" || requested === "zh"
+          ? requested
+          : requested !== "other" && heardTaiwanese ? "nan" : null;
+        const cue = language && lookupCueAudioRef.current[language];
+        if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name) || !cue || !language || hasModelAudio || lookupCuePlayed) {
+          return executeNuboBrowserTool(call);
+        }
+        const turn = guestTurn;
+        const timer = window.setTimeout(() => {
+          if (socketRef.current !== socket || closingRef.current || silentUntilWakeRef.current ||
+              turn !== guestTurn || hasModelAudio || lookupCuePlayed) return;
+          lookupCuePlayed = true;
+          markSpeaking();
+          setKioskResponse(LOOKUP_CUES[language]);
+          void playback.enqueue(cue, 24_000).catch(() => undefined);
+        }, 550);
+        try {
+          return await executeNuboBrowserTool(call);
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+
       socket.onopen = () => {
         if (socketRef.current !== socket) return;
         const musicEnabled = getNuboGuestConfigSnapshot().musicEnabled;
         const sessionClockInstruction = formatNuboSessionClockInstruction(tokenData.clock);
-        const sessionInstruction = `${geminiSystemInstruction}\n\n${sessionClockInstruction}\n\n${BOOKING_SUPPORT_INSTRUCTION}`;
+        const cueLanguages = (["nan", "zh"] as const).filter((language) => lookupCueAudioRef.current[language]);
+        const lookupCueInstruction = cueLanguages.length
+          ? `【查房與查訂單的進度】請直接呼叫 PMS，replyLanguage 填當下的語音語言。櫃檯會用 ${cueLanguages.join("、")} 語言自動播放簡短的等待提示；這些語言只需在收到 PMS 結果後報重點。不需重複等待的話。`
+          : "";
+        const sessionInstruction = [geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction]
+          .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
-          .map((tool) => asyncArrivalNotice && tool.name === "notify_arrival_intent"
-            ? { ...tool, behavior: "NON_BLOCKING" }
-            : tool);
+          .map((tool) => {
+            if (asyncArrivalNotice && tool.name === "notify_arrival_intent") return { ...tool, behavior: "NON_BLOCKING" };
+            if (!LOOKUP_CUE_TOOLS.has(tool.name) || !tool.parameters) return tool;
+            const parameters = tool.parameters;
+            return {
+              ...tool,
+              parameters: {
+                ...parameters,
+                properties: { ...parameters.properties, replyLanguage: LOOKUP_REPLY_LANGUAGE },
+                required: [...("required" in parameters ? parameters.required ?? [] : []), "replyLanguage"],
+              },
+            };
+          });
         socket.send(
           JSON.stringify({
             setup: {
@@ -746,7 +808,14 @@ export function GeminiVoiceConsole() {
         if (socketRef.current !== socket) return;
         try {
           const message = await parseSocketMessage(event.data);
-          if (message.voiceActivity?.voiceActivityType === "ACTIVITY_START") quietReply = false;
+          const activity = message.voiceActivity?.type ?? message.voiceActivity?.voiceActivityType;
+          if (activity === "ACTIVITY_START") {
+            guestTurn += 1;
+            quietReply = false;
+            hasModelAudio = false;
+            lookupCuePlayed = false;
+            heardTaiwanese = false;
+          }
 
           const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
           if (sessionUpdate?.resumable && typeof sessionUpdate.newHandle === "string") {
@@ -803,7 +872,10 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
-              if (reportNuboKioskSpeech(userText, input?.languageCode ?? input?.language_code ?? input?.language)) {
+              const language = input?.languageCode ?? input?.language_code ?? input?.language;
+              heardTaiwanese ||= (typeof language === "string" && /^nan(?:[-_]|$)/iu.test(language)) ||
+                /歇睏|歇暝|一暝|佇遮|偌濟|佗位|欲睏|(?:欲|愛)歇|台語|臺語/u.test(userText);
+              if (reportNuboKioskSpeech(userText, language)) {
                 kioskResponseBufferRef.current = "";
                 setKioskResponse("");
               }
@@ -862,6 +934,7 @@ export function GeminiVoiceConsole() {
           if (!silentUntilWakeRef.current && playModelAudio && Array.isArray(parts)) {
             for (const part of parts) {
               if (part?.inlineData?.data) {
+                hasModelAudio = true;
                 noteVoiceInteraction();
                 recordIncomingAudioChunk();
                 markSpeaking();
@@ -1030,7 +1103,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                         void notifyGuestKeywords(call.args?.intent === "booking" ? "訂房" : call.args?.intent === "lodging" ? "住宿" : "入住");
                         return { ok: true, notificationStatus: "pending", sent: false };
                       })()
-                    : await executeNuboBrowserTool(call);
+                    : await executeVoiceTool(call);
 
                 // NUBO_MOBILE_APP_AUTO_OPEN_V1
                 const mobileAction =

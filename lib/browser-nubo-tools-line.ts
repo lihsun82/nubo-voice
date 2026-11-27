@@ -269,6 +269,8 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
 
   if (call.name === "pms_check_availability" || call.name === "pms_check_rest_availability" ||
       call.name === "pms_lookup_reservation") {
+    const pmsArgs = { ...call.args };
+    delete pmsArgs.replyLanguage;
     const route = call.name === "pms_check_availability"
       ? "/api/pms/v1/availability"
       : call.name === "pms_check_rest_availability"
@@ -281,8 +283,8 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
         ...(call.name === "pms_lookup_reservation" ? {} : { Accept: "application/vnd.nubosci.room-types.v1+json" }),
       },
       body: JSON.stringify(call.name === "pms_check_rest_availability"
-        ? { ...call.args, startAt: call.args?.startAt ?? "now", durationMinutes: Number(call.args?.durationMinutes) }
-        : call.args ?? {}),
+        ? { ...pmsArgs, startAt: pmsArgs.startAt ?? "now", durationMinutes: Number(pmsArgs.durationMinutes) }
+        : pmsArgs),
       cache: "no-store",
     }).catch(() => null);
     const companyPhone = "04-2223-1157";
