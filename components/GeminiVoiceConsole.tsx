@@ -32,6 +32,24 @@ import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
+const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
+
+function bookingLookupNeedsContact(call: FunctionCall, result: Record<string, unknown>) {
+  if (call.name === "pms_lookup_reservation") {
+    const hasLookupDetails = [call.args?.bookingReference, call.args?.surname].every(
+      (value) => typeof value === "string" && value.trim().length > 0,
+    );
+    return hasLookupDetails && result.matched !== true;
+  }
+
+  if (call.name !== "pms_check_availability" && call.name !== "pms_check_rest_availability") return false;
+  if (result.type === "group_booking_inquiry" || result.code === "dates_or_occupancy_needs_clarification") return false;
+
+  const hasRoomTypes = result.inventoryView === "guest-room-types-v1" &&
+    Array.isArray(result.roomTypes) && result.roomTypes.length > 0;
+  return result.ok === false || result.covered === false || !hasRoomTypes ||
+    (call.name === "pms_check_availability" && (result.covered !== true || result.source !== "live"));
+}
 
 async function requestJson(url: string, init?: RequestInit) {
   const response = await fetch(url, init);
@@ -664,17 +682,27 @@ export function GeminiVoiceConsole() {
       let skipStockAudio = false;
       let activeToolRequests = 0;
 
+      function showBookingSupport(call: FunctionCall, result: unknown) {
+        if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
+        const lookup = result && typeof result === "object" ? result as Record<string, unknown> : {};
+        if (!bookingLookupNeedsContact(call, lookup)) return;
+        setContactCard(performance.now());
+        return { ...lookup, contactCardShown: true };
+      }
+
       socket.onopen = () => {
         if (socketRef.current !== socket) return;
+        const musicEnabled = getNuboGuestConfigSnapshot().musicEnabled;
+        const sessionInstruction = `${geminiSystemInstruction}\n\n${sessionClockInstruction}\n\n${BOOKING_SUPPORT_INSTRUCTION}`;
         socket.send(
           JSON.stringify({
             setup: {
               model: `models/${tokenData.model}`,
               generationConfig: { responseModalities: ["AUDIO"] },
-              systemInstruction: { parts: [{ text: getNuboGuestConfigSnapshot().musicEnabled
-                ? `${geminiSystemInstruction}\n\n${sessionClockInstruction}`
-                : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${geminiSystemInstruction}\n\n${sessionClockInstruction}` }] },
-              tools: [{ functionDeclarations: getNuboGuestConfigSnapshot().musicEnabled
+              systemInstruction: { parts: [{ text: musicEnabled
+                ? sessionInstruction
+                : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${sessionInstruction}` }] },
+              tools: [{ functionDeclarations: musicEnabled
                 ? geminiFunctionDeclarations
                 : geminiFunctionDeclarations.filter((tool) => tool.name !== "open_youtube" && tool.name !== "control_youtube") }],
               inputAudioTranscription: {},
@@ -1099,8 +1127,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   }
                 }
 
-                let responseResult: unknown = result;
-                const availableRooms = call.name === "pms_check_availability" &&
+                const supportResult = showBookingSupport(call, result);
+                let responseResult: unknown = supportResult ?? result;
+                const availableRooms = !supportResult && call.name === "pms_check_availability" &&
                   result && typeof result === "object" &&
                   "covered" in result && result.covered === true &&
                   "roomTypes" in result && Array.isArray(result.roomTypes) &&
@@ -1120,12 +1149,12 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                   response: { result: responseResult },
                 });
               } catch (cause) {
+                const error = { error: cause instanceof Error ? cause.message : "工具執行失敗" };
+                const supportResult = showBookingSupport(call, error);
                 functionResponses.push({
                   id: call.id,
                   name: call.name,
-                  response: {
-                    error: cause instanceof Error ? cause.message : "工具執行失敗",
-                  },
+                  response: supportResult ? { result: supportResult } : error,
                 });
               }
             }
