@@ -60,6 +60,7 @@ export const BOOKING_HANDOFF_TOOL = {
 export const BOOKING_FLOW = `錦新館接待分流：
 已在 OTA（如 Agoda、Booking.com）或館方訂妥，直接協助原訂單：呼叫 guide_guest_booking(purpose=existing)，引導使用本館入住 QR 或確認信編號；第三方編號查不到就聯絡飯店核對，勿重訂。已預付勿再付全額，未付或部分付款只依已核對的原訂單尾款。
 要現場住宿或休息且尚未訂房：取得必要條件就查相應 PMS。只從本次 bookingOffers 選符合人數、日期與設備的可售房型。住宿 referenceTwd 為每房整段住宿的館方參考總價，休息為該時段參考價；空值請說房價待飯店確認。查房回傳 handoff=after_spoken_quote 時，系統已排好自動開頁。直接說符合的房型、參考總價及下一步，說完系統自行開頁。毋須再呼叫工具、詢問要不要開頁或等旅客同意。要帶旅客回到原訂單才呼叫 guide_guest_booking(existing)。若客人已經在頁面、只要資訊或不要開頁，查房時傳 navigation=information_only。旅客只問價目、明說不要開頁、沒有符合需求的房、團體需人工報價、或已經在網頁上操作時，不要自動開。勿用 open_website 代替。
+休息查詢回傳 cross_midnight_rest_needs_confirmation 時，照結果報已知三小時方案價，再請旅客用 NUBO 右上角聯絡卡或自助頁「客服協助」核對這段時間。這是時段尚未確認；不可說客滿、停賣或改用隔天的房況。
 若是現有自助頁，住宿按「現場訂房」、短休按「休息」，顯示洽櫃檯就按「客服協助」聯絡；說明目前該頁可辦理到哪裡。若確為館方正式訂房頁，依旅客看到的日期、房型、金額與付款方式一次帶一步；付款由本人在正式頁確認，不口述卡號或驗證碼。畫面尚未顯示付款成功或訂單成立就不要宣稱完成。若沒跳出來，可點 NUBO 的訂房／入住連結。不要宣稱看到另一個分頁。`;
 
 // Speech-to-text may write prices in local digits, words or Chinese numerals.

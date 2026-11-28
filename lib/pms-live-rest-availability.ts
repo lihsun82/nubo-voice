@@ -15,6 +15,13 @@ export function validRestQuery(startAt: unknown, durationMinutes: unknown) {
     time <= Date.now() + 365 * 24 * 60 * 60_000;
 }
 
+export function restCrossesTaipeiMidnight(startAt: string, minutes: number, requestedAt = Date.now()) {
+  const start = startAt === "now" ? requestedAt : Date.parse(startAt);
+  const day = 86_400_000;
+  const taipeiStart = start + 8 * 3_600_000;
+  return Math.floor(taipeiStart / day) !== Math.floor((taipeiStart + minutes * 60_000) / day);
+}
+
 function configuredEndpoint() {
   const rawUrl = process.env.NUBO_PMS_REST_AVAILABILITY_URL?.trim();
   const token = process.env.NUBO_PMS_AVAILABILITY_TOKEN?.trim();

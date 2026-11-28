@@ -57,3 +57,16 @@ test("NUBO guest voice queries live rest inventory and keeps failures distinct f
   t.mock.method(globalThis, "fetch", async () => { throw new Error("invalid query reached PMS"); });
   assert.equal((await route.POST(request({ startAt: "now", durationMinutes: 30 }))).status, 400);
 });
+
+test("rejected cross-midnight intervals are distinguished from confirmed zero inventory", async t => {
+  process.env.NUBO_PMS_PUSH_TOKEN = token;
+  process.env.NUBO_PMS_AVAILABILITY_TOKEN = token;
+  process.env.NUBO_PMS_REST_AVAILABILITY_URL = url;
+  t.mock.method(globalThis, "fetch", async () => Response.json({error: "invalid_query"}, {status: 400}));
+  const date = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0,10);
+  for (const [hour, crossesMidnight] of [["23",true],["10",false]]) {
+    const result = await route.POST(request({startAt: date + "T" + hour + ":00:00+08:00", durationMinutes:180}));
+    assert.equal(result.status,502);
+    assert.deepEqual(await result.json(), {error:"pms_upstream_query_rejected", crossesMidnight});
+  }
+});

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
 import { consumeHotelKioskInventoryBudget, isHotelKioskInventoryRequest } from "@/lib/pms-kiosk-inventory-auth";
 import { guestRoomTypeView, PmsLiveError } from "@/lib/pms-live-availability";
-import { queryLivePmsRestAvailability, validRestQuery } from "@/lib/pms-live-rest-availability";
+import { queryLivePmsRestAvailability, restCrossesTaipeiMidnight, validRestQuery } from "@/lib/pms-live-rest-availability";
 import { floorsForRequiredAmenities, guestRoomTypeFloorView } from "@/lib/pms-facility-floors";
 
 export const runtime = "nodejs";
@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
   const floors = floorsForRequiredAmenities(body.requiredAmenities);
   if (floors === null) return NextResponse.json({ error: "invalid_amenities" }, { status: 400, headers });
   const floorQuery = floors.length > 0;
+  const requestedAt = Date.now();
   try {
     const byRoomType = request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json";
     const result = await queryLivePmsRestAvailability(
@@ -52,7 +53,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (!floorQuery && error instanceof PmsLiveError && error.code === "invalid_query") {
       console.warn("[pms/rest-availability] upstream rejected valid rest query");
-      return NextResponse.json({ error: "pms_upstream_query_rejected" }, { status: 502, headers });
+      const crossesMidnight = restCrossesTaipeiMidnight(body.startAt as string, body.durationMinutes as number, requestedAt);
+      return NextResponse.json({ error: "pms_upstream_query_rejected", crossesMidnight }, { status: 502, headers });
     }
     if (error instanceof PmsLiveError && error.code === "rate_limited") {
       return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });

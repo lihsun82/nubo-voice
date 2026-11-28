@@ -296,6 +296,12 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     const fallback = { ok: false, companyPhone, speechText: `目前查不到，請打櫃檯電話 ${companyPhone} 確認。` };
     if (!response) return fallback;
     const result = await response.json().catch(() => null);
+    if (call.name === "pms_check_rest_availability" && result?.error === "pms_upstream_query_rejected" && result.crossesMidnight === true) {
+      const threeHours = Number(pmsArgs.durationMinutes) === 180;
+      return { ...fallback, code: "cross_midnight_rest_needs_confirmation", inventoryConfirmed: false,
+        ...(threeHours ? { referenceTwd: 890 } : {}),
+        speechText: (threeHours ? "三小時 890 元。" : "") + "這段休息時間跨午夜，請透過右上角的聯絡卡請飯店確認房況。" };
+    }
     if (result?.error === "floor_inventory_unavailable") {
       return { ...fallback, code: result.error, speechText: `目前無法確認符合設備需求的空房，請聯絡櫃檯 ${companyPhone}。` };
     }
