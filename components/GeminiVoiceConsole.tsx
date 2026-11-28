@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
-import { loadNuboSpeechClip, MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
+import { loadNuboSpeechClip, MicrophonePcmStream, PcmPlaybackQueue, playNuboSpeechClip } from "@/lib/browser-audio";
 import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
 import {
   executeNuboBrowserTool,
@@ -207,6 +207,7 @@ export function GeminiVoiceConsole() {
   const callToneRef = useRef<Promise<void> | null>(null);
   const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
   const greetingAudioRef = useRef<Partial<Record<NuboKioskLanguage, Promise<string | null>>>>({});
+  const greetingPlaybackRef = useRef<AbortController | null>(null);
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -447,7 +448,9 @@ export function GeminiVoiceConsole() {
   useEffect(() => {
     if (state === "idle") notifyNuboVoicePhase("idle");
     else if (state === "connecting") notifyNuboVoicePhase("connecting");
-    else if (state === "connected") notifyNuboVoicePhase("listening");
+    else if (state === "connected") {
+      if (!greetingPlaybackRef.current) notifyNuboVoicePhase("listening");
+    }
     else notifyNuboVoicePhase("error");
   }, [state]);
 
@@ -911,9 +914,9 @@ export function GeminiVoiceConsole() {
             noteVoiceInteraction();
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
-            let queuingGreeting = !!greetingClip;
+            let playingGreeting = !!greetingClip;
             await microphone.start((data) => {
-              if (queuingGreeting || socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
+              if (playingGreeting || socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
               socket.send(
                 JSON.stringify({
                   realtimeInput: {
@@ -928,17 +931,28 @@ export function GeminiVoiceConsole() {
               return;
             }
             void playback.prepare().catch(() => undefined);
-            setState("connected");
-            if (greetingLanguage && socket.readyState === WebSocket.OPEN) {
+            const audibleGreeting = !silentUntilWakeRef.current;
+            if (greetingLanguage) {
               greetingLanguageRef.current = null;
-              if (!silentUntilWakeRef.current) {
-                setKioskResponse(NUBO_KIOSK_GREETINGS[greetingLanguage]);
-                if (greetingClip) {
-                  markSpeaking();
-                  await playback.enqueue(greetingClip, 24_000).catch(() => undefined);
-                }
+              if (audibleGreeting) setKioskResponse(NUBO_KIOSK_GREETINGS[greetingLanguage]);
+            }
+            if (greetingClip && audibleGreeting) {
+              const controller = new AbortController();
+              const abortGreeting = () => controller.abort();
+              socket.addEventListener("close", abortGreeting, { once: true });
+              greetingPlaybackRef.current = controller;
+              notifyNuboVoicePhase("speaking");
+              setState("connected");
+              await playNuboSpeechClip(playback, greetingClip, controller.signal);
+              socket.removeEventListener("close", abortGreeting);
+              if (greetingPlaybackRef.current === controller) greetingPlaybackRef.current = null;
+              playingGreeting = false;
+              if (socketRef.current === socket && !closingRef.current && socket.readyState === WebSocket.OPEN) {
+                notifyNuboVoicePhase("listening");
               }
-              queuingGreeting = false;
+            } else {
+              playingGreeting = false;
+              setState("connected");
             }
           }
 

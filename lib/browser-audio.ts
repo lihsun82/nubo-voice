@@ -6,6 +6,7 @@ import {
 
 const NUBO_AUDIO_ECO_IDLE_MS = 30_000;
 const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
+const NUBO_ASSISTANT_ECHO_TAIL_MS = 250;
 
 let activePlaybackQueue: PcmPlaybackQueue | null = null;
 
@@ -24,6 +25,35 @@ export async function loadNuboSpeechClip(url: string) {
   const context = new OfflineAudioContext(1, 1, 24_000);
   const audio = await context.decodeAudioData(await response.arrayBuffer());
   return toBase64(floatToPcm16(audio.getChannelData(0)));
+}
+
+export function playNuboSpeechClip(playback: PcmPlaybackQueue, clip: string, signal: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+
+    let started = false;
+    let tailTimer: number | undefined;
+    const finish = () => {
+      window.clearTimeout(tailTimer);
+      window.removeEventListener("nubo:audio-playback-state", onPlayback);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const onPlayback = (event: Event) => {
+      const { active } = (event as CustomEvent<{ active: boolean }>).detail;
+      window.clearTimeout(tailTimer);
+      if (active) started = true;
+      else if (started) tailTimer = window.setTimeout(finish, NUBO_ASSISTANT_ECHO_TAIL_MS);
+    };
+    window.addEventListener("nubo:audio-playback-state", onPlayback);
+    signal.addEventListener("abort", finish, { once: true });
+    void playback.enqueue(clip, 24_000).then(() => {
+      if (!started) finish();
+    }, finish);
+  });
 }
 
 let nativeSenseChunks: Uint8Array[] = [];
