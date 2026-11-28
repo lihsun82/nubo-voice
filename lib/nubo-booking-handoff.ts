@@ -88,11 +88,19 @@ function informationOnly(text: string) {
   return /(?:不要|不想|不用|別|不必).{0,7}(?:跳|開|訂房頁)|只(?:是)?(?:想|要)?(?:問價|詢價|看價|比價)|(?:已經|正在|目前|我在).{0,8}(?:自助頁|訂房頁|訂房網頁)|(?:只|就)看(?:看)?價|price.only|just (?:checking|comparing) prices|do(?:n.t| not) open|already on (?:the|this) (?:page|site)|料金だけ|開かないで|すでに.{0,6}画面|가격만|열지 마|chỉ (?:hỏi|xem) giá|đừng mở/iu.test(text);
 }
 
+function describesExistingReservation(words: string) {
+  const text = words.normalize("NFKC").toLowerCase();
+  if (/如果|假如|假設|還沒|尚未|沒有(?:在.{0,16})?(?:訂|預)|取消|まだ予約|予約していません|예약하지|chưa đặt|cancelled|canceled|haven.t booked|if i (?:have|had|book)/iu.test(text)) return false;
+  return /(?:已經?|早就|之前|事先).{0,20}(?:[訂订]好|預[訂定約]|[訂订]了|[訂订]過|有[訂预]單)|(?:我有|我有一[筆張個]).{0,10}(?:訂單|預訂|入住碼)|(?:agoda|booking\.?com|expedia|ota).{0,12}(?:[訂订]好|[訂订]了|已付|付清)|(?:i|we) (?:already (?:have|booked|paid)|(?:have|'ve) (?:a reservation|booked|paid))|(?:予約済み|予約しました|予約しています)|예약(?:했|되어)|(?:tôi|mình) đã (?:đặt|thanh toán)/iu.test(text);
+}
+
+const existingBookingStep = /qr|入住碼|訂單編號|預訂編號|booking (?:number|reference)|reservation (?:number|code)|予約番号|예약 번호|mã (?:đặt phòng|nhận phòng)/iu;
+
 // One controller per guest call. A superseded lookup or interrupted reply must never navigate later.
 export class GuestBookingHandoff {
   private revision = 0;
   private latest: { purpose: Purpose; offers: Offer[]; asOf: number } | null = null;
-  private pending: { url: string; spoken: boolean; ended: boolean; offers: Offer[]; quoteHeard: boolean } | null = null;
+  private pending: { url: string; spoken: boolean; ended: boolean; offers: Offer[]; stepSpoken: boolean; existing: boolean } | null = null;
   private guestWords = "";
   private replyWords = "";
   private suppressPage = false;
@@ -137,9 +145,13 @@ export class GuestBookingHandoff {
   }
 
   replyTranscript(words: string) {
+    if (!this.pending && !this.suppressPage && !this.attempted.has(GUEST_KIOSK_URL) && describesExistingReservation(this.guestWords)) {
+      this.arm(GUEST_KIOSK_URL, [], true);
+    }
     if (!this.pending) return;
     this.replyWords += words;
-    this.pending.quoteHeard = quotedOffer(this.replyWords, this.pending.offers);
+    this.pending.stepSpoken = this.pending.existing ? existingBookingStep.test(this.replyWords)
+      : quotedOffer(this.replyWords, this.pending.offers);
   }
 
   inventory(revision: number, purpose: "stay" | "rest", args: Fields, result: Fields, stayBookingUrl: string | null = null) {
@@ -181,23 +193,23 @@ export class GuestBookingHandoff {
       ? "self_service_kiosk" : "hotel_booking_page";
   }
 
-  private arm(url: string, offers: Offer[]) {
+  private arm(url: string, offers: Offer[], existing = false) {
     if (this.attempted.has(url) || this.pending?.url === url) return;
     this.show(url, false);
     this.replyWords = "";
-    this.pending = { url, spoken: false, ended: false, offers, quoteHeard: false };
+    this.pending = { url, spoken: false, ended: false, offers, stepSpoken: false, existing };
   }
 
   spoken() { if (this.pending) this.pending.spoken = true; this.flush(); }
   endReply() {
-    if (this.pending?.quoteHeard) this.pending.ended = true;
+    if (this.pending?.stepSpoken) this.pending.ended = true;
     this.flush();
   }
   playback(active: boolean) { this.playing = active; if (!active) this.flush(); }
   manual(url: string) { this.pending = null; this.attempted.add(url); }
 
   private flush() {
-    if (this.pending?.ended && this.pending.spoken && this.pending.quoteHeard && !this.playing) this.launch(this.pending.url);
+    if (this.pending?.ended && this.pending.spoken && this.pending.stepSpoken && !this.playing) this.launch(this.pending.url);
   }
   private launch(url: string) {
     this.pending = null;

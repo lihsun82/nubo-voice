@@ -330,7 +330,10 @@ export function OpenAIRealtimeVoiceConsole({
       type === "response.audio_transcript.delta"
     ) {
       noteEcoActivity();
-      if (event.delta) bookingHandoff.replyTranscript(event.delta);
+      if (event.delta) {
+        bookingHandoff.replyTranscript(event.delta);
+        if (audioRef.current && !audioRef.current.paused) bookingHandoff.spoken();
+      }
       transcriptBufferRef.current += event.delta ?? "";
       if (transcriptBufferRef.current.trim()) {
         setTranscript(transcriptBufferRef.current.trim());

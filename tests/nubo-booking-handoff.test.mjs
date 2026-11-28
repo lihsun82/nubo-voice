@@ -91,3 +91,19 @@ test("explicit price-only, blocked navigation and in-page requests stay on the c
   const {call} = start();
   assert.equal(call.inventory(call.invalidate(),"stay",{...dates,navigation:"information_only"},query()).handoff,"none");
 });
+
+test("an existing OTA guest hears the original-order step and opens the kiosk even without a model tool call", () => {
+  for (const [words, shouldOpen] of [
+    ["我已經在 Agoda 訂好也付清了，現在到飯店了", true],
+    ["I already booked on Agoda; how do I check in?", true],
+    ["我在自助頁，已經在 Agoda 訂好了", false],
+    ["我還沒在 Agoda 訂好", false], ["如果我已經在 Agoda 訂好了呢", false],
+  ]) {
+    const {call,opens} = start();
+    call.guestTurn(); call.guestTranscript(words);
+    assert.deepEqual(opens,[]);
+    call.playback(true); call.replyTranscript("在機台選擇掃描入住 QR Code。");
+    call.spoken(); call.endReply(); call.playback(false);
+    assert.equal(opens.length, Number(shouldOpen),words);
+  }
+});
