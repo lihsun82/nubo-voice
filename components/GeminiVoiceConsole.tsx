@@ -44,7 +44,7 @@ type ConnectionState = "idle" | "connecting" | "connected" | "error";
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
 const NO_SPEECH_MARKER = "<no speech>";
 const GREETING_INSTRUCTION = "The kiosk plays its fixed opening greeting locally. Wait for a guest question and answer it directly. Do not generate or repeat an opening greeting.";
-const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
+const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：NUBO 語音主畫面右上角有 LINE QR Code 和櫃檯電話。旅客在另一個訂房網頁或自助機操作時，請按該頁「客服協助」並點「公司電話」。該頁沒有 LINE 聯絡卡。只問該頁操作時，依自助頁指引回答。";
 const GUARDED_REPLY_LANGUAGES = {
   en: { name: "English", repeat: "Could you repeat your question in English?" },
   zh: { name: "standard Taiwanese Mandarin (國語, zh-TW)", repeat: "可以再說一次嗎？" },
