@@ -18,6 +18,14 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+export async function loadNuboSpeechClip(url: string) {
+  const response = await fetch(url, { cache: "force-cache", signal: AbortSignal.timeout(3500) });
+  if (!response.ok) throw new Error("NUBO speech clip unavailable");
+  const context = new OfflineAudioContext(1, 1, 24_000);
+  const audio = await context.decodeAudioData(await response.arrayBuffer());
+  return toBase64(floatToPcm16(audio.getChannelData(0)));
+}
+
 let nativeSenseChunks: Uint8Array[] = [];
 let nativeSenseBytes = 0;
 const NUBO_NATIVE_SENSE_FRAME_BYTES = 32_000;

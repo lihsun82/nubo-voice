@@ -18,8 +18,9 @@ export const NUBO_KIOSK_LOCALES: Record<NuboKioskLanguage, string> = {
   zh: "zh-Hant-TW", en: "en", ja: "ja", ko: "ko", vi: "vi-VN",
 };
 
-export const NUBO_KIOSK_GREETING_PROMPTS: Record<NuboKioskLanguage, string> = {
-  zh: "通話已接通。請立即用臺灣華語逐字說出以下開場白，說完停下等待旅客：hello 歡迎新寶智慧酒店 我是您的智慧管家nubo",
+export const NUBO_KIOSK_MANDARIN_GREETING = "Hello歡迎新寶智慧酒店，我是你的智慧管家NUBO";
+
+export const NUBO_KIOSK_GREETING_PROMPTS: Record<Exclude<NuboKioskLanguage, "zh">, string> = {
   en: "The call is connected. Say only this greeting in natural English, then wait for the guest: “Hello, welcome to AINUBO Smart Hotel. I'm NUBO, your AI concierge.”",
   ja: "通話がつながりました。次のあいさつだけを自然な日本語で話し、その後はお客様のお話をお待ちください。「こんにちは。AINUBOスマートホテルへようこそ。AIコンシェルジュのヌーボです。」",
   ko: "통화가 연결되었습니다. 다음 인사만 자연스러운 한국어로 말한 뒤 고객의 말을 기다리세요. “안녕하세요. 아이누보 스마트 호텔에 오신 것을 환영합니다. 저는 AI 컨시어지 누보입니다.”",
