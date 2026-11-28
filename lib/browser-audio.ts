@@ -8,9 +8,7 @@ import {
 const NUBO_AUDIO_ECO_IDLE_MS = 30_000;
 const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
 const NUBO_ASSISTANT_ECHO_TAIL_MS = 250;
-const PCM16_BYTES_PER_MS = 32; // 16 kHz, mono, 16-bit microphone frames.
-
-type MicrophoneAudioSink = (base64: string, possibleSpeech?: boolean, durationMs?: number) => void;
+type MicrophoneAudioSink = (base64: string, possibleSpeech?: boolean) => void;
 
 let activePlaybackQueue: PcmPlaybackQueue | null = null;
 
@@ -314,7 +312,7 @@ export class MicrophonePcmStream {
         return;
       }
 
-      onAudio(base64, rms >= threshold * 0.8, pcm.byteLength / PCM16_BYTES_PER_MS);
+      onAudio(base64, rms >= threshold * 0.8);
     };
 
     this.source.connect(this.processor);

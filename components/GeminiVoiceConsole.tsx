@@ -937,9 +937,9 @@ export function GeminiVoiceConsole() {
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
             let playingGreeting = !!greetingClip;
-            await microphone.start((data, possibleSpeech, durationMs) => {
+            await microphone.start((data, possibleSpeech) => {
               if (playingGreeting || socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
-              if (liveAudioInput) liveAudioInput.write(data, possibleSpeech, durationMs);
+              if (liveAudioInput) liveAudioInput.write(data, possibleSpeech);
               else sendMicrophoneAudio(data);
             });
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) {
