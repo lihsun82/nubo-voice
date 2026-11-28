@@ -18,13 +18,13 @@ export const NUBO_KIOSK_LOCALES: Record<NuboKioskLanguage, string> = {
   zh: "zh-Hant-TW", en: "en", ja: "ja", ko: "ko", vi: "vi-VN",
 };
 
-export const NUBO_KIOSK_MANDARIN_GREETING = "Hello歡迎新寶智慧酒店，我是你的智慧管家NUBO";
-
-export const NUBO_KIOSK_GREETING_PROMPTS: Record<Exclude<NuboKioskLanguage, "zh">, string> = {
-  en: "The call is connected. Say only this greeting in natural English, then wait for the guest: “Hello, welcome to AINUBO Smart Hotel. I'm NUBO, your AI concierge.”",
-  ja: "通話がつながりました。次のあいさつだけを自然な日本語で話し、その後はお客様のお話をお待ちください。「こんにちは。AINUBOスマートホテルへようこそ。AIコンシェルジュのヌーボです。」",
-  ko: "통화가 연결되었습니다. 다음 인사만 자연스러운 한국어로 말한 뒤 고객의 말을 기다리세요. “안녕하세요. 아이누보 스마트 호텔에 오신 것을 환영합니다. 저는 AI 컨시어지 누보입니다.”",
-  vi: "Cuộc gọi đã kết nối. Hãy nói đúng lời chào sau bằng tiếng Việt tự nhiên rồi chờ khách nói: “Xin chào, chào mừng quý khách đến với khách sạn thông minh AINUBO. Tôi là NUBO, trợ lý thông minh của quý khách.”",
+// These captions match the fixed recordings used at call start.
+export const NUBO_KIOSK_GREETINGS: Record<NuboKioskLanguage, string> = {
+  zh: "Hello~歡迎新寶智慧酒店，我是你的智慧管家NUBO",
+  en: "Hello, welcome to AINUBO Smart Hotel. I'm NUBO, your AI concierge.",
+  ja: "Hello、AINUBOスマートホテルへようこそ。AIコンシェルジュのヌーボです。",
+  ko: "Hello, 아이누보 스마트 호텔에 오신 것을 환영합니다. 저는 AI 컨시어지 누보입니다.",
+  vi: "Hello, chào mừng quý khách đến với khách sạn thông minh AINUBO. Tôi là NUBO, trợ lý thông minh của quý khách.",
 };
 
 const NEUTRAL_WORDS = new Set(["nubo", "ainubo", "hotel", "hotels", "line", "qr", "code", "wi", "fi", "wifi", "ai", "ok", "okay", "yes", "no", "um", "uh"]);

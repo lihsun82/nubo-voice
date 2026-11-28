@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  NUBO_KIOSK_MANDARIN_GREETING,
-  NUBO_KIOSK_GREETING_PROMPTS,
+  NUBO_KIOSK_GREETINGS,
   checkNuboEnglishReply,
   detectNuboGuestReplyLanguage,
   detectNuboGuestSpeechLanguage,
@@ -13,9 +12,12 @@ import {
 } from "../lib/nubo-kiosk-language.ts";
 import { formatNuboGuestLanguage } from "../lib/nubo-guest-language.ts";
 
-test("the Mandarin welcome uses the hotel's approved wording and bypasses model generation", () => {
-  assert.equal(NUBO_KIOSK_MANDARIN_GREETING, "Hello歡迎新寶智慧酒店，我是你的智慧管家NUBO");
-  assert.equal(Object.hasOwn(NUBO_KIOSK_GREETING_PROMPTS, "zh"), false);
+test("each call welcomes guests with Hello and preserves the approved Mandarin wording", () => {
+  assert.equal(NUBO_KIOSK_GREETINGS.zh, "Hello~歡迎新寶智慧酒店，我是你的智慧管家NUBO");
+  for (const greeting of Object.values(NUBO_KIOSK_GREETINGS)) {
+    assert.match(greeting, /^Hello\b/u);
+    assert.doesNotMatch(greeting, /您好|こんにちは|안녕하세요|Xin chào/u);
+  }
 });
 
 test("Japanese speech takes over a manually selected welcome language", () => {

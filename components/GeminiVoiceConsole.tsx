@@ -19,7 +19,7 @@ import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { formatNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import {
-  NUBO_KIOSK_GREETING_PROMPTS, NUBO_KIOSK_MANDARIN_GREETING, checkNuboEnglishReply, clearNuboGuestSpeechLanguage,
+  NUBO_KIOSK_GREETINGS, checkNuboEnglishReply, clearNuboGuestSpeechLanguage,
   detectNuboGuestReplyLanguage, detectNuboGuestSpeechLanguage,
   getNuboGuestSpeechLanguage, reportNuboKioskSpeech, type NuboKioskLanguage,
 } from "@/lib/nubo-kiosk-language";
@@ -38,7 +38,7 @@ import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
-const MANDARIN_GREETING_AUDIO = "/audio/nubo-jinxin-welcome-zh-20261128.mp3";
+const GREETING_INSTRUCTION = "The kiosk plays its fixed opening greeting locally. Wait for a guest question and answer it directly. Do not generate or repeat an opening greeting.";
 const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
 const ENGLISH_REPLY_REPAIR = "Answer the same guest turn again entirely in natural spoken English. Keep the answer and any verified tool results. Do not call any tools, repeat prior actions, or mention this language correction. Speak only the corrected answer.";
 const TAIWANESE_REST_REQUEST = /^(?:請問)?(?:我|阮|咱|咱們)?(?:想欲|欲|要)(?:佇遮)?(?:歇睏|歇|睏)[一二兩三四五六七八九十\d]+(?:个|個)?(?:點鐘|鐘頭|小時)/u;
@@ -201,7 +201,7 @@ export function GeminiVoiceConsole() {
   const closingRef = useRef(false);
   const callToneRef = useRef<Promise<void> | null>(null);
   const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
-  const mandarinGreetingAudioRef = useRef<Promise<string | null> | null>(null);
+  const greetingAudioRef = useRef<Partial<Record<NuboKioskLanguage, Promise<string | null>>>>({});
   const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -321,16 +321,16 @@ export function GeminiVoiceConsole() {
     silentUntilWakeRef.current = window.localStorage.getItem(NUBO_SILENT_STORAGE_KEY) === "true";
   }, []);
 
-  function prepareMandarinGreeting() {
-    return mandarinGreetingAudioRef.current ??= loadNuboSpeechClip(MANDARIN_GREETING_AUDIO).catch(() => {
-      mandarinGreetingAudioRef.current = null;
+  function prepareGreeting(language: NuboKioskLanguage) {
+    return greetingAudioRef.current[language] ??= loadNuboSpeechClip(`/audio/nubo-jinxin-welcome-${language}-20261128.mp3`).catch(() => {
+      delete greetingAudioRef.current[language];
       return null;
     });
   }
 
   useEffect(() => {
     preconnect(`https://${GEMINI_LIVE_HOST}`, { crossOrigin: "anonymous" });
-    void prepareMandarinGreeting();
+    void prepareGreeting("zh");
     void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
       // Token prewarm is optional. NUBO can still request a token when connecting.
     });
@@ -825,10 +825,7 @@ export function GeminiVoiceConsole() {
           ? `【查房與查訂單的進度】請直接呼叫 PMS，replyLanguage 填當下的語音語言。櫃檯會用 ${cueLanguages.join("、")} 語言自動播放簡短的等待提示；這些語言只需在收到 PMS 結果後報重點。不需重複等待的話。`
           : "";
         const photoInstruction = "旅客想看本館房間照片時呼叫 show_room_photos。回傳 shown=true 後，用旅客的語言簡短說已開啟客房相簿、可以點選樓層和照片。";
-        const greetingInstruction = greetingLanguageRef.current === "zh"
-          ? "The kiosk plays its fixed opening greeting locally. Wait for a guest question and answer it directly. Do not generate or repeat an opening greeting."
-          : "";
-        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction, greetingInstruction]
+        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction, GREETING_INSTRUCTION]
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
@@ -903,7 +900,7 @@ export function GeminiVoiceConsole() {
               return;
             }
             const greetingLanguage = greetingLanguageRef.current;
-            const greetingClip = greetingLanguage === "zh" ? await prepareMandarinGreeting() : null;
+            const greetingClip = greetingLanguage ? await prepareGreeting(greetingLanguage) : null;
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
             reconnectAttemptsRef.current = 0;
             noteVoiceInteraction();
@@ -929,20 +926,14 @@ export function GeminiVoiceConsole() {
             setState("connected");
             if (greetingLanguage && socket.readyState === WebSocket.OPEN) {
               greetingLanguageRef.current = null;
-              if (greetingLanguage === "zh") {
-                if (!silentUntilWakeRef.current) {
-                  setKioskResponse(NUBO_KIOSK_MANDARIN_GREETING);
-                  if (greetingClip) {
-                    markSpeaking();
-                    await playback.enqueue(greetingClip, 24_000).catch(() => undefined);
-                  }
+              if (!silentUntilWakeRef.current) {
+                setKioskResponse(NUBO_KIOSK_GREETINGS[greetingLanguage]);
+                if (greetingClip) {
+                  markSpeaking();
+                  await playback.enqueue(greetingClip, 24_000).catch(() => undefined);
                 }
-                queuingGreeting = false;
-              } else {
-                socket.send(JSON.stringify({
-                  realtimeInput: { text: NUBO_KIOSK_GREETING_PROMPTS[greetingLanguage] },
-                }));
               }
+              queuingGreeting = false;
             }
           }
 
@@ -1645,7 +1636,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     const socket = socketRef.current;
     if (callToneRef.current || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     greetingLanguageRef.current = language;
-    if (language === "zh") void prepareMandarinGreeting();
+    void prepareGreeting(language);
     clearReconnectTimer();
     setIsRinging(true);
     const tone = playNuboCallTones().then(() => setIsRinging(false));
