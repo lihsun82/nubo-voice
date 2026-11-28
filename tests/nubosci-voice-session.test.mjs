@@ -261,3 +261,17 @@ test("withholds a grant that cannot start before its expiry", async () => {
   assert.equal(result.status, 502);
   assert.deepEqual(await result.json(), { error: "voice_unavailable" });
 });
+
+test("guides guests through the published counter screens in both partner configurations", async () => {
+  for (const enablePmsTools of [false, true]) {
+    const { handle, calls } = setup({ enablePmsTools });
+    assert.equal((await handle(request())).status, 200);
+    const { systemInstruction } = JSON.parse(calls[0][1].body).bidiGenerateContentSetup;
+    const text = systemInstruction.parts[0].text;
+    assert.match(text, /輕觸螢幕開始.*請選擇入住服務/);
+    assert.match(text, /確認信或簡訊.*完整英文字母與數字.*查詢訂單/);
+    assert.match(text, /退房」會打開「需要協助嗎？/);
+    assert.match(text, /證件補登」和「支付尾款」都顯示「請至櫃檯辦理/);
+    assert.doesNotMatch(text, /抵達後請先前往櫃檯/);
+  }
+});
