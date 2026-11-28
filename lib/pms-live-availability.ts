@@ -1,10 +1,11 @@
 import { PMS_PROPERTY_ID } from "./pms-snapshot.ts";
+import { guestRoomTypeFloorView, hasPmsFloorScope } from "./pms-facility-floors.ts";
 
 type RoomType = { code: string; name: string; availableCount: number };
 export const guestRoomTypeView = "guest-room-types-v1";
 
 export class PmsLiveError extends Error {
-  readonly code: "pms_data_unavailable" | "room_catalogue_incomplete" | "room_type_breakdown_unavailable" | "room_type_allocation_unavailable" | "invalid_query" | "rate_limited";
+  readonly code: "pms_data_unavailable" | "room_catalogue_incomplete" | "room_type_breakdown_unavailable" | "room_type_allocation_unavailable" | "floor_inventory_unavailable" | "invalid_query" | "rate_limited";
   constructor(code: PmsLiveError["code"]) {
     super(code);
     this.code = code;
@@ -72,19 +73,22 @@ export async function queryLivePmsAvailability(
   adults: number,
   fetcher: typeof fetch = fetch,
   guestRoomTypes = false,
+  floors: readonly number[] = [],
 ) {
   const endpoint = configuredEndpoint();
   if (!endpoint) return null;
 
+  const floorQuery = floors.length > 0;
+  const inventoryView = floorQuery ? guestRoomTypeFloorView : guestRoomTypeView;
   const response = await fetcher(endpoint.url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${endpoint.token}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...(guestRoomTypes ? { "X-Nubo-Inventory-View": guestRoomTypeView } : {}),
+      ...(guestRoomTypes || floorQuery ? { "X-Nubo-Inventory-View": inventoryView } : {}),
     },
-    body: JSON.stringify({ propertyId: PMS_PROPERTY_ID, checkIn, checkOut, adults }),
+    body: JSON.stringify({ propertyId: PMS_PROPERTY_ID, checkIn, checkOut, adults, ...(floorQuery ? { floors } : {}) }),
     cache: "no-store",
     redirect: "error",
     signal: AbortSignal.timeout(4_000),
@@ -102,7 +106,8 @@ export async function queryLivePmsAvailability(
     throw new Error("pms_live_invalid_response");
   }
   const result = value as Record<string, unknown>;
-  if (guestRoomTypes && result.inventoryView !== guestRoomTypeView) throw new PmsLiveError("room_type_allocation_unavailable");
+  if (floorQuery && !hasPmsFloorScope(result, floors)) throw new PmsLiveError("floor_inventory_unavailable");
+  if (guestRoomTypes && result.inventoryView !== inventoryView) throw new PmsLiveError("room_type_allocation_unavailable");
   if (result.propertyId !== PMS_PROPERTY_ID || result.checkIn !== checkIn ||
       result.checkOut !== checkOut || result.adults !== adults ||
       typeof result.asOf !== "string" ||
@@ -124,6 +129,7 @@ export async function queryLivePmsAvailability(
     asOf: result.asOf,
     roomTypes: roomTypesFrom(result.roomTypes),
     source: "live" as const,
-    ...(guestRoomTypes ? { inventoryView: guestRoomTypeView } : {}),
+    ...(guestRoomTypes || floorQuery ? { inventoryView } : {}),
+    ...(floorQuery ? { floors } : {}),
   };
 }

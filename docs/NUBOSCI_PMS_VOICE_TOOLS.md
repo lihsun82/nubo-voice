@@ -45,6 +45,15 @@ nubosci 前台收到 `toolCall.functionCalls` 後，應把參數送到**nubosci 
 休息結果含 `startAt`、`durationMinutes`、`availableCount`；
 播報未來時段時須說清楚時間。兩種結果只接受五分鐘內的 `asOf`。
 
+## NUBO 語音櫃檯設備查房
+
+NUBO 主站的住宿與休息查房可傳 `requiredAmenities`。語音伺服器將
+`["bidet"]` 換為 `floors:[7,8]`，`["bathtub"]` 或兩項皆需時換為
+`floors:[8]`。需要 PMS 支援 `X-Nubo-Inventory-View: guest-room-types-by-floor-v1`，
+以相同館別、日期及入住人數或休息時段篩選實體房後，回傳相符的 `floors`、
+`inventoryView` 及彙總 `roomTypes`。包含可售數為零的房型，讓 NUBO 能區分無房與資料缺漏。
+尚未提供樓層結果時回報無法確認並顯示聯絡卡。憑證、回應欄位與權限仍限唯讀房型存量。
+
 ## 驗收
 
 1. 先以合成回應測試兩支代理、資料逾時、錯誤、確定 0 間與

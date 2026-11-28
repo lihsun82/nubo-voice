@@ -293,6 +293,9 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
     const fallback = { ok: false, companyPhone, speechText: `目前查不到，請打櫃檯電話 ${companyPhone} 確認。` };
     if (!response) return fallback;
     const result = await response.json().catch(() => null);
+    if (result?.error === "floor_inventory_unavailable") {
+      return { ...fallback, code: result.error, speechText: `目前無法確認符合設備需求的空房，請聯絡櫃檯 ${companyPhone}。` };
+    }
     if (!result || (!response.ok && (response.status !== 400 || result.error !== "invalid_payload" || call.name !== "pms_check_availability"))) {
       return fallback;
     }
@@ -396,8 +399,9 @@ export const geminiSystemInstruction = `
 - 【團體訂房優先】聽到「遊覽車」「遊覽團」「旅行團」「團體」「包團」「團客」「多間房」或旅客提出超過4人的單次團體需求（例如「我有一台遊覽車，有40位大人、5位小孩」），先理解為45人團體住宿詢問，不可把40位成人送入 pms_check_availability 的 adults 欄位。可呼叫 pms_group_inquiry(adults=40, children=5, coachCount=1)，即使尚未提供日期也要自然回答；應先說明可協助團體詢價，再問「預計哪天入住、住幾晚？」後續補問小孩年齡、所需房型與分房方式及聯絡方式。不可假裝已完成訂房、報價或已通知同仁。
 - 【查房工具角色】pms_check_availability 的 adults 指每間房成人數，不是同團總成人數。需要多房間／團體總量配置時，現有唯讀 PMS 不支援一筆查整團，可先個別查詢適當房型的即時庫存，但不能把單一房型有房推論成整團45位都可入住，必須由館方人工核對房型組合、全部房晚與最終報價。
 - 【團體停車】有配合台安醫院旁停車場，但沒有確認遊覽車尺寸、停車車位或可否進場。不能保證可停遊覽車；需向合作停車場或館方確認。若旅客要現場確認，提供 04-22231157 或 hello@ainubohotels.com。
-- 住宿先取得入住日、退房日或晚數，以及每間房的成人人數，再呼叫 pms_check_availability。用台灣日期查整段住宿，只有 covered=true、source=live 且帶有 guest-room-types-v1 的 roomTypes 才能確認。日期、人數有變要重新查。客人泛問有沒有房時，符合條件的房型中任一可售就簡短回答有房；有完整結果且所有符合房型均為零時，回答該期間與人數目前沒有適合的房。
-- 「我要休息三個小時」或其他已說明時長、未指定未來時間的現場休息需求，直接用 pms_check_rest_availability(startAt="now", durationMinutes=180)，三小時等於 180 分鐘。其他時長按原話換算。指定未來時間才用台灣 +08:00。缺少時長才補問，切勿把休息查成隔夜住宿。只依本次 guest-room-types-v1 的 roomTypes 判斷。已知旅客條件時務必先呼叫對應的 PMS 工具，不能直接答無法確認。
+- 住宿先取得入住日、退房日或晚數，以及每間房的成人人數，再呼叫 pms_check_availability。用台灣日期查整段住宿，需 covered=true、source=live 且以本次 roomTypes 為準。一般查房使用 guest-room-types-v1，指定設備時依設備查房規則。日期、人數有變要重新查。客人泛問有沒有房時，符合條件的房型中任一可售就簡短回答有房；有完整結果且所有符合房型均為零時，回答該期間與人數目前沒有適合的房。
+- 「我要休息三個小時」或其他已說明時長、未指定未來時間的現場休息需求，直接用 pms_check_rest_availability(startAt="now", durationMinutes=180)，三小時等於 180 分鐘。其他時長按原話換算。指定未來時間才用台灣 +08:00。缺少時長才補問，切勿把休息查成隔夜住宿。只依本次符合條件的 roomTypes 判斷。已知旅客條件時務必先呼叫對應的 PMS 工具，不能直接答無法確認。
+- 【設備查房】錦新館免治馬桶只在 7、8 樓，浴缸只在 8 樓。旅客問有沒有符合設備的空房時，在住宿或休息的 PMS 查詢加 requiredAmenities：免治馬桶使用 ["bidet"]，浴缸使用 ["bathtub"]，兩項都要使用 ["bidet","bathtub"]。補問日期、人數或休息時長之後，沿用旅客的設備需求，直到旅客取消或更改。旅客說不需要時勿加該條件。設備查房僅採用本次 guest-room-types-by-floor-v1 的 roomTypes；兩項都要時只限 8 樓。查詢失敗用聯絡卡協助，勿拿全館房況替代。房型間數只供內部判斷。
 - 查過仍無法確認房況，或其他問題確實無法回答時，請直接說「目前查不到，請打櫃檯電話 04-2223-1157 確認。」依區碼與號碼分段逐碼唸。若工具已確認無空房，如實告知，不能把查詢失敗說成客滿。
 - 【時間與日期最高優先】一律以當次 get_current_time 工具回傳 source=server-clock、timezone=Asia/Taipei 的 localDate、weekday、today、tomorrow、dayAfterTomorrow 為準。連線起始時間快照只是參考，過午夜後不得沿用舊快照；不可把 isoUtc 的 UTC 日期當成台灣日期，不可信任手機時鐘、模型記憶或價格雷達的相對日期。
 - 需要回答當前日期、星期、時間，或換算「今晚／下週／明仔載」等相對日期時，先呼叫 get_current_time。若資料還不夠查房，直接補問缺少的日期或人數。已知完整入住與退房日期可直接查 PMS；未指定未來時間的現場休息直接查 startAt="now"。時鐘工具失敗時，請旅客確認絕對日期，勿自行猜測。
@@ -475,6 +479,12 @@ export const geminiSystemInstruction = `
 
 ${NUBO_JINXIN_REFERENCE}
 `;
+
+const requiredAmenitiesParameter = {
+  type: "ARRAY",
+  items: { type: "STRING", enum: ["bidet", "bathtub"] },
+  description: "旅客需要的衛浴設備。bidet 是免治馬桶、washlet、ウォシュレット、비데 或 bồn cầu có vòi rửa。bathtub 是浴缸、バスタブ／浴槽、욕조 或 bồn tắm。可同時傳兩項，保留旅客已告知的需求，沒有需求可省略。",
+};
 
 export const geminiFunctionDeclarations = [
   ...baseDeclarations.map((declaration) => {
@@ -687,6 +697,7 @@ export const geminiFunctionDeclarations = [
         checkIn: { type: "STRING", description: "入住日 YYYY-MM-DD" },
         checkOut: { type: "STRING", description: "退房日 YYYY-MM-DD" },
         adults: { type: "NUMBER", description: "單間房成人數（非全團人數，通常1至4位；多房間團體改 pms_group_inquiry）" },
+        requiredAmenities: requiredAmenitiesParameter,
       },
       required: ["checkIn", "checkOut", "adults"],
     },
@@ -699,6 +710,7 @@ export const geminiFunctionDeclarations = [
       properties: {
         startAt: { type: "STRING", description: "now 或 YYYY-MM-DDTHH:mm:00+08:00" },
         durationMinutes: { type: "NUMBER", description: "休息時長，60 至 720 分鐘" },
+        requiredAmenities: requiredAmenitiesParameter,
       },
       required: ["durationMinutes"],
     },

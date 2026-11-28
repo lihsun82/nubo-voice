@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
 import { consumeHotelKioskInventoryBudget, isHotelKioskInventoryRequest } from "@/lib/pms-kiosk-inventory-auth";
-import { PmsLiveError } from "@/lib/pms-live-availability";
+import { guestRoomTypeView, PmsLiveError } from "@/lib/pms-live-availability";
 import { queryLivePmsRestAvailability, validRestQuery } from "@/lib/pms-live-rest-availability";
+import { floorsForRequiredAmenities, guestRoomTypeFloorView } from "@/lib/pms-facility-floors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,26 +34,29 @@ export async function POST(request: NextRequest) {
       !validRestQuery(body.startAt, body.durationMinutes)) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
+  const floors = floorsForRequiredAmenities(body.requiredAmenities);
+  if (floors === null) return NextResponse.json({ error: "invalid_amenities" }, { status: 400, headers });
+  const floorQuery = floors.length > 0;
   try {
     const byRoomType = request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json";
     const result = await queryLivePmsRestAvailability(
-      body.startAt as string, body.durationMinutes as number, fetch, byRoomType);
+      body.startAt as string, body.durationMinutes as number, fetch, byRoomType, floors);
     if (!result) throw new PmsLiveError("pms_data_unavailable");
-    if (kioskRead && (!("inventoryView" in result) ||
-        result.inventoryView !== "guest-room-types-v1" ||
+    if ((kioskRead || floorQuery) && (!("inventoryView" in result) ||
+        result.inventoryView !== (floorQuery ? guestRoomTypeFloorView : guestRoomTypeView) ||
         !("roomTypes" in result) || !Array.isArray(result.roomTypes) ||
         result.roomTypes.length === 0)) {
       throw new PmsLiveError("pms_data_unavailable");
     }
     return NextResponse.json(result, { headers });
   } catch (error) {
-    if (error instanceof PmsLiveError && error.code === "invalid_query") {
+    if (!floorQuery && error instanceof PmsLiveError && error.code === "invalid_query") {
       console.warn("[pms/rest-availability] upstream rejected valid rest query");
       return NextResponse.json({ error: "pms_upstream_query_rejected" }, { status: 502, headers });
     }
     if (error instanceof PmsLiveError && error.code === "rate_limited") {
       return NextResponse.json({ error: "rate_limited" }, { status: 429, headers });
     }
-    return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
+    return NextResponse.json({ error: floorQuery ? "floor_inventory_unavailable" : "pms_data_unavailable" }, { status: 503, headers });
   }
 }

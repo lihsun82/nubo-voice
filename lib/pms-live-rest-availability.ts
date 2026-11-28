@@ -1,5 +1,6 @@
 import { PMS_PROPERTY_ID } from "./pms-snapshot.ts";
 import { guestRoomTypeView, PmsLiveError, rejectPmsResponse, roomTypesFrom } from "./pms-live-availability.ts";
+import { guestRoomTypeFloorView, hasPmsFloorScope } from "./pms-facility-floors.ts";
 
 const START_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:00(?:Z|[+-]\d{2}:\d{2})$/;
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -31,19 +32,23 @@ export async function queryLivePmsRestAvailability(
   durationMinutes: number,
   fetcher: typeof fetch = fetch,
   guestRoomTypes = false,
+  floors: readonly number[] = [],
 ) {
   const endpoint = configuredEndpoint();
   if (!endpoint) return null;
   const requestedAt = Date.now();
+  const floorQuery = floors.length > 0;
+  const byRoomType = guestRoomTypes || floorQuery;
+  const inventoryView = floorQuery ? guestRoomTypeFloorView : guestRoomTypeView;
   const response = await fetcher(endpoint.url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${endpoint.token}`,
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...(guestRoomTypes ? { "X-Nubo-Inventory-View": guestRoomTypeView } : {}),
+      ...(byRoomType ? { "X-Nubo-Inventory-View": inventoryView } : {}),
     },
-    body: JSON.stringify({ propertyId: PMS_PROPERTY_ID, startAt, durationMinutes }),
+    body: JSON.stringify({ propertyId: PMS_PROPERTY_ID, startAt, durationMinutes, ...(floorQuery ? { floors } : {}) }),
     cache: "no-store",
     redirect: "error",
     signal: AbortSignal.timeout(4_000),
@@ -61,13 +66,14 @@ export async function queryLivePmsRestAvailability(
     throw new PmsLiveError("pms_data_unavailable");
   }
   const result = value as Record<string, unknown>;
-  if (guestRoomTypes && (result.inventoryView !== guestRoomTypeView || !Array.isArray(result.roomTypes))) {
+  if (floorQuery && !hasPmsFloorScope(result, floors)) throw new PmsLiveError("floor_inventory_unavailable");
+  if (byRoomType && (result.inventoryView !== inventoryView || !Array.isArray(result.roomTypes))) {
     throw new PmsLiveError("room_type_breakdown_unavailable");
   }
   if (result.propertyId !== PMS_PROPERTY_ID || result.durationMinutes !== durationMinutes ||
       typeof result.startAt !== "string" || !TIMESTAMP.test(result.startAt) ||
       typeof result.asOf !== "string" || !TIMESTAMP.test(result.asOf) ||
-      (!guestRoomTypes && (!Number.isInteger(result.availableCount) || (result.availableCount as number) < 0 ||
+      (!byRoomType && (!Number.isInteger(result.availableCount) || (result.availableCount as number) < 0 ||
       (result.availableCount as number) > 1000))) {
     throw new PmsLiveError("pms_data_unavailable");
   }
@@ -87,7 +93,7 @@ export async function queryLivePmsRestAvailability(
     durationMinutes,
     asOf: result.asOf,
   };
-  return guestRoomTypes
-    ? { ...interval, inventoryView: guestRoomTypeView, roomTypes: roomTypesFrom(result.roomTypes) }
+  return byRoomType
+    ? { ...interval, inventoryView, roomTypes: roomTypesFrom(result.roomTypes), ...(floorQuery ? { floors } : {}) }
     : { ...interval, availableCount: result.availableCount as number };
 }

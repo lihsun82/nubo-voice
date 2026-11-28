@@ -25,6 +25,7 @@ import {
 } from "@/lib/nubo-kiosk-language";
 import { NUBO_KIOSK_LANGUAGE_INSTRUCTION } from "@/lib/nubo-native-language";
 import { classifyNuboArrivalIntent } from "@/lib/nubo-arrival-intent";
+import { floorsForRequiredAmenities, hasPmsFloorScope } from "@/lib/pms-facility-floors";
 import {
   correctNuboGuestFollowUp,
   isNuboConversationCloser,
@@ -94,7 +95,11 @@ function bookingLookupNeedsContact(call: FunctionCall, result: Record<string, un
   if (call.name !== "pms_check_availability" && call.name !== "pms_check_rest_availability") return false;
   if (result.type === "group_booking_inquiry" || result.code === "dates_or_occupancy_needs_clarification") return false;
 
-  const hasRoomTypes = result.inventoryView === "guest-room-types-v1" &&
+  const floors = floorsForRequiredAmenities(call.args?.requiredAmenities);
+  const hasMatchingScope = floors && (floors.length
+    ? hasPmsFloorScope(result, floors)
+    : result.inventoryView === "guest-room-types-v1");
+  const hasRoomTypes = hasMatchingScope &&
     Array.isArray(result.roomTypes) && result.roomTypes.length > 0;
   return result.ok === false || result.covered === false || !hasRoomTypes ||
     (call.name === "pms_check_availability" && (result.covered !== true || result.source !== "live"));

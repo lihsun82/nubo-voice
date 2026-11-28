@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { allowPmsQuery } from "@/lib/pms-query-auth";
 import { consumeHotelKioskInventoryBudget, isHotelKioskInventoryRequest } from "@/lib/pms-kiosk-inventory-auth";
 import { findPmsAvailability, validPmsQueryDateRange } from "@/lib/pms-snapshot";
-import { queryLivePmsAvailability } from "@/lib/pms-live-availability";
+import { guestRoomTypeView, queryLivePmsAvailability } from "@/lib/pms-live-availability";
+import { floorsForRequiredAmenities, guestRoomTypeFloorView } from "@/lib/pms-facility-floors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,15 +30,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
   const { checkIn, checkOut, adults } = body;
+  const floors = floorsForRequiredAmenities(body.requiredAmenities);
+  if (floors === null) return NextResponse.json({ error: "invalid_amenities" }, { status: 400, headers });
+  const floorQuery = floors.length > 0;
   if (!validPmsQueryDateRange(checkIn, checkOut) ||
       !Number.isInteger(adults) || (adults as number) < 1 || (adults as number) > 20) {
     return NextResponse.json({ error: "invalid_payload" }, { status: 400, headers });
   }
   let result;
   try {
-    result = await queryLivePmsAvailability(checkIn as string, checkOut as string, adults as number, fetch, true);
+    result = await queryLivePmsAvailability(checkIn as string, checkOut as string, adults as number, fetch, true, floors);
   } catch {
-    return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
+    return NextResponse.json({ error: floorQuery ? "floor_inventory_unavailable" : "pms_data_unavailable" }, { status: 503, headers });
+  }
+  if (floorQuery && (!result?.covered || !result.roomTypes?.length)) {
+    return NextResponse.json({ error: "floor_inventory_unavailable" }, { status: 503, headers });
   }
   if (request.headers.get("accept") === "application/vnd.nubosci.room-types.v1+json" && !result?.covered) {
     return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
@@ -45,7 +52,7 @@ export async function POST(request: NextRequest) {
   // Never expose snapshot fallback or incomplete inventory to unauthenticated visitors.
   // Only a fresh room-type breakdown returned by the PMS live endpoint qualifies.
   if (kioskRead && (!result || result.source !== "live" || !result.covered ||
-      result.inventoryView !== "guest-room-types-v1" ||
+      result.inventoryView !== (floorQuery ? guestRoomTypeFloorView : guestRoomTypeView) ||
       !Array.isArray(result.roomTypes) || result.roomTypes.length === 0)) {
     return NextResponse.json({ error: "pms_data_unavailable" }, { status: 503, headers });
   }
