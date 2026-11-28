@@ -24,6 +24,7 @@ export default function VoiceDiagnosticsPage() {
       ["取得語音通行憑證", latency?.token],
       ["開啟語音連線", latency?.webSocket],
       ["建立通話工作階段", latency?.sessionSetup],
+      ["本機收音尾端至雲端確認說完", latency?.speechEnd],
       ["偵測到說完至收到首段模型音訊", latency?.modelAudio],
       ["首段模型音訊等待送入播放器", latency?.playbackBuffer],
       ["最近一次 PMS 查詢", latency?.pms],

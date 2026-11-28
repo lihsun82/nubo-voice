@@ -8,6 +8,9 @@ import {
 const NUBO_AUDIO_ECO_IDLE_MS = 30_000;
 const NUBO_AUDIO_ECO_PREROLL_CHUNKS = 8;
 const NUBO_ASSISTANT_ECHO_TAIL_MS = 250;
+const PCM16_BYTES_PER_MS = 32; // 16 kHz, mono, 16-bit microphone frames.
+
+type MicrophoneAudioSink = (base64: string, possibleSpeech?: boolean, durationMs?: number) => void;
 
 let activePlaybackQueue: PcmPlaybackQueue | null = null;
 
@@ -20,12 +23,16 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export async function loadNuboSpeechClip(url: string) {
+export async function loadNuboSpeechClip(url: string, leadInMs = 0) {
   const response = await fetch(url, { cache: "force-cache", signal: AbortSignal.timeout(3500) });
   if (!response.ok) throw new Error("NUBO speech clip unavailable");
   const context = new OfflineAudioContext(1, 1, 24_000);
   const audio = await context.decodeAudioData(await response.arrayBuffer());
-  return toBase64(floatToPcm16(audio.getChannelData(0)));
+  const pcm = floatToPcm16(audio.getChannelData(0));
+  const leadInBytes = Math.round(leadInMs * 24) * 2;
+  const clip = new Uint8Array(leadInBytes + pcm.length);
+  clip.set(pcm, leadInBytes);
+  return toBase64(clip);
 }
 
 export function playNuboSpeechClip(playback: PcmPlaybackQueue, clip: string, signal: AbortSignal) {
@@ -215,7 +222,7 @@ export class MicrophonePcmStream {
     this.foregroundListenersAttached = false;
   }
 
-  async start(onAudio: (base64: string) => void) {
+  async start(onAudio: MicrophoneAudioSink) {
     if (this.stream || this.context) {
       await this.stop();
     }
@@ -307,7 +314,7 @@ export class MicrophonePcmStream {
         return;
       }
 
-      onAudio(base64);
+      onAudio(base64, rms >= threshold * 0.8, pcm.byteLength / PCM16_BYTES_PER_MS);
     };
 
     this.source.connect(this.processor);

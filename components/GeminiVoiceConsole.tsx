@@ -5,6 +5,7 @@ import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
 import { loadNuboSpeechClip, MicrophonePcmStream, PcmPlaybackQueue, playNuboSpeechClip } from "@/lib/browser-audio";
+import { NuboLiveAudioInput } from "@/lib/nubo-live-audio-input";
 import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, recordVoiceLatency, resetVoiceReplyLatency, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
 import {
   executeNuboBrowserTool,
@@ -39,6 +40,8 @@ import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
+// Give the speaker route time to settle before the first syllable of the greeting.
+const GREETING_OUTPUT_LEAD_IN_MS = 650;
 const NO_SPEECH_MARKER = "<no speech>";
 const GREETING_INSTRUCTION = "The kiosk plays its fixed opening greeting locally. Wait for a guest question and answer it directly. Do not generate or repeat an opening greeting.";
 const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
@@ -325,7 +328,10 @@ export function GeminiVoiceConsole() {
   }, []);
 
   function prepareGreeting(language: NuboKioskLanguage) {
-    return greetingAudioRef.current[language] ??= loadNuboSpeechClip(`/audio/nubo-jinxin-welcome-${language}-20261128.mp3`).catch(() => {
+    return greetingAudioRef.current[language] ??= loadNuboSpeechClip(
+      `/audio/nubo-jinxin-welcome-${language}-20261128.mp3?v=clear-hello`,
+      GREETING_OUTPUT_LEAD_IN_MS,
+    ).catch(() => {
       delete greetingAudioRef.current[language];
       return null;
     });
@@ -759,7 +765,15 @@ export function GeminiVoiceConsole() {
       let roomPhotosRequested = false;
       let confirmedRoomsAvailable = false;
       let configuredBookingLink: string | null = null;
-      const asyncArrivalNotice = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
+      const isGemini38Live = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
+      function sendMicrophoneAudio(data: string) {
+        socket.send(JSON.stringify({ realtimeInput: { audio: { data, mimeType: "audio/pcm;rate=16000" } } }));
+        recordSocketBuffer(socket.bufferedAmount);
+      }
+      const liveAudioInput = isGemini38Live ? new NuboLiveAudioInput(
+        sendMicrophoneAudio,
+        () => socket.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } })),
+      ) : null;
 
       // Fetch the optional booking URL while dialing, off the PMS response path.
       void bookingLinkRequest.then((url) => {
@@ -779,7 +793,7 @@ export function GeminiVoiceConsole() {
             response: {
               ...entry.response,
               ...(spokenReplyLanguage ? { spokenReplyLanguage } : {}),
-              ...(asyncArrivalNotice && entry.name === "notify_arrival_intent" ? { scheduling: "SILENT" } : {}),
+              ...(isGemini38Live && entry.name === "notify_arrival_intent" ? { scheduling: "SILENT" } : {}),
             },
           })),
         } }));
@@ -840,7 +854,7 @@ export function GeminiVoiceConsole() {
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
-          .map((tool) => asyncArrivalNotice && tool.name === "notify_arrival_intent"
+          .map((tool) => isGemini38Live && tool.name === "notify_arrival_intent"
             ? { ...tool, behavior: "NON_BLOCKING" }
             : tool);
         socket.send(
@@ -867,6 +881,7 @@ export function GeminiVoiceConsole() {
           const message = await parseSocketMessage(event.data);
           const activity = message.voiceActivity?.type ?? message.voiceActivity?.voiceActivityType;
           if (activity === "ACTIVITY_START") {
+            liveAudioInput?.startCloudActivity();
             guestTurn += 1;
             hasModelAudio = false;
             lookupCuePlayed = false;
@@ -889,6 +904,8 @@ export function GeminiVoiceConsole() {
           if (activity === "ACTIVITY_END" && guestActivityStartedAt) {
             guestActivityEndedAt = performance.now();
             guestActivityMs = guestActivityEndedAt - guestActivityStartedAt;
+            const lastSpeechAt = liveAudioInput?.endCloudActivity();
+            if (lastSpeechAt != null) recordVoiceLatency("speechEnd", guestActivityEndedAt - lastSpeechAt);
           }
 
           const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
@@ -920,16 +937,10 @@ export function GeminiVoiceConsole() {
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
             let playingGreeting = !!greetingClip;
-            await microphone.start((data) => {
+            await microphone.start((data, possibleSpeech, durationMs) => {
               if (playingGreeting || socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
-              socket.send(
-                JSON.stringify({
-                  realtimeInput: {
-                    audio: { data, mimeType: "audio/pcm;rate=16000" },
-                  },
-                }),
-              );
-              recordSocketBuffer(socket.bufferedAmount);
+              if (liveAudioInput) liveAudioInput.write(data, possibleSpeech, durationMs);
+              else sendMicrophoneAudio(data);
             });
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) {
               await microphone.stop();

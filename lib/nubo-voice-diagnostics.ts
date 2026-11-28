@@ -2,7 +2,7 @@
 
 export const NUBO_VOICE_DIAGNOSTICS_KEY = "nubo_voice_diagnostics_v1";
 
-type VoiceLatencyStage = "token" | "webSocket" | "sessionSetup" | "modelAudio" | "playbackBuffer" | "pms";
+type VoiceLatencyStage = "token" | "webSocket" | "sessionSetup" | "speechEnd" | "modelAudio" | "playbackBuffer" | "pms";
 
 export type VoiceDiagnostics = {
   startedAt: string;
@@ -113,6 +113,7 @@ export function recordVoiceLatency(stage: VoiceLatencyStage, milliseconds: numbe
 
 export function resetVoiceReplyLatency() {
   if (!report?.latencyMs) return;
+  delete report.latencyMs.speechEnd;
   delete report.latencyMs.modelAudio;
   delete report.latencyMs.playbackBuffer;
   delete report.latencyMs.pms;
