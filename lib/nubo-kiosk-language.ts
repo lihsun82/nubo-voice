@@ -31,12 +31,14 @@ const NEUTRAL_WORDS = new Set(["nubo", "ainubo", "hotel", "hotels", "line", "qr"
 const ENGLISH_WORDS = new Set(["the", "this", "my", "you", "your", "we", "our", "with", "need", "would", "please", "where", "what", "how", "have", "want", "there", "are", "can", "could"]);
 const ENGLISH_HOTEL_WORDS = /\b(?:breakfast|parking|room|tonight|tomorrow|check[ -]?(?:in|out)|booking|reservation|luggage|available)\b/iu;
 const ENGLISH_REPLY_WORDS = /\b(?:am|is|are|was|were|do|does|did|will|let|would|could|can|have|has|the|this|your|we|please|yes|no|here|thank|hello|welcome|sure|certainly|sorry|unfortunately|good|of|at|to)\b/iu;
+const HOKKIEN_WORDING = /(?:我|阮|咱|恁)欲|歇睏|歇暝|一暝|佇遮|佇佗|偌濟|佗位|欲睏|袂使|袂曉|無代誌|這馬(?!路)|共[你恁](?:查|看|講)|閒間|食飽未|guá\s+beh/iu;
 const TRANSCRIPT_LANGUAGE_CODES = new Map<string, NuboKioskLanguage>([
   ["chi", "zh"], ["cmn", "zh"], ["nan", "zh"], ["yue", "zh"], ["zho", "zh"],
   ["eng", "en"], ["jpn", "ja"], ["kor", "ko"], ["vie", "vi"],
 ]);
 const REQUESTED_LANGUAGE_NAMES = new Map<string, NuboKioskLanguage | "nan">([
   ["中文", "zh"], ["國語", "zh"], ["国语", "zh"], ["chinese", "zh"], ["mandarin", "zh"],
+  ["台灣國語", "zh"], ["臺灣國語", "zh"], ["台灣華語", "zh"], ["臺灣華語", "zh"], ["華語", "zh"],
   ["英文", "en"], ["英語", "en"], ["英语", "en"], ["english", "en"],
   ["日文", "ja"], ["日語", "ja"], ["日语", "ja"], ["日本語", "ja"], ["japanese", "ja"],
   ["韓文", "ko"], ["韩文", "ko"], ["韓語", "ko"], ["韩语", "ko"], ["korean", "ko"],
@@ -102,9 +104,11 @@ let guestSpeechLanguage: string | null = null;
 
 export function detectNuboGuestSpeechLanguage(text: string, languageCode?: unknown) {
   const reported = normalizeNuboGuestLanguage(languageCode);
-  if ((!reported || reported === "zh") && /我欲|歇睏|歇暝|一暝|佇遮|偌濟|佗位|欲睏/u.test(text)) return "nan";
   const detected = detectSpokenLanguage(text, undefined, false);
   if (detected === "en" && !/[^\p{Script=Latin}\P{L}]/u.test(text)) return "en";
+  if ((!reported || reported === "zh" || reported === "nan") && HOKKIEN_WORDING.test(text)) return "nan";
+  // A dialect label alone can be wrong, especially for Mandarin spoken in Taiwan.
+  if (reported === "nan") return detected ?? (/\p{Script=Han}/u.test(text) ? "zh" : null);
   return reported ?? detected;
 }
 
@@ -120,6 +124,12 @@ export function checkNuboEnglishReply(text: string, complete: boolean) {
   const hasEnglishWords = ENGLISH_REPLY_WORDS.test(normalized) || ENGLISH_HOTEL_WORDS.test(normalized);
   if (hasEnglishWords && (words.length >= 2 || (words.length === 1 && (complete || /[.!?]$/u.test(normalized))))) return "match";
   return "waiting";
+}
+
+export function checkNuboMandarinReply(text: string, complete: boolean, languageCode?: unknown) {
+  const normalized = text.normalize("NFKC").trim();
+  if (HOKKIEN_WORDING.test(normalized) || normalizeNuboGuestLanguage(languageCode) === "nan") return "mismatch";
+  return normalized || complete ? "match" : "waiting";
 }
 
 export function getNuboGuestSpeechLanguage() {

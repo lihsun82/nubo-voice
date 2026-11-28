@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   NUBO_KIOSK_GREETINGS,
   checkNuboEnglishReply,
+  checkNuboMandarinReply,
   detectNuboGuestReplyLanguage,
   detectNuboGuestSpeechLanguage,
   getNuboGuestSpeechLanguage,
@@ -82,4 +83,20 @@ test("English playback waits for clear words and rejects Mandarin and Taiwanese 
   assert.equal(checkNuboEnglishReply("Okay, 我幫您查一下。", false), "mismatch");
   assert.equal(checkNuboEnglishReply("我先幫您查一下。", true), "mismatch");
   assert.equal(checkNuboEnglishReply("", true), "waiting");
+});
+
+test("Mandarin speech stays Mandarin when the transcript provider labels it Hokkien", () => {
+  assert.equal(detectNuboGuestSpeechLanguage("請問你們有提供早餐嗎？", "nan-TW"), "zh");
+  assert.equal(detectNuboGuestReplyLanguage("我沒有說台語，請問幾點退房？", "nan"), "zh");
+  assert.equal(detectNuboGuestReplyLanguage("我欲佇遮訂一間房間。", "nan"), "nan");
+  assert.equal(detectNuboGuestReplyLanguage("請用臺灣台語回答", "zh-TW"), "nan");
+  assert.equal(detectNuboGuestReplyLanguage("請用臺灣國語回答", "nan"), "zh");
+  assert.equal(detectNuboGuestReplyLanguage("拍謝，我想訂房", "nan"), "zh");
+});
+
+test("Mandarin playback rejects a Hokkien reply and can play a corrected answer", () => {
+  assert.equal(checkNuboMandarinReply("", false), "waiting");
+  assert.equal(checkNuboMandarinReply("我來共你查一下。", false), "mismatch");
+  assert.equal(checkNuboMandarinReply("有空房。", false, "nan-TW"), "mismatch");
+  assert.equal(checkNuboMandarinReply("我幫您查一下。", false), "match");
 });

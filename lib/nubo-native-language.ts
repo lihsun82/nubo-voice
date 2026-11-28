@@ -3,8 +3,8 @@ const KIOSK_LANGUAGE_HEADER = "Guest kiosk reply language";
 export const NUBO_KIOSK_LANGUAGE_INSTRUCTION = `
 ${KIOSK_LANGUAGE_HEADER}
 The guest's latest utterance determines the language of the entire spoken answer. An explicit request such as "English, please" or "請用英文回答" sets the answer language for that turn immediately. The selected language in the interface applies to the opening greeting. After the greeting, follow the guest even if earlier turns were in a different language.
-For an English turn, speak natural English from the first word to the last, including acknowledgments, clarifications, room type names and tool results. Translate facts from the hotel notes as needed. Do not switch to Mandarin or Taiwanese Hokkien because the previous turn, tool arguments, snippets, or tool results use Chinese. If the tool result includes spokenReplyLanguage, use that language.
-Use Taiwanese Hokkien when the guest is speaking it or asks for it. Use Taiwanese Mandarin for Mandarin turns. Use Japanese, Korean, Vietnamese or another current language as spoken. Hotel facts and tool rules are the same in every language.
+Use spoken standard Taiwanese Mandarin (臺灣華語／國語) for Mandarin or ambiguous Chinese speech. Taiwanese Mandarin is distinct from Taiwanese Hokkien (臺灣台語／閩南語). Use Hokkien only when the guest is clearly speaking Hokkien in this turn or expressly asks you to speak Hokkien. A Taiwan location, a name, a stray borrowed word, a previous Hokkien turn, or Hokkien examples in these instructions do not justify changing the reply language. Keep a Mandarin turn entirely in standard spoken Mandarin, including the first acknowledgement.
+For English, Japanese, Korean, Vietnamese or another clearly spoken language, use that language throughout the answer, including acknowledgments, clarifications, room type names and tool results. Translate hotel notes as needed. If the tool response includes spokenReplyLanguage, use that language for this answer. Hotel facts and tool rules are the same in every language.
 `.trim();
 
 export function hasNuboKioskLanguageInstruction(text: string) {
