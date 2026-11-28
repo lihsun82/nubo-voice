@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
-import { loadNuboSpeechClip, MicrophonePcmStream, PcmPlaybackQueue, playNuboSpeechClip } from "@/lib/browser-audio";
+import { MicrophonePcmStream, PcmPlaybackQueue } from "@/lib/browser-audio";
 import { NuboLiveAudioInput } from "@/lib/nubo-live-audio-input";
 import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, recordVoiceLatency, resetVoiceReplyLatency, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
 import {
@@ -16,7 +16,7 @@ import {
 import { runLocalVoiceCommand } from "@/lib/local-voice-commands";
 import { notifyNuboVoicePhase } from "@/lib/nubo-voice-phase";
 import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
-import { playNuboCallTones } from "@/lib/nubo-call-tones";
+import { NuboCallOpening, preloadNuboCallOpening } from "@/lib/nubo-call-tones";
 import { formatNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
 import { getNuboGuestConfigSnapshot } from "@/lib/nubo-guest-features";
 import {
@@ -40,8 +40,6 @@ import { recordNuboQuestion } from "@/components/NuboQuestionHistory";
 type ConnectionState = "idle" | "connecting" | "connected" | "error";
 
 const GEMINI_LIVE_HOST = "generativelanguage.googleapis.com";
-// Give the speaker route time to settle before the first syllable of the greeting.
-const GREETING_OUTPUT_LEAD_IN_MS = 650;
 const NO_SPEECH_MARKER = "<no speech>";
 const GREETING_INSTRUCTION = "The kiosk plays its fixed opening greeting locally. Wait for a guest question and answer it directly. Do not generate or repeat an opening greeting.";
 const BOOKING_SUPPORT_INSTRUCTION = "訂房或房況查詢回傳 contactCardShown=true 時，先簡短說目前無法核對訂單或確認房況，再用旅客當下的語言提醒：右上角有 LINE QR Code 和櫃檯電話，可以掃描或點號碼聯絡。這是查不到資料時的聯絡指引，仍須保護訂單資訊。";
@@ -212,8 +210,7 @@ export function GeminiVoiceConsole() {
   const closingRef = useRef(false);
   const callToneRef = useRef<Promise<void> | null>(null);
   const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
-  const greetingAudioRef = useRef<Partial<Record<NuboKioskLanguage, Promise<string | null>>>>({});
-  const greetingPlaybackRef = useRef<AbortController | null>(null);
+  const callOpeningRef = useRef<NuboCallOpening | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const sessionHandleRef = useRef<string | null>(null);
@@ -327,19 +324,9 @@ export function GeminiVoiceConsole() {
     silentUntilWakeRef.current = window.localStorage.getItem(NUBO_SILENT_STORAGE_KEY) === "true";
   }, []);
 
-  function prepareGreeting(language: NuboKioskLanguage) {
-    return greetingAudioRef.current[language] ??= loadNuboSpeechClip(
-      `/audio/nubo-jinxin-welcome-${language}-20261128.mp3?v=clear-hello`,
-      GREETING_OUTPUT_LEAD_IN_MS,
-    ).catch(() => {
-      delete greetingAudioRef.current[language];
-      return null;
-    });
-  }
-
   useEffect(() => {
     preconnect(`https://${GEMINI_LIVE_HOST}`, { crossOrigin: "anonymous" });
-    void prepareGreeting("zh");
+    preloadNuboCallOpening("zh");
     void fetch("/api/gemini-token?warm=1", { cache: "no-store" }).catch(() => {
       // Token prewarm is optional. NUBO can still request a token when connecting.
     });
@@ -352,6 +339,7 @@ export function GeminiVoiceConsole() {
         })
         .catch(() => undefined);
     }
+    return () => callOpeningRef.current?.close();
   }, []);
 
   useEffect(() => {
@@ -452,7 +440,7 @@ export function GeminiVoiceConsole() {
     if (state === "idle") notifyNuboVoicePhase("idle");
     else if (state === "connecting") notifyNuboVoicePhase("connecting");
     else if (state === "connected") {
-      if (!greetingPlaybackRef.current) notifyNuboVoicePhase("listening");
+      if (!callOpeningRef.current) notifyNuboVoicePhase("listening");
     }
     else notifyNuboVoicePhase("error");
   }, [state]);
@@ -674,6 +662,8 @@ export function GeminiVoiceConsole() {
     followUpRef.current = null;
     kioskResponseBufferRef.current = "";
     setKioskResponse("");
+    callOpeningRef.current?.close();
+    callOpeningRef.current = null;
     callToneRef.current = null;
     greetingLanguageRef.current = null;
     setIsRinging(false);
@@ -728,7 +718,7 @@ export function GeminiVoiceConsole() {
     closingRef.current = false;
     const playback = new PcmPlaybackQueue();
     playbackRef.current = playback;
-    // Prepare the audio output during dialing so loading the worklet does not delay the greeting.
+    // Prepare the live reply stream in parallel with the local call opening.
     void playback.prepare().catch(() => undefined);
 
     try {
@@ -929,16 +919,34 @@ export function GeminiVoiceConsole() {
               socket.close(1000, "NUBO dial interrupted");
               return;
             }
-            const greetingLanguage = greetingLanguageRef.current;
-            const greetingClip = greetingLanguage ? await prepareGreeting(greetingLanguage) : null;
-            if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
             reconnectAttemptsRef.current = 0;
             noteVoiceInteraction();
+            const opening = callOpeningRef.current;
+            const greetingLanguage = greetingLanguageRef.current;
+            if (opening && greetingLanguage) {
+              greetingLanguageRef.current = null;
+              const cancel = () => opening.close();
+              socket.addEventListener("close", cancel, { once: true });
+              try {
+                if (!silentUntilWakeRef.current) {
+                  setKioskResponse(NUBO_KIOSK_GREETINGS[greetingLanguage]);
+                  notifyNuboVoicePhase("speaking");
+                  // Show the hang-up control while the recording is playing.
+                  setState("connected");
+                  await opening.playGreeting();
+                }
+              } finally {
+                socket.removeEventListener("close", cancel);
+                opening.close();
+              }
+            }
+            if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
+            // Opening the microphone can switch a tablet to its communication audio route.
+            // Wait for the recorded welcome's actual end before requesting capture.
             const microphone = new MicrophonePcmStream();
             microphoneRef.current = microphone;
-            let playingGreeting = !!greetingClip;
             await microphone.start((data, possibleSpeech) => {
-              if (playingGreeting || socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
+              if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
               if (liveAudioInput) liveAudioInput.write(data, possibleSpeech);
               else sendMicrophoneAudio(data);
             });
@@ -946,29 +954,9 @@ export function GeminiVoiceConsole() {
               await microphone.stop();
               return;
             }
-            const audibleGreeting = !silentUntilWakeRef.current;
-            if (greetingLanguage) {
-              greetingLanguageRef.current = null;
-              if (audibleGreeting) setKioskResponse(NUBO_KIOSK_GREETINGS[greetingLanguage]);
-            }
-            if (greetingClip && audibleGreeting) {
-              const controller = new AbortController();
-              const abortGreeting = () => controller.abort();
-              socket.addEventListener("close", abortGreeting, { once: true });
-              greetingPlaybackRef.current = controller;
-              notifyNuboVoicePhase("speaking");
-              setState("connected");
-              await playNuboSpeechClip(playback, greetingClip, controller.signal);
-              socket.removeEventListener("close", abortGreeting);
-              if (greetingPlaybackRef.current === controller) greetingPlaybackRef.current = null;
-              playingGreeting = false;
-              if (socketRef.current === socket && !closingRef.current && socket.readyState === WebSocket.OPEN) {
-                notifyNuboVoicePhase("listening");
-              }
-            } else {
-              playingGreeting = false;
-              setState("connected");
-            }
+            if (callOpeningRef.current === opening) callOpeningRef.current = null;
+            setState("connected");
+            notifyNuboVoicePhase("listening");
           }
 
           const serverContent = message.serverContent;
@@ -1495,6 +1483,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       };
     } catch (cause) {
       if (closingRef.current || playbackRef.current !== playback) return;
+      callOpeningRef.current?.close();
+      callOpeningRef.current = null;
+      setIsRinging(false);
       playbackRef.current = null;
       void playback.close();
       const message = cause instanceof Error ? cause.message : "即時語音啟動失敗";
@@ -1705,10 +1696,14 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
     const socket = socketRef.current;
     if (callToneRef.current || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
     greetingLanguageRef.current = language;
-    void prepareGreeting(language);
+    callOpeningRef.current?.close();
+    const opening = new NuboCallOpening(language);
+    callOpeningRef.current = opening;
     clearReconnectTimer();
     setIsRinging(true);
-    const tone = playNuboCallTones().then(() => setIsRinging(false));
+    const tone = opening.ring.then(() => {
+      if (callOpeningRef.current === opening) setIsRinging(false);
+    });
     callToneRef.current = tone;
     try {
       await Promise.all([tone, connect(false)]);

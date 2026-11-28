@@ -21,47 +21,6 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-export async function loadNuboSpeechClip(url: string, leadInMs = 0) {
-  const response = await fetch(url, { cache: "force-cache", signal: AbortSignal.timeout(3500) });
-  if (!response.ok) throw new Error("NUBO speech clip unavailable");
-  const context = new OfflineAudioContext(1, 1, 24_000);
-  const audio = await context.decodeAudioData(await response.arrayBuffer());
-  const pcm = floatToPcm16(audio.getChannelData(0));
-  const leadInBytes = Math.round(leadInMs * 24) * 2;
-  const clip = new Uint8Array(leadInBytes + pcm.length);
-  clip.set(pcm, leadInBytes);
-  return toBase64(clip);
-}
-
-export function playNuboSpeechClip(playback: PcmPlaybackQueue, clip: string, signal: AbortSignal) {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-
-    let started = false;
-    let tailTimer: number | undefined;
-    const finish = () => {
-      window.clearTimeout(tailTimer);
-      window.removeEventListener("nubo:audio-playback-state", onPlayback);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    const onPlayback = (event: Event) => {
-      const { active } = (event as CustomEvent<{ active: boolean }>).detail;
-      window.clearTimeout(tailTimer);
-      if (active) started = true;
-      else if (started) tailTimer = window.setTimeout(finish, NUBO_ASSISTANT_ECHO_TAIL_MS);
-    };
-    window.addEventListener("nubo:audio-playback-state", onPlayback);
-    signal.addEventListener("abort", finish, { once: true });
-    void playback.enqueue(clip, 24_000).then(() => {
-      if (!started) finish();
-    }, finish);
-  });
-}
-
 let nativeSenseChunks: Uint8Array[] = [];
 let nativeSenseBytes = 0;
 const NUBO_NATIVE_SENSE_FRAME_BYTES = 32_000;

@@ -7,8 +7,8 @@ if (!s.includes('NUBO_STABLE_2_NATIVE_WAKE')) {
   // When Gemini Live is truly connected and WebView microphone has started,
   // arm the native foreground service while the Activity is visible. The
   // service stays alive across app switches but does NOT capture audio yet.
-  const connected = '            setState("connected");';
-  const connectedPatch = `            setState("connected");\n            // NUBO_STABLE_2_NATIVE_WAKE\n            try {\n              const nativeWake = (window as typeof window & {\n                NuboNative?: {\n                  armNativeWakeService?: () => boolean;\n                  markCloudVoiceActive?: () => boolean;\n                };\n              }).NuboNative;\n              nativeWake?.armNativeWakeService?.();\n              nativeWake?.markCloudVoiceActive?.();\n            } catch {}`;
+  const connected = '\n            setState("connected");';
+  const connectedPatch = `\n            setState("connected");\n            // NUBO_STABLE_2_NATIVE_WAKE\n            try {\n              const nativeWake = (window as typeof window & {\n                NuboNative?: {\n                  armNativeWakeService?: () => boolean;\n                  markCloudVoiceActive?: () => boolean;\n                };\n              }).NuboNative;\n              nativeWake?.armNativeWakeService?.();\n              nativeWake?.markCloudVoiceActive?.();\n            } catch {}`;
   if (!s.includes(connected)) throw new Error('Stable 2: connected anchor missing');
   s = s.replace(connected, connectedPatch);
 
