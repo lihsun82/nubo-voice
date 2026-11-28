@@ -46,11 +46,11 @@ export function availableBookingOffers(purpose: "stay" | "rest", args: Fields, r
 
 export const BOOKING_HANDOFF_TOOL = {
   name: "guide_guest_booking",
-  description: "安排旅客自助分頁。已在 OTA 或本館訂妥選 existing；新訂或休息須選本輪 PMS 回傳的可售房型。工具不建立訂單或扣款。",
+  description: "旅客明確要求開啟本館自助網頁選 open_page，直接開頁並回傳狀態。已在 OTA 或本館訂妥選 existing；新訂或休息須選本輪 PMS 回傳的可售房型。工具不建立訂單或扣款。",
   parameters: {
     type: "OBJECT",
     properties: {
-      purpose: { type: "STRING", enum: ["stay", "rest", "existing"] },
+      purpose: { type: "STRING", enum: ["stay", "rest", "existing", "open_page"] },
       roomCode: { type: "STRING", description: "新訂或休息時本次已核對可售、符合需求的房型碼。已預訂免填。" },
     },
     required: ["purpose"],
@@ -58,6 +58,7 @@ export const BOOKING_HANDOFF_TOOL = {
 };
 
 export const BOOKING_FLOW = `錦新館接待分流：
+旅客明確請你開自助頁、訂房網頁或 nubosci.ainubohub.com 時，立刻呼叫 guide_guest_booking(purpose=open_page)，毋須先查房、問日期或再次確認。只要網站入口，不代表旅客已有訂單。回傳 pageStatus=opened，就依客人語言介紹眼前第一步：如果在待機頁，請輕觸螢幕開始；操作中就沿用客人剛描述的畫面，一次一句，可接著問下一步。pageStatus=blocked 則請他點 NUBO 畫面的訂房／入住連結。問「怎麼開」、已在操作或拒絕開頁時，只回答當前問題。
 已在 OTA（如 Agoda、Booking.com）或館方訂妥，直接協助原訂單：呼叫 guide_guest_booking(purpose=existing)，引導使用本館入住 QR 或確認信編號；第三方編號查不到就聯絡飯店核對，勿重訂。已預付勿再付全額，未付或部分付款只依已核對的原訂單尾款。
 要現場住宿或休息且尚未訂房：取得必要條件就查相應 PMS。只從本次 bookingOffers 選符合人數、日期與設備的可售房型。住宿 referenceTwd 為每房整段住宿的館方參考總價，休息為該時段參考價；空值請說房價待飯店確認。查房回傳 handoff=after_spoken_quote 時，系統已排好自動開頁。直接說符合的房型、參考總價及下一步，說完系統自行開頁。毋須再呼叫工具、詢問要不要開頁或等旅客同意。要帶旅客回到原訂單才呼叫 guide_guest_booking(existing)。若客人已經在頁面、只要資訊或不要開頁，查房時傳 navigation=information_only。旅客只問價目、明說不要開頁、沒有符合需求的房、團體需人工報價、或已經在網頁上操作時，不要自動開。勿用 open_website 代替。
 休息查詢回傳 cross_midnight_rest_needs_confirmation 時，照結果報已知三小時方案價，再請旅客用 NUBO 右上角聯絡卡或自助頁「客服協助」核對這段時間。這是時段尚未確認；不可說客滿、停賣或改用隔天的房況。
@@ -89,6 +90,16 @@ function informationOnly(text: string) {
   return /(?:不要|不想|不用|別|不必).{0,7}(?:跳|開|訂房頁)|只(?:是)?(?:想|要)?(?:問價|詢價|看價|比價)|(?:已經|正在|目前|我在).{0,8}(?:自助頁|訂房頁|訂房網頁)|(?:只|就)看(?:看)?價|price.only|just (?:checking|comparing) prices|do(?:n.t| not) open|already on (?:the|this) (?:page|site)|料金だけ|開かないで|すでに.{0,6}画面|가격만|열지 마|chỉ (?:hỏi|xem) giá|đừng mở/iu.test(text);
 }
 
+// Match completed, unambiguous speech commands. Other phrasings use the same voice tool.
+const directPageCommands = [
+  /^(?:(?:麻煩|請|可以|我要|我想|幫我|替我|直接|自動|現在)\s*)*(?:開啟|打開|開|前往)\s*(?:https?:\/\/)?nubosci\.ainubohub\.com(?:\/#\/standby|\/)?\s*(?:的)?(?:網頁|網站|分頁|頁面)?(?:嗎)?$/iu,
+  /^(?:麻煩|請問|請|可以|可不可以|能不能|能否|我要|我想要?)?(?:請)?(?:你|妳)?(?:現在|直接|自動|先)?(?:幫我|替我|帶我)?(?:直接|自動)?(?:開啟|打開|開|進入|前往)(?:一下|那個|這個)?(?:飯店的?|酒店的?|旅客)?(?:自助(?:訂房|入住|服務|辦理)?|訂房|入住)(?:的)?(?:網頁|網站|頁面|分頁|頁)(?:好嗎|可以嗎|嗎|謝謝)?$/u,
+  /^(?:please\s+|(?:can|could) you\s+(?:please\s+)?)?(?:open|show me|take me to) (?:the |your )?(?:self[- ]service|booking|check[- ]in) (?:page|site|website|tab)(?: for me| please)?$/iu,
+  /^(?:予約|チェックイン|セルフサービス)(?:の)?(?:ページ|サイト|画面)(?:を)?開(?:いて(?:ください|ほしいです)?|けてください)$/u,
+  /^(?:예약|체크인|셀프서비스)\s*(?:페이지|화면)(?:를|을)?\s*열어\s*(?:주세요|줘요|줘)$/u,
+  /^(?:vui lòng |hãy |giúp tôi )?mở (?:giúp tôi )?trang (?:đặt phòng|tự phục vụ|nhận phòng)(?: giúp tôi)?$/iu,
+];
+
 function describesExistingReservation(words: string) {
   const text = words.normalize("NFKC").toLowerCase();
   if (/如果|假如|假設|還沒|尚未|沒有(?:在.{0,16})?(?:訂|預)|取消|まだ予約|予約していません|예약하지|chưa đặt|cancelled|canceled|haven.t booked|if i (?:have|had|book)/iu.test(text)) return false;
@@ -105,6 +116,7 @@ export class GuestBookingHandoff {
   private guestWords = "";
   private replyWords = "";
   private suppressPage = false;
+  private directPageStatus: "opened" | "blocked" | null = null;
   private playing = false;
   private attempted = new Set<string>();
 
@@ -121,6 +133,7 @@ export class GuestBookingHandoff {
     this.attempted.clear();
     this.guestWords = "";
     this.suppressPage = false;
+    this.directPageStatus = null;
     this.playing = false;
   }
 
@@ -138,11 +151,28 @@ export class GuestBookingHandoff {
     ++this.revision;
     this.guestWords = "";
     this.suppressPage = false;
+    this.directPageStatus = null;
   }
 
   guestTranscript(words: string) {
     this.guestWords = words.startsWith(this.guestWords) ? words : this.guestWords + words;
     if (informationOnly(this.guestWords)) { this.suppressPage = true; this.interrupt(); }
+  }
+
+  finishGuestSpeech() {
+    if (this.directPageStatus || this.suppressPage) return;
+    const words = this.guestWords.normalize("NFKC").trim().replace(/[，。,.!?！？]+$/u, "").trim();
+    const compact = words.replace(/(?<=[\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, "");
+    if (directPageCommands.some(command => command.test(compact))) this.openSelfService();
+  }
+
+  private openSelfService() {
+    if (this.suppressPage) return { ok: false, reason: "guest_requested_information_only" };
+    if (!this.directPageStatus) {
+      this.invalidate();
+      this.directPageStatus = this.launch(GUEST_KIOSK_URL) ? "opened" : "blocked";
+    }
+    return { ok: true, destination: "self_service_kiosk", pageStatus: this.directPageStatus, pageLinkAvailable: true };
   }
 
   replyTranscript(words: string) {
@@ -170,6 +200,7 @@ export class GuestBookingHandoff {
 
   request(args: Fields, stayBookingUrl: string | null) {
     const purpose = args.purpose;
+    if (purpose === "open_page") return this.openSelfService();
     if (purpose !== "existing" && purpose !== "stay" && purpose !== "rest") return { ok: false };
     if (purpose !== "existing") {
       const latest = this.latest;
@@ -215,6 +246,8 @@ export class GuestBookingHandoff {
   private launch(url: string) {
     this.pending = null;
     this.attempted.add(url);
-    this.show(url, !this.open(url));
+    const opened = this.open(url);
+    this.show(url, !opened);
+    return opened;
   }
 }

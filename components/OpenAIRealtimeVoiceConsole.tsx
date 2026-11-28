@@ -315,6 +315,7 @@ export function OpenAIRealtimeVoiceConsole({
       noteEcoActivity();
       const text = event.transcript.trim();
       bookingHandoff.guestTranscript(text);
+      bookingHandoff.finishGuestSpeech();
       reportNuboKioskSpeech(text, event.language);
       recordNuboQuestion(text);
       setTranscript(text);

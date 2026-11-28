@@ -107,3 +107,27 @@ test("an existing OTA guest hears the original-order step and opens the kiosk ev
     assert.equal(opens.length, Number(shouldOpen),words);
   }
 });
+
+test("explicit self-service commands open the kiosk without a PMS lookup and the model sees the same result", () => {
+  for (const words of ["幫我打開自助頁", "可以直接開啟 nubosci.ainubohub.com 分頁", "請直接開啟訂房網頁。", "Open the booking page!", "予約ページを開いてください", "예약 페이지를 열어 주세요", "Mở trang đặt phòng"]) {
+    const { call, opens } = start();
+    call.guestTurn(); call.guestTranscript(words);
+    assert.equal(opens.length, 0);
+    call.finishGuestSpeech(); call.finishGuestSpeech();
+    assert.deepEqual(opens,[GUEST_KIOSK_URL],words);
+    assert.equal(call.request({purpose:"open_page"},"https://hotel.example/book").pageStatus,"opened");
+    assert.equal(opens.length,1);
+  }
+});
+test("information or a cancelled speech request stays put, and a popup block is reported accurately", () => {
+  for (const words of ["訂房頁怎麼開？", "不用幫我打開自助頁", "我要訂房", "我已經在自助頁了"]) {
+    const {call,opens} = start(); call.guestTurn(); call.guestTranscript(words); call.finishGuestSpeech();
+    assert.deepEqual(opens,[],words);
+  }
+  const {call,opens,visible} = start(false);
+  call.guestTurn(); call.guestTranscript("幫我打開自助頁"); call.guestTranscript("，等等，不用了。"); call.finishGuestSpeech();
+  assert.equal(opens.length,0);
+  call.guestTurn(); assert.equal(call.request({purpose:"open_page"},null).pageStatus,"blocked");
+  assert.deepEqual(visible.at(-1),[GUEST_KIOSK_URL,true]);
+  assert.equal(call.request({purpose:"open_page"},null).pageStatus,"blocked"); assert.equal(opens.length,1);
+});

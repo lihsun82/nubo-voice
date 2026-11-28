@@ -983,6 +983,8 @@ export function GeminiVoiceConsole() {
             if (keywords.size) void notifyGuestKeywords([...keywords].join("／"));
             if (asksForRoomPhotos(userText)) showRoomPhotos();
           }
+          if (!silentUntilWakeRef.current && (activity === "ACTIVITY_END" || serverContent?.inputTranscription?.finished ||
+              (typeof modelText === "string" && modelText.trim()))) bookingHandoff.finishGuestSpeech();
           const quietReply = !hasModelAudio && activeToolRequests === 0 &&
             isNuboConversationCloser(guestTranscriptForClosing, lastQuestionRef.current, guestActivityMs);
           if (quietReply && (activity === "ACTIVITY_END" || typeof userText === "string")) {
