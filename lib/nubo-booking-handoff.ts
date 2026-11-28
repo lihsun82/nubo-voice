@@ -172,7 +172,10 @@ export class GuestBookingHandoff {
       this.invalidate();
       this.directPageStatus = this.launch(GUEST_KIOSK_URL) ? "opened" : "blocked";
     }
-    return { ok: true, destination: "self_service_kiosk", pageStatus: this.directPageStatus, pageLinkAvailable: true };
+    const nextStep = this.directPageStatus === "blocked"
+      ? "Ask the guest to tap the booking/check-in link on the NUBO call screen."
+      : "Give one concrete action now in the guest's language: on the welcome screen, tap 輕觸螢幕開始 (Touch the screen to start). If the guest already described a later screen, give only the next button on that screen.";
+    return { ok: true, destination: "self_service_kiosk", pageStatus: this.directPageStatus, pageLinkAvailable: true, nextStep };
   }
 
   replyTranscript(words: string) {
