@@ -127,18 +127,6 @@ function removeForegroundListeners(listener: () => void) {
   window.removeEventListener("pageshow", listener, true);
 }
 
-function nativeExternalVoiceKeepAliveActive() {
-  if (typeof window === "undefined") return false;
-  try {
-    const bridge = (window as typeof window & {
-      NuboNative?: { isExternalVoiceKeepAliveActive?: () => boolean };
-    }).NuboNative;
-    return bridge?.isExternalVoiceKeepAliveActive?.() === true;
-  } catch {
-    return false;
-  }
-}
-
 export class MicrophonePcmStream {
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
@@ -155,16 +143,14 @@ export class MicrophonePcmStream {
   private hotFrames = 0;
   private preRoll: string[] = [];
 
+  get hasLiveTrack() {
+    return this.stream?.getAudioTracks().some((track) => track.readyState === "live") === true;
+  }
+
   private readonly handleForeground = () => {
-    if (document.visibilityState === "visible" || nativeExternalVoiceKeepAliveActive()) {
-      this.ecoSleeping = false;
-      this.lastVoiceAt = Date.now();
-      this.preRoll = [];
-      void this.resume();
-    } else {
-      this.ecoSleeping = true;
-      this.preRoll = [];
-    }
+    // Switching pages is not a hang-up. Do not reset an in-flight utterance.
+    if (document.visibilityState !== "visible") return;
+    void this.resume();
   };
 
   private attachForegroundListeners() {
@@ -243,12 +229,6 @@ export class MicrophonePcmStream {
       );
       forwardPcmToNativeSense(pcm);
       const base64 = toBase64(pcm);
-
-      if (document.visibilityState !== "visible" && !nativeExternalVoiceKeepAliveActive()) {
-        this.ecoSleeping = true;
-        this.preRoll = [];
-        return;
-      }
 
       if (!this.ecoSleeping && now - this.lastVoiceAt >= NUBO_AUDIO_ECO_IDLE_MS) {
         this.ecoSleeping = true;

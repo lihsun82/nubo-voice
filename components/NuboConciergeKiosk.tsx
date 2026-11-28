@@ -1,5 +1,8 @@
 "use client";
 
+import { tryNativeAndroidLaunch } from "../lib/mobile-direct-app-v4";
+import type { MouseEvent } from "react";
+
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NuboKioskOrb } from "@/components/NuboKioskOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
@@ -167,6 +170,10 @@ export function NuboConciergeKiosk({
   contact, roomPhotoRequest, children,
 }: Props) {
   const { language, preference } = useNuboKioskLanguage();
+  const openDuringCall = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (state !== "connected" && state !== "ringing" && state !== "connecting") return;
+    if (tryNativeAndroidLaunch(event.currentTarget.href, "網站")) event.preventDefault();
+  };
   const locale = NUBO_KIOSK_LOCALES[language];
   const date = useMemo(() => new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", weekday: "short",
@@ -297,9 +304,9 @@ export function NuboConciergeKiosk({
             </button>
           </section>
           <div className="nubo-kiosk-dock">
-            <a href={bookingUrl} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
+            <a href={bookingUrl} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
             <NuboPhoneAction state={state} onClick={() => onToggleCall(language)} kioskLabels={copy.controls} />
-            <a href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{copy.hints[1]}</a>
+            <a href={FOOD_MAP_URL} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{copy.hints[1]}</a>
           </div>
         </div>
 
@@ -312,10 +319,10 @@ export function NuboConciergeKiosk({
           <nav aria-labelledby="nubo-kiosk-services-title" className="nubo-kiosk-services">
             <h2 id="nubo-kiosk-services-title">{copy.services}</h2>
             <div className="nubo-kiosk-grid">
-              <a className="nubo-kiosk-tile" href={bookingUrl} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
+              <a className="nubo-kiosk-tile" href={bookingUrl} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
                 aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
-              <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
+              <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" aria-haspopup="dialog"
                 onClick={() => setPhotosOpen(true)}>{card(3, "camera")}</button>
               <div className="nubo-kiosk-tile nubo-kiosk-wifi">

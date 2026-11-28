@@ -1,5 +1,7 @@
 "use client";
 
+import { tryNativeAndroidLaunch } from "../lib/mobile-direct-app-v4";
+
 import { useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
@@ -208,6 +210,8 @@ export function GeminiVoiceConsole() {
   const microphoneRef = useRef<MicrophonePcmStream | null>(null);
   const playbackRef = useRef<PcmPlaybackQueue | null>(null);
   const closingRef = useRef(false);
+  const callActiveRef = useRef(false);
+  const microphoneSinkRef = useRef<Parameters<MicrophonePcmStream["start"]>[0] | null>(null);
   const callToneRef = useRef<Promise<void> | null>(null);
   const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
   const callOpeningRef = useRef<NuboCallOpening | null>(null);
@@ -282,6 +286,7 @@ export function GeminiVoiceConsole() {
     setBookingLink(guestBookingUrl);
     if (bookingAttemptedRef.current) return;
     bookingAttemptedRef.current = true;
+    if (tryNativeAndroidLaunch(guestBookingUrl, "網站")) return;
     try {
       const bookingTab = window.open(guestBookingUrl, "nubo_guest_booking");
       if (bookingTab) {
@@ -567,6 +572,8 @@ export function GeminiVoiceConsole() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
 
     ecoSleepingRef.current = true;
+    callActiveRef.current = false;
+    microphoneSinkRef.current = null;
     clearReconnectTimer();
     reconnectAttemptsRef.current = 0;
     sessionHandleRef.current = null;
@@ -619,17 +626,8 @@ export function GeminiVoiceConsole() {
       return;
     }
 
-    /*
-     * 手機切到LINE、YouTube或地圖時，
-     * 瀏覽器可能暫停網路與麥克風。
-     * 背景期間不消耗重連次數，
-     * 回到NUBO後再自動恢復。
-     */
-    if (
-      typeof document !== "undefined" &&
-      document.visibilityState ===
-        "hidden"
-    ) {
+    // Only a call started in this page may reconnect while the guest is elsewhere.
+    if (document.visibilityState === "hidden" && !callActiveRef.current) {
       setState("idle");
       setError("");
       setTranscript(
@@ -641,6 +639,10 @@ export function GeminiVoiceConsole() {
     reconnectAttemptsRef.current = attempt;
 
     if (attempt > 5) {
+      callActiveRef.current = false;
+      microphoneSinkRef.current = null;
+      void microphoneRef.current?.stop();
+      microphoneRef.current = null;
       setError(`${reason}，已嘗試自動重連5次仍失敗。請重新啟動NUBO或檢查網路/API額度。`);
       setState("error");
       return;
@@ -657,6 +659,8 @@ export function GeminiVoiceConsole() {
   };
 
   const disconnect = async () => {
+    callActiveRef.current = false;
+    microphoneSinkRef.current = null;
     setContactCard(null);
     lastQuestionRef.current = "";
     followUpRef.current = null;
@@ -915,11 +919,10 @@ export function GeminiVoiceConsole() {
             // Dialing and the handshake overlap. Keep the ringtone out of the microphone.
             if (callToneRef.current) await callToneRef.current;
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
-            if (greetingLanguageRef.current && document.visibilityState !== "visible") {
+            if (!callActiveRef.current && document.visibilityState !== "visible") {
               socket.close(1000, "NUBO dial interrupted");
               return;
             }
-            reconnectAttemptsRef.current = 0;
             noteVoiceInteraction();
             const opening = callOpeningRef.current;
             const greetingLanguage = greetingLanguageRef.current;
@@ -943,17 +946,26 @@ export function GeminiVoiceConsole() {
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
             // Opening the microphone can switch a tablet to its communication audio route.
             // Wait for the recorded welcome's actual end before requesting capture.
-            const microphone = new MicrophonePcmStream();
+            const previousMic = microphoneRef.current;
+            const microphone = previousMic?.hasLiveTrack ? previousMic : new MicrophonePcmStream();
+            if (previousMic && previousMic !== microphone) void previousMic.stop();
             microphoneRef.current = microphone;
-            await microphone.start((data, possibleSpeech) => {
+            microphoneSinkRef.current = (data, possibleSpeech) => {
               if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
               if (liveAudioInput) liveAudioInput.write(data, possibleSpeech);
               else sendMicrophoneAudio(data);
-            });
+            };
+            if (microphone.hasLiveTrack) {
+              await microphone.resume();
+            } else {
+              await microphone.start((data, speech) => microphoneSinkRef.current?.(data, speech));
+            }
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) {
-              await microphone.stop();
+              if (microphoneRef.current !== microphone || closingRef.current) await microphone.stop();
               return;
             }
+            reconnectAttemptsRef.current = 0;
+            callActiveRef.current = true;
             if (callOpeningRef.current === opening) callOpeningRef.current = null;
             setState("connected");
             notifyNuboVoicePhase("listening");
@@ -1459,9 +1471,15 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           reason: event.reason,
           wasClean: event.wasClean,
         });
-        void microphoneRef.current?.stop();
+        const terminal = [1002, 1003, 1007, 1008].includes(event.code);
+        const keepMic = !terminal && !closingRef.current && callActiveRef.current &&
+          document.visibilityState === "hidden" && microphoneRef.current?.hasLiveTrack;
+        microphoneSinkRef.current = null;
+        if (!keepMic) {
+          void microphoneRef.current?.stop();
+          microphoneRef.current = null;
+        }
         void playbackRef.current?.close();
-        microphoneRef.current = null;
         playbackRef.current = null;
         socketRef.current = null;
         if (!closingRef.current) {
@@ -1470,7 +1488,8 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           // Never include tokens, request URLs or credentials in the UI.
           const detail = event.reason?.trim().slice(0, 180);
           const reason = `Gemini Live 連線中斷（代碼 ${event.code}${detail ? `：${detail}` : ""}）`;
-          if ([1002, 1003, 1007, 1008].includes(event.code)) {
+          if (terminal) {
+            callActiveRef.current = false;
             // Protocol, unsupported payload and policy/quota failures are not
             // repaired by repeatedly reconnecting with the same settings.
             setError(`${reason}。請檢查 Gemini Live 模型、API 權限與配額。`);
@@ -1492,6 +1511,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       if (isReconnect && !closingRef.current) {
         scheduleReconnect(message);
       } else {
+        callActiveRef.current = false;
         setError(message);
         setState("error");
       }
@@ -1501,6 +1521,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   useEffect(() => {
     ecoTimerRef.current = window.setInterval(() => {
       if (ecoSleepingRef.current || closingRef.current) return;
+      if (document.visibilityState === "hidden" && callActiveRef.current) return;
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
       if (Date.now() - lastInteractionAtRef.current >= (getNuboGuestConfigSnapshot().idleSeconds * 1000 || NUBO_ECO_IDLE_MS)) {
@@ -1635,6 +1656,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
           document.visibilityState ===
           "visible"
         ) {
+          if (callActiveRef.current) noteVoiceInteraction();
           resumeNuboAfterForeground();
         }
       };
@@ -1695,6 +1717,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
   const startWithCallTones = async (language: NuboKioskLanguage) => {
     const socket = socketRef.current;
     if (callToneRef.current || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+    callActiveRef.current = true;
     greetingLanguageRef.current = language;
     callOpeningRef.current?.close();
     const opening = new NuboCallOpening(language);

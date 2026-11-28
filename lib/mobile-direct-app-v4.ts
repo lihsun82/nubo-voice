@@ -108,7 +108,7 @@ function buildYouTubeAppLink(url: string, preferMusic: boolean) {
   return `https://youtu.be/${encodeURIComponent(videoId)}`;
 }
 
-function tryNativeAndroidLaunch(targetUrl: string, label: string) {
+export function tryNativeAndroidLaunch(targetUrl: string, label: string) {
   if (typeof window === "undefined") return false;
 
   const host = window as NuboNativeWindow;
