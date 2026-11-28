@@ -22,6 +22,7 @@ export class NuboRealtimeEcoGate {
   private noiseFloor = 0.012;
   private hotFrames = 0;
   private sleeping = false;
+  private browsingRoomPhotos = false;
   private destroyed = false;
 
   constructor(private readonly onModeChange?: (mode: NuboEcoMode) => void) {}
@@ -64,6 +65,11 @@ export class NuboRealtimeEcoGate {
     this.timer = window.setInterval(() => {
       void this.tick();
     }, ECO_POLL_MS);
+  }
+
+  setRoomPhotoBrowsing(open: boolean) {
+    this.browsingRoomPhotos = open;
+    this.noteActivity();
   }
 
   noteActivity() {
@@ -112,7 +118,7 @@ export class NuboRealtimeEcoGate {
     const now = Date.now();
 
     if (!this.sleeping) {
-      if (now - this.lastActivityAt >= ECO_IDLE_MS) {
+      if (!this.browsingRoomPhotos && now - this.lastActivityAt >= ECO_IDLE_MS) {
         await this.suspend("idle");
       }
       return;
@@ -151,6 +157,11 @@ export class NuboRealtimeEcoGate {
     try {
       await sender.replaceTrack(null);
       this.sleeping = true;
+      // The gallery can open while replaceTrack(null) is still pending.
+      if (reason === "idle" && this.browsingRoomPhotos && document.visibilityState === "visible") {
+        await this.resume("activity");
+        return;
+      }
       this.onModeChange?.("sleeping");
 
       if (reason === "idle" && document.visibilityState === "visible") {

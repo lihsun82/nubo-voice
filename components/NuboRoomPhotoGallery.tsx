@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { NuboKioskLanguage } from "@/lib/nubo-kiosk-language";
 import type { RoomPhotoFloor, RoomPhotoFloorGallery, RoomPhotoRequest } from "@/lib/nubo-room-photos";
 
@@ -28,9 +28,9 @@ const FLOOR_EMPTY: Record<NuboKioskLanguage, (floor: RoomPhotoFloor) => string> 
   vi: floor => `Hiện chưa có ảnh phòng của tầng ${floor}.`,
 };
 
-export function NuboRoomPhotoGallery({ request, contextFloor, language, title, close, onClose }: {
+export function NuboRoomPhotoGallery({ request, contextFloor, language, title, close, onClose, children }: {
   request: RoomPhotoRequest; contextFloor: RoomPhotoFloor | null;
-  language: NuboKioskLanguage; title: string; close: string; onClose: () => void;
+  language: NuboKioskLanguage; title: string; close: string; onClose: () => void; children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [floors, setFloors] = useState<RoomPhotoFloorGallery[] | null>(null);
@@ -70,6 +70,7 @@ export function NuboRoomPhotoGallery({ request, contextFloor, language, title, c
         <h2 id="nubo-room-photo-title">{title}</h2>
         <form method="dialog"><button type="submit" aria-label={close}>×</button></form>
       </header>
+      {children}
       {floors && (current || choices?.length) ? (
         <>
           <nav aria-label={copy.floors} className="nubo-kiosk-gallery-floors">

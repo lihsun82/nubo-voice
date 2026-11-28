@@ -5,7 +5,7 @@ import { ROOM_PHOTO_TOOL, ROOM_PHOTO_GUIDANCE, type RoomPhotoRequest } from "@/l
 import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
 import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
 import { loadNuboSessionClockInstruction } from "@/lib/nubo-session-clock";
@@ -149,6 +149,11 @@ export function OpenAIRealtimeVoiceConsole({
   const streamRef = useRef<MediaStream | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ecoGateRef = useRef<NuboRealtimeEcoGate | null>(null);
+  const browsingRoomPhotosRef = useRef(false);
+  const onPhotoBrowsingChange = useCallback((open: boolean) => {
+    browsingRoomPhotosRef.current = open;
+    ecoGateRef.current?.setRoomPhotoBrowsing(open);
+  }, []);
   const transcriptBufferRef = useRef("");
   const closingRef = useRef(false);
   const connectGuardRef = useRef(false);
@@ -522,6 +527,7 @@ export function OpenAIRealtimeVoiceConsole({
         }
       });
       ecoGateRef.current = ecoGate;
+      ecoGate.setRoomPhotoBrowsing(browsingRoomPhotosRef.current);
       await ecoGate.attach(peer, stream);
       ecoGate.noteActivity();
 
@@ -660,6 +666,7 @@ export function OpenAIRealtimeVoiceConsole({
     <NuboConciergeKiosk
       state={isRinging ? "ringing" : state}
       transcript={transcript}
+      onPhotoBrowsingChange={onPhotoBrowsingChange}
       roomPhotoRequest={roomPhotoRequest}
       getRoomPhotoFloor={() => bookingHandoff.roomPhotoFloor()}
       bookingUrl={bookingPage.url}

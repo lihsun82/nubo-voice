@@ -5,7 +5,7 @@ import { ROOM_PHOTO_TOOL, ROOM_PHOTO_GUIDANCE, type RoomPhotoRequest } from "@/l
 import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
 import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
@@ -208,6 +208,12 @@ export function GeminiVoiceConsole() {
   const ecoSleepingRef = useRef(false);
   const ecoTimerRef = useRef<number | null>(null);
   const lastInteractionAtRef = useRef(Date.now());
+  const browsingRoomPhotosRef = useRef(false);
+  const onPhotoBrowsingChange = useCallback((open: boolean) => {
+    browsingRoomPhotosRef.current = open;
+    lastInteractionAtRef.current = Date.now();
+    microphoneRef.current?.setRoomPhotoBrowsing(open);
+  }, []);
   const youtubeFastRouteTimerRef = useRef<number | null>(null);
   const youtubeFastRouteRef = useRef<{
     query: string;
@@ -917,6 +923,7 @@ export function GeminiVoiceConsole() {
             const microphone = previousMic?.hasLiveTrack ? previousMic : new MicrophonePcmStream();
             if (previousMic && previousMic !== microphone) void previousMic.stop();
             microphoneRef.current = microphone;
+            microphone.setRoomPhotoBrowsing(browsingRoomPhotosRef.current);
             microphoneSinkRef.current = (data, possibleSpeech) => {
               if (socketRef.current !== socket || socket.readyState !== WebSocket.OPEN) return;
               if (liveAudioInput) liveAudioInput.write(data, possibleSpeech);
@@ -1486,7 +1493,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
   useEffect(() => {
     ecoTimerRef.current = window.setInterval(() => {
-      if (ecoSleepingRef.current || closingRef.current) return;
+      if (ecoSleepingRef.current || closingRef.current || browsingRoomPhotosRef.current) return;
       if (document.visibilityState === "hidden" && callActiveRef.current) return;
       const socket = socketRef.current;
       if (!socket || socket.readyState !== WebSocket.OPEN) return;
@@ -1709,6 +1716,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       bookingUrl={bookingPage.url}
       bookingBlocked={bookingPage.blocked}
       onBookingClick={() => bookingHandoff.manual(bookingPage.url)}
+      onPhotoBrowsingChange={onPhotoBrowsingChange}
       roomPhotoRequest={roomPhotoRequest}
       getRoomPhotoFloor={() => bookingHandoff.roomPhotoFloor()}
       contact={{

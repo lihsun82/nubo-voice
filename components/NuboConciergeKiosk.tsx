@@ -5,7 +5,7 @@ import type { RoomPhotoRequest, RoomPhotoFloor } from "@/lib/nubo-room-photos";
 import { tryNativeAndroidLaunch } from "../lib/mobile-direct-app-v4";
 import type { MouseEvent } from "react";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { NuboKioskOrb } from "@/components/NuboKioskOrb";
 import { NuboPhoneAction } from "@/components/NuboPhoneAction";
 import { NuboRoomPhotoGallery } from "@/components/NuboRoomPhotoGallery";
@@ -165,6 +165,7 @@ type Props = {
   bookingBlocked?: boolean;
   onBookingClick?: () => void;
   roomPhotoRequest?: RoomPhotoRequest | null;
+  onPhotoBrowsingChange: (open: boolean) => void;
   getRoomPhotoFloor?: () => RoomPhotoFloor | null;
   contact?: { visible: boolean; open: () => void; close: () => void };
   children?: ReactNode;
@@ -172,7 +173,7 @@ type Props = {
 
 export function NuboConciergeKiosk({
   state, transcript, error, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
-  bookingBlocked, onBookingClick, contact, roomPhotoRequest, getRoomPhotoFloor, children,
+  bookingBlocked, onBookingClick, contact, roomPhotoRequest, getRoomPhotoFloor, onPhotoBrowsingChange, children,
 }: Props) {
   const { language, preference } = useNuboKioskLanguage();
   const openDuringCall = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -196,6 +197,13 @@ export function NuboConciergeKiosk({
   const [photos, setPhotos] = useState<RoomPhotoRequest | null>(null);
   const [localContactAt, setLocalContactAt] = useState<number | null>(null);
   const copy = COPY[language];
+  const browsingPhotos = photos !== null;
+  useLayoutEffect(() => {
+    if (!browsingPhotos) return;
+    onPhotoBrowsingChange(true);
+    return () => onPhotoBrowsingChange(false);
+  }, [browsingPhotos, onPhotoBrowsingChange]);
+
   useEffect(() => {
     if (roomPhotoRequest) setPhotos(roomPhotoRequest);
   }, [roomPhotoRequest]);
@@ -356,7 +364,14 @@ export function NuboConciergeKiosk({
 
       {photos && (
         <NuboRoomPhotoGallery request={photos} contextFloor={getRoomPhotoFloor?.() ?? null} language={language} title={copy.cards[3][0]} close={copy.close}
-          onClose={() => setPhotos(null)} />
+          onClose={() => setPhotos(null)}>
+          <div className="nubo-gallery-voice">
+            <span role="status">{status}</span>
+            <button type="button" disabled={busy} onClick={() => onToggleCall(language)}>
+              {copy.controls[state === "connected" ? 1 : busy ? 2 : 0]}
+            </button>
+          </div>
+        </NuboRoomPhotoGallery>
       )}
     </section>
   );

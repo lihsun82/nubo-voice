@@ -143,6 +143,15 @@ export class MicrophonePcmStream {
   private hotFrames = 0;
   private preRoll: string[] = [];
 
+  private browsingRoomPhotos = false;
+
+  setRoomPhotoBrowsing(open: boolean) {
+    this.browsingRoomPhotos = open;
+    this.ecoSleeping = false;
+    this.preRoll = [];
+    this.lastVoiceAt = Date.now();
+  }
+
   get hasLiveTrack() {
     return this.stream?.getAudioTracks().some((track) => track.readyState === "live") === true;
   }
@@ -230,7 +239,7 @@ export class MicrophonePcmStream {
       forwardPcmToNativeSense(pcm);
       const base64 = toBase64(pcm);
 
-      if (!this.ecoSleeping && now - this.lastVoiceAt >= NUBO_AUDIO_ECO_IDLE_MS) {
+      if (!this.browsingRoomPhotos && !this.ecoSleeping && now - this.lastVoiceAt >= NUBO_AUDIO_ECO_IDLE_MS) {
         this.ecoSleeping = true;
         this.preRoll = [];
       }

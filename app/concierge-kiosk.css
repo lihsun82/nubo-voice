@@ -458,6 +458,23 @@ body:has(.nubo-concierge-shell)::after {
 .nubo-concierge-shell .nubo-kiosk-gallery::backdrop { background: #020617c7; }
 .nubo-concierge-shell .nubo-kiosk-gallery h2 { font-size: clamp(16px, 2vw, 20px); color: var(--kiosk-pale) !important; margin: 0; }
 .nubo-concierge-shell .nubo-kiosk-gallery p { line-height: 1.55; color: #e3e8f3; }
+.nubo-concierge-shell .nubo-gallery-voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--kiosk-pale);
+}
+.nubo-concierge-shell .nubo-gallery-voice button {
+  min-height: 44px;
+  padding: 5px 14px;
+  border: 1px solid var(--kiosk-gold);
+  border-radius: 12px;
+  background: var(--kiosk-surface);
+  color: inherit;
+  cursor: pointer;
+}
 .nubo-concierge-shell .nubo-kiosk-gallery-floors {
   display: flex;
   flex-wrap: wrap;
