@@ -1,6 +1,6 @@
 "use client";
 import { buildNuboGroupBookingGuidance, isGroupOccupancy } from "./nubo-group-booking";
-import { NUBOSCI_GUEST_GUIDE } from "./nubosci-guest-guide.ts";
+import { NUBOSCI_GUEST_GUIDE, getNubosciButtonLabels } from "./nubosci-guest-guide.ts";
 import { NUBO_JINXIN_REFERENCE } from "./nubo-jinxin-reference";
 
 import {
@@ -201,6 +201,7 @@ function getJinxinRoomRates(args: Record<string, unknown>) {
 }
 
 export async function executeNuboBrowserTool(call: FunctionCall) {
+  if (call.name === "get_guest_kiosk_buttons") return getNubosciButtonLabels(call.args?.language);
   if (call.name === "get_jinxin_room_rates") return getJinxinRoomRates(call.args ?? {});
   if (!getNuboGuestConfigSnapshot().musicEnabled && (
     call.name === "open_youtube" ||
@@ -479,6 +480,7 @@ NUBO 語音主畫面的聯絡卡（僅限 NUBO 畫面）：
 - 【全臺天氣】旅客不論問臺北、彰化、南投、澎湖、金門、馬祖或其他臺灣縣市鄉鎮，必須用 get_weather(location=對方指定的完整臺灣地名) 查資料，不能自動套用台中北區天氣。若問「全台天氣」請用 get_weather(location=全台) 取得22縣市代表市區的概略預報，僅總結重要地區而不要朗讀22筆；指定鄉鎮須另外再查。現有來源 Open-Meteo，不能稱為中央氣象署公告；颱風、豪雨警報、停班停課另查官方資料。查不到或 approximate=true 時應清楚說明不精確，不可猜測。
 
 ${NUBOSCI_GUEST_GUIDE}
+在非繁中介面引導旅客按鍵時，先呼叫 get_guest_kiosk_buttons 讀取該語言的實際按鈕；同一語言可沿用本通查到的結果。只說與這一步相符的一個標籤，勿猜翻譯。按旅客提及的畫面語言查；未指定依旅客當前語言。
 
 ${NUBO_JINXIN_REFERENCE}
 `;
@@ -490,6 +492,15 @@ const requiredAmenitiesParameter = {
 };
 
 export const geminiFunctionDeclarations = [
+  {
+    name: "get_guest_kiosk_buttons",
+    description: "取得旅客自助頁當前語言的按鈕文字，只回傳單一語言。指引非繁中介面的操作時使用。",
+    parameters: {
+      type: "OBJECT",
+      properties: { language: { type: "STRING", enum: ["zh-TW", "en", "ja", "ko", "vi", "id", "th", "zh-CN"] } },
+      required: ["language"],
+    },
+  },
   ...baseDeclarations.map((declaration) => {
     if (declaration.name === "open_mobile_app") {
       return {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
+import { getNubosciButtonLabels } from "../lib/nubosci-guest-guide.ts";
 import { createNubosciVoiceSessionHandler } from "../lib/nubosci-voice-session.ts";
 
 const PATH = "https://voice.example.test/api/partners/nubosci/v1/voice-session";
@@ -278,4 +279,13 @@ test("guides guests through the published counter screens in both partner config
     assert.match(text, /證件補登」和「支付尾款」都顯示「請至櫃檯辦理/);
     assert.doesNotMatch(text, /抵達後請先前往櫃檯/);
   }
+});
+
+test("kiosk button lookup returns only the requested interface language", () => {
+  const english = getNubosciButtonLabels("en");
+  assert.equal(english.buttons.findBooking, "Find booking");
+  assert.ok(!Object.values(english.buttons).includes("Tra cứu đặt phòng"));
+  assert.equal(getNubosciButtonLabels("ja").buttons.enterBookingNumber, "予約番号を入力");
+  assert.equal(getNubosciButtonLabels("vi").buttons.findBooking, "Tra cứu đặt phòng");
+  assert.equal(getNubosciButtonLabels("__proto__").ok, false);
 });

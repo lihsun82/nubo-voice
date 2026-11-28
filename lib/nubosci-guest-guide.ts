@@ -12,8 +12,23 @@ export const NUBOSCI_GUEST_GUIDE = `【錦新館旅客自助頁操作】
 畫面若明寫「測試付款」「列印一張測試發票」，屬限定驗收流程，不能當成正式收款或有效發票；一般旅客請按「客服協助」。若已送印，先查看出紙口，勿重印或重付。出現「領取房卡」才依提示領兩張、看已領取數；等待核對或卡片異常時聯絡飯店，勿重發。入住與退房結果以各自的完成畫面為準。
 「其他服務」裡的「證件補登」和「支付尾款」都顯示「請至櫃檯辦理」。本館是無人櫃檯。出現洽櫃檯提示時，直接指向畫面上的聯絡方式，不要叫旅客去找現場人員。尾款或補證件範例：「請按上方『客服協助』，再點公司電話聯絡飯店。」扣款不明先請飯店核對，避免重複付款。自助頁沒有 LINE 聯絡卡；不要叫旅客在此掃 LINE。從「其他服務」這兩個入口無法直接上傳證件或刷卡。
 「客服協助」有公司電話 04-2223-1157、公務機 0908-653-685；可點號碼聯絡，按「我知道了」關閉。若提示視窗只有「我知道了」，先按它關閉，再按上方「客服協助」。「返回」回上一步；詢問是否回首頁時，按「確認」會清除畫面資料。看到倒數就按「繼續操作」，留在目前步驟。只有已回待機才重新輕觸。
-主選單上方「語言」可選繁中、English、日本語；「更多語言 More languages」另有韓文、印尼文、越南文、泰文、簡中。選好回到服務選單。以下每行都是單一介面語言的按鈕字典，只用當前語言那行；順序為「輸入訂單編號、查詢訂單、現場訂房、休息」：
-English: Enter booking number | Find booking | Book a room | Short stay
-日本語: 予約番号を入力 | 予約を検索 | 当日の宿泊予約 | 時間利用
-한국어: 예약 번호 입력 | 예약 조회 | 현장 숙박 예약 | 대실
-Tiếng Việt: Nhập mã đặt phòng | Tra cứu đặt phòng | Đặt phòng qua đêm | Nghỉ theo giờ`;
+主選單上方「語言」可選繁中、English、日本語；「更多語言 More languages」另有韓文、印尼文、越南文、泰文、簡中。選好回到服務選單。`;
+
+// Button text from the public guest interface, in display order.
+const kioskButtons: Record<string, string[]> = {
+  "zh-TW": ["掃描入住 QR Code", "輸入訂單編號", "查詢訂單", "現場訂房", "休息", "重新掃描", "資料正確，下一步", "退房", "其他服務", "證件補登", "支付尾款", "客服協助", "繼續操作"],
+  "en": ["Scan check-in QR code", "Enter booking number", "Find booking", "Book a room", "Short stay", "Scan again", "Details are correct", "Check-out", "Other services", "Add ID document", "Additional payment", "Help", "Continue"],
+  "ja": ["チェックインQRコードを読み取る", "予約番号を入力", "予約を検索", "当日の宿泊予約", "時間利用", "再度読み取る", "内容を確認して次へ", "チェックアウト", "その他のサービス", "身分証の追加登録", "残額のお支払い", "お問い合わせ", "続ける"],
+  "ko": ["체크인 QR 코드 스캔", "예약 번호 입력", "예약 조회", "현장 숙박 예약", "대실", "다시 스캔", "확인 후 다음", "체크아웃", "기타 서비스", "신분증 추가 등록", "잔금 결제", "직원 도움", "계속"],
+  "id": ["Pindai kode QR check-in", "Masukkan nomor pemesanan", "Cari pemesanan", "Pesan kamar untuk menginap", "Menginap beberapa jam", "Pindai lagi", "Rincian benar, lanjutkan", "Check-out", "Layanan lainnya", "Tambahkan identitas", "Bayar sisa tagihan", "Bantuan", "Lanjutkan"],
+  "vi": ["Quét mã QR nhận phòng", "Nhập mã đặt phòng", "Tra cứu đặt phòng", "Đặt phòng qua đêm", "Nghỉ theo giờ", "Quét lại", "Thông tin đúng, tiếp tục", "Trả phòng", "Dịch vụ khác", "Bổ sung giấy tờ", "Thanh toán số tiền còn lại", "Trợ giúp", "Tiếp tục"],
+  "th": ["สแกน QR เช็กอิน", "กรอกเลขที่การจอง", "ค้นหาการจอง", "จองห้องพักค้างคืน", "พักรายชั่วโมง", "สแกนอีกครั้ง", "ข้อมูลถูกต้อง ดำเนินการต่อ", "เช็กเอาต์", "บริการอื่น ๆ", "เพิ่มเอกสารประจำตัว", "ชำระยอดคงเหลือ", "ขอความช่วยเหลือ", "ดำเนินการต่อ"],
+  "zh-CN": ["扫描入住 QR Code", "输入订单编号", "查询订单", "现场订房", "钟点房", "重新扫描", "资料正确，下一步", "退房", "其他服务", "证件补登", "支付尾款", "客服协助", "继续操作"],
+};
+const buttonNames = ["scanCode", "enterBookingNumber", "findBooking", "bookRoom", "shortStay", "scanAgain", "confirmDetails", "checkout", "otherServices", "addId", "payBalance", "help", "continue"];
+
+export function getNubosciButtonLabels(language: unknown) {
+  const buttons = typeof language === "string" && Object.hasOwn(kioskButtons, language) ? kioskButtons[language] : undefined;
+  if (!buttons) return { ok: false, error: "unsupported_screen_language" };
+  return { ok: true, language, buttons: Object.fromEntries(buttonNames.map((name, index) => [name, buttons[index]])) };
+}
