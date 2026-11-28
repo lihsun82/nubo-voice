@@ -211,7 +211,6 @@ export function GeminiVoiceConsole() {
   const greetingLanguageRef = useRef<NuboKioskLanguage | null>(null);
   const greetingAudioRef = useRef<Partial<Record<NuboKioskLanguage, Promise<string | null>>>>({});
   const greetingPlaybackRef = useRef<AbortController | null>(null);
-  const phaseTimerRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const sessionHandleRef = useRef<string | null>(null);
@@ -302,11 +301,6 @@ export function GeminiVoiceConsole() {
       audio.pause();
       audio.currentTime = 0;
     });
-
-    if (phaseTimerRef.current) {
-      window.clearTimeout(phaseTimerRef.current);
-      phaseTimerRef.current = null;
-    }
 
     notifyNuboVoicePhase(state === "connected" ? "listening" : "idle");
   };
@@ -614,14 +608,6 @@ export function GeminiVoiceConsole() {
     startEcoWakeListener();
   };
 
-  const markSpeaking = () => {
-    notifyNuboVoicePhase("speaking");
-    if (phaseTimerRef.current) window.clearTimeout(phaseTimerRef.current);
-    phaseTimerRef.current = window.setTimeout(() => {
-      notifyNuboVoicePhase("listening");
-    }, 1500);
-  };
-
   const acknowledgeQuestion = (text: string) => {
     const trimmed = text.trim();
     if (!shouldAcknowledgeQuestion(trimmed)) return;
@@ -827,7 +813,6 @@ export function GeminiVoiceConsole() {
           if (socketRef.current !== socket || closingRef.current || silentUntilWakeRef.current ||
               turn !== guestTurn || spokenTurnLanguage !== language || hasModelAudio || lookupCuePlayed) return;
           lookupCuePlayed = true;
-          markSpeaking();
           setKioskResponse(LOOKUP_CUES[language]);
           void playback.enqueue(cue, 24_000).catch(() => undefined);
         }, 550) : undefined;
@@ -1114,7 +1099,6 @@ export function GeminiVoiceConsole() {
               hasModelAudio = true;
               noteVoiceInteraction();
               recordIncomingAudioChunk();
-              markSpeaking();
               await playbackRef.current?.enqueue(audio, 24_000);
             }
           }

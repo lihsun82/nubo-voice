@@ -10,6 +10,9 @@ export type NuboVoicePhase =
 
 let lastSpeakingAt = 0;
 let delayedListeningTimer: number | null = null;
+let currentPhase: NuboVoicePhase = "idle";
+let pcmCaptureBlocked = false;
+let pcmTailTimer: number | null = null;
 const SPEAKING_HOLD_MS = 2400;
 const NUBO_SILENT_STORAGE_KEY = "nubo_silent_until_wake";
 
@@ -31,6 +34,7 @@ function notifyNativePhase(phase: NuboVoicePhase) {
 }
 
 function dispatchPhase(phase: NuboVoicePhase) {
+  currentPhase = phase;
   window.dispatchEvent(
     new CustomEvent("nubo-voice-phase", { detail: { phase } }),
   );
@@ -39,6 +43,7 @@ function dispatchPhase(phase: NuboVoicePhase) {
 
 export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
   if (typeof window === "undefined") return;
+  if (pcmCaptureBlocked && (phase === "listening" || phase === "thinking")) return;
 
   if (phase === "speaking") {
     lastSpeakingAt = Date.now();
@@ -72,4 +77,26 @@ export function notifyNuboVoicePhase(phase: NuboVoicePhase) {
   }
 
   dispatchPhase(phase);
+}
+
+export function syncNuboPcmPlaybackPhase(active: boolean, echoTailMs: number) {
+  if (typeof window === "undefined") return;
+  if (pcmTailTimer !== null) {
+    window.clearTimeout(pcmTailTimer);
+    pcmTailTimer = null;
+  }
+  if (active) {
+    pcmCaptureBlocked = true;
+    notifyNuboVoicePhase("speaking");
+  } else if (pcmCaptureBlocked) {
+    // The capture path mutes the same speaker-echo tail.
+    pcmTailTimer = window.setTimeout(() => {
+      pcmTailTimer = null;
+      pcmCaptureBlocked = false;
+      if (currentPhase === "speaking") {
+        lastSpeakingAt = 0;
+        notifyNuboVoicePhase("listening");
+      }
+    }, echoTailMs);
+  }
 }

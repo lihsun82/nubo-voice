@@ -1,4 +1,5 @@
 import { recordCaptureCallbackGap, recordPlaybackUnderrun } from "@/lib/nubo-voice-diagnostics";
+import { syncNuboPcmPlaybackPhase } from "@/lib/nubo-voice-phase";
 import {
   disableHardwareOutputForCaptureContext,
   preferMultimediaAudioContext,
@@ -142,6 +143,7 @@ function dispatchVoiceLevel(level: number, source: "input" | "output" = "output"
 
 function dispatchPlaybackState(active: boolean) {
   if (typeof window === "undefined") return;
+  syncNuboPcmPlaybackPhase(active, NUBO_ASSISTANT_ECHO_TAIL_MS);
   window.dispatchEvent(
     new CustomEvent("nubo:audio-playback-state", {
       detail: { active },
