@@ -35,8 +35,11 @@ export function readNuboShortReply(text: string): ShortReply | null {
   return null;
 }
 
-/** Backchannels and polite endings do not start another service turn. */
-export function isNuboConversationCloser(text: string, previousQuestion: string): boolean {
+/** A short, completed speech activity can safely be treated as a backchannel. */
+export function isNuboConversationCloser(text: string, previousQuestion: string, activityMs: number | null): boolean {
+  // The activity also includes the Live API's end-of-speech silence. A lone
+  // word transcribed from a longer request must not mute the model's answer.
+  if (activityMs === null || activityMs > 2_000) return false;
   const phrase = normalizeSpeech(text);
   if (THANK_YOU.test(phrase) || POLITE_DECLINE.test(phrase) || ASSISTANT_NAME.test(phrase)) return true;
   if (previousQuestion) return false;

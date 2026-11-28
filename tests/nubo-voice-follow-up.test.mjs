@@ -9,19 +9,25 @@ import {
 
 test("short courtesy turns stay quiet after the answer", () => {
   for (const end of ["好的，謝謝。", "不用了，謝謝。", "嗯。", "NUBO", "No thanks.", "ありがとうございます。", "Cảm ơn."]) {
-    assert.equal(isNuboConversationCloser(end, ""), true, end);
+    assert.equal(isNuboConversationCloser(end, "", 1_300), true, end);
   }
   for (const next of ["謝謝，請問退房時間？", "不用毛巾，給我水", "你還在嗎？", "NUBO，我要訂房。", "はい、二人です"]) {
-    assert.equal(isNuboConversationCloser(next, ""), false, next);
+    assert.equal(isNuboConversationCloser(next, "", 1_300), false, next);
   }
 });
 
 test("a short answer still continues a specific service question", () => {
   const previousQuestion = "要我幫您指引湖心亭的路線嗎？";
-  assert.equal(isNuboConversationCloser("好的", previousQuestion), false);
-  assert.equal(isNuboConversationCloser("不用了，謝謝。", previousQuestion), true);
+  assert.equal(isNuboConversationCloser("好的", previousQuestion, 1_300), false);
+  assert.equal(isNuboConversationCloser("不用了，謝謝。", previousQuestion, 1_300), true);
   const correction = correctNuboGuestFollowUp("guest_service_alert", { reply: "accept", question: previousQuestion });
   assert.match(correction.instruction, /同一個地點/);
+});
+
+test("a lone assistant name may be a fragment of a longer guest request", () => {
+  assert.equal(isNuboConversationCloser("NUBO", "", null), false);
+  assert.equal(isNuboConversationCloser("NUBO", "", 3_000), false);
+  assert.equal(isNuboConversationCloser("NUBO 有早餐嗎？", "", 1_600), false);
 });
 
 test("only generic service closings are removed from an otherwise useful reply", () => {

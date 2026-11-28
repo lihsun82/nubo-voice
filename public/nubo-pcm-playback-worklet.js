@@ -11,6 +11,7 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     this.fadeInRemaining = 0;
     this.lastSample = 0;
     this.processedFrames = 0;
+    this.firstPendingFrame = 0;
     this.lastDrainFrame = -1;
 
     this.port.onmessage = (event) => {
@@ -32,6 +33,7 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
       if (samples instanceof ArrayBuffer) samples = new Float32Array(samples);
       if (!(samples instanceof Float32Array) || samples.length === 0) return;
 
+      if (this.queuedFrames === 0) this.firstPendingFrame = this.processedFrames;
       this.queue.push(samples);
       this.queuedFrames += samples.length;
       this.wasActive = true;
@@ -45,7 +47,11 @@ class NuboPcmStreamProcessor extends AudioWorkletProcessor {
     this.processedFrames += output.length;
 
     if (!this.started) {
-      if (this.queuedFrames < this.startThresholdFrames) return true;
+      if (this.queuedFrames === 0) return true;
+      // Play a short tail after one buffer window even if no more PCM arrives.
+      // Otherwise the speaker never drains and the echo guard leaves the mic muted.
+      if (this.queuedFrames < this.startThresholdFrames &&
+          this.processedFrames - this.firstPendingFrame < this.startThresholdFrames) return true;
       this.started = true;
       if (this.lastDrainFrame >= 0) {
         const gapFrames = this.processedFrames - this.lastDrainFrame;

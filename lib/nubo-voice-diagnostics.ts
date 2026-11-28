@@ -2,6 +2,8 @@
 
 export const NUBO_VOICE_DIAGNOSTICS_KEY = "nubo_voice_diagnostics_v1";
 
+type VoiceLatencyStage = "token" | "webSocket" | "sessionSetup" | "modelAudio" | "playbackBuffer" | "pms";
+
 export type VoiceDiagnostics = {
   startedAt: string;
   receivedChunks: number;
@@ -14,6 +16,7 @@ export type VoiceDiagnostics = {
   serverInterruptions: number;
   unexpectedDisconnects: number;
   maxSocketBufferedBytes: number;
+  latencyMs?: Partial<Record<VoiceLatencyStage, number>>;
 };
 
 let report: VoiceDiagnostics | null = null;
@@ -100,6 +103,20 @@ export function recordSocketBuffer(bytes: number) {
   if (!report || bytes <= report.maxSocketBufferedBytes) return;
   report.maxSocketBufferedBytes = bytes;
   persist();
+}
+
+export function recordVoiceLatency(stage: VoiceLatencyStage, milliseconds: number) {
+  if (!report || !Number.isFinite(milliseconds) || milliseconds < 0) return;
+  (report.latencyMs ??= {})[stage] = Math.round(milliseconds);
+  persist(true);
+}
+
+export function resetVoiceReplyLatency() {
+  if (!report?.latencyMs) return;
+  delete report.latencyMs.modelAudio;
+  delete report.latencyMs.playbackBuffer;
+  delete report.latencyMs.pms;
+  persist(true);
 }
 
 export function readVoiceDiagnostics(): VoiceDiagnostics | null {

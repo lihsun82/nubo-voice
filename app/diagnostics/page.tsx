@@ -6,6 +6,7 @@ import { readVoiceDiagnostics, type VoiceDiagnostics } from "@/lib/nubo-voice-di
 export default function VoiceDiagnosticsPage() {
   const [report, setReport] = useState<VoiceDiagnostics | null>(null);
   useEffect(() => setReport(readVoiceDiagnostics()), []);
+  const latency = report?.latencyMs;
 
   const rows = report ? [
     ["開始時間", report.startedAt],
@@ -19,6 +20,14 @@ export default function VoiceDiagnosticsPage() {
     ["Gemini 發出中斷訊號", report.serverInterruptions],
     ["意外斷線", report.unexpectedDisconnects],
     ["最高待傳送資料", report.maxSocketBufferedBytes + " 位元組"],
+    ...([
+      ["取得語音通行憑證", latency?.token],
+      ["開啟語音連線", latency?.webSocket],
+      ["建立通話工作階段", latency?.sessionSetup],
+      ["偵測到說完至收到首段模型音訊", latency?.modelAudio],
+      ["首段模型音訊等待送入播放器", latency?.playbackBuffer],
+      ["最近一次 PMS 查詢", latency?.pms],
+    ] as const).flatMap(([label, value]) => typeof value === "number" ? [[label, value + " 毫秒"]] : []),
   ] : [];
 
   return (

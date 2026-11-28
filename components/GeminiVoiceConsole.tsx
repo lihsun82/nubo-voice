@@ -5,7 +5,7 @@ import { preconnect } from "react-dom";
 import { sendTranscriptToNameAlert } from "@/lib/nubo-name-alert-client";
 import { isNuboNameAlertText, startNuboBackgroundNameListener } from "@/lib/nubo-background-name-listener";
 import { loadNuboSpeechClip, MicrophonePcmStream, PcmPlaybackQueue, playNuboSpeechClip } from "@/lib/browser-audio";
-import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
+import { finishIncomingAudioTurn, recordIncomingAudioChunk, recordServerInterruption, recordSocketBuffer, recordUnexpectedDisconnect, recordVoiceLatency, resetVoiceReplyLatency, startVoiceDiagnostics } from "@/lib/nubo-voice-diagnostics";
 import {
   executeNuboBrowserTool,
   geminiFunctionDeclarations,
@@ -731,19 +731,24 @@ export function GeminiVoiceConsole() {
     }
     setState("connecting");
     closingRef.current = false;
+    const playback = new PcmPlaybackQueue();
+    playbackRef.current = playback;
+    // Prepare the audio output during dialing so loading the worklet does not delay the greeting.
+    void playback.prepare().catch(() => undefined);
 
     try {
       const bookingLinkRequest = loadGuestBookingLink();
+      const tokenRequestedAt = performance.now();
       const tokenData = await requestJson("/api/gemini-token", { cache: "no-store" });
-      if (closingRef.current) return;
+      if (closingRef.current || playbackRef.current !== playback) return;
+      recordVoiceLatency("token", performance.now() - tokenRequestedAt);
       const endpoint =
         `wss://${GEMINI_LIVE_HOST}/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained`;
+      const socketCreatedAt = performance.now();
       const socket = new WebSocket(`${endpoint}?access_token=${encodeURIComponent(tokenData.token)}`);
       socket.binaryType = "arraybuffer";
       socketRef.current = socket;
-      const playback = new PcmPlaybackQueue();
-      playbackRef.current = playback;
-      let quietReply = false;
+      let socketOpenedAt = 0;
       let skipStockAudio = false;
       let activeToolRequests = 0;
       let guestTurn = 0;
@@ -752,9 +757,15 @@ export function GeminiVoiceConsole() {
       let replyLanguage: string | null = greetingLanguageRef.current;
       let spokenTurnLanguage: string | null = null;
       let awaitingGuestTranscript = false;
+      let interimReplyLanguage: string | null = null;
+      let guestActivityStartedAt = 0;
+      let guestActivityEndedAt = 0;
+      let guestActivityMs: number | null = null;
+      let guestTranscriptForClosing = "";
       let englishRepairRequested = false;
       let rawReplyText = "";
       let rejectedEnglishReply = false;
+      let firstModelAudioAt = 0;
       const unplayedAudio: string[] = [];
       let roomPhotosRequested = false;
       let confirmedRoomsAvailable = false;
@@ -803,29 +814,33 @@ export function GeminiVoiceConsole() {
 
       async function executeVoiceTool(call: FunctionCall) {
         if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos();
+        if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name)) return executeNuboBrowserTool(call);
+        const queryStartedAt = performance.now();
         const language = spokenTurnLanguage === "nan" || spokenTurnLanguage === "zh" ? spokenTurnLanguage : null;
         const cue = language && lookupCueAudioRef.current[language];
-        if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name) || !cue || !language || hasModelAudio || lookupCuePlayed) {
-          return executeNuboBrowserTool(call);
-        }
         const turn = guestTurn;
-        const timer = window.setTimeout(() => {
+        const timer = cue && language && !hasModelAudio && !lookupCuePlayed ? window.setTimeout(() => {
           if (socketRef.current !== socket || closingRef.current || silentUntilWakeRef.current ||
               turn !== guestTurn || spokenTurnLanguage !== language || hasModelAudio || lookupCuePlayed) return;
           lookupCuePlayed = true;
           markSpeaking();
           setKioskResponse(LOOKUP_CUES[language]);
           void playback.enqueue(cue, 24_000).catch(() => undefined);
-        }, 550);
+        }, 550) : undefined;
         try {
           return await executeNuboBrowserTool(call);
         } finally {
           window.clearTimeout(timer);
+          if (turn === guestTurn && socketRef.current === socket) {
+            recordVoiceLatency("pms", performance.now() - queryStartedAt);
+          }
         }
       }
 
       socket.onopen = () => {
         if (socketRef.current !== socket) return;
+        socketOpenedAt = performance.now();
+        recordVoiceLatency("webSocket", socketOpenedAt - socketCreatedAt);
         const musicEnabled = getNuboGuestConfigSnapshot().musicEnabled;
         const sessionClockInstruction = formatNuboSessionClockInstruction(tokenData.clock);
         const cueLanguages = (["nan", "zh"] as const).filter((language) => lookupCueAudioRef.current[language]);
@@ -875,16 +890,26 @@ export function GeminiVoiceConsole() {
           const activity = message.voiceActivity?.type ?? message.voiceActivity?.voiceActivityType;
           if (activity === "ACTIVITY_START") {
             guestTurn += 1;
-            quietReply = false;
             hasModelAudio = false;
             lookupCuePlayed = false;
             spokenTurnLanguage = null;
             awaitingGuestTranscript = true;
+            interimReplyLanguage = null;
+            guestActivityStartedAt = performance.now();
+            guestActivityEndedAt = 0;
+            guestActivityMs = null;
+            guestTranscriptForClosing = "";
             englishRepairRequested = false;
             rawReplyText = "";
             rejectedEnglishReply = false;
+            firstModelAudioAt = 0;
+            resetVoiceReplyLatency();
             unplayedAudio.length = 0;
             roomPhotosRequested = false;
+          }
+          if (activity === "ACTIVITY_END" && guestActivityStartedAt) {
+            guestActivityEndedAt = performance.now();
+            guestActivityMs = guestActivityEndedAt - guestActivityStartedAt;
           }
 
           const sessionUpdate = message.sessionResumptionUpdate ?? message.session_resumption_update;
@@ -900,6 +925,7 @@ export function GeminiVoiceConsole() {
           }
 
           if (message.setupComplete) {
+            if (socketOpenedAt) recordVoiceLatency("sessionSetup", performance.now() - socketOpenedAt);
             // Dialing and the handshake overlap. Keep the ringtone out of the microphone.
             if (callToneRef.current) await callToneRef.current;
             if (socketRef.current !== socket || closingRef.current || socket.readyState !== WebSocket.OPEN) return;
@@ -930,7 +956,6 @@ export function GeminiVoiceConsole() {
               await microphone.stop();
               return;
             }
-            void playback.prepare().catch(() => undefined);
             const audibleGreeting = !silentUntilWakeRef.current;
             if (greetingLanguage) {
               greetingLanguageRef.current = null;
@@ -959,24 +984,27 @@ export function GeminiVoiceConsole() {
           const serverContent = message.serverContent;
           const userText = serverContent?.inputTranscription?.text;
           const modelText = serverContent?.outputTranscription?.text;
+          const interim = serverContent?.interimInputTranscription;
+          if (awaitingGuestTranscript && typeof interim?.text === "string") {
+            const language = interim.languageCode ?? interim.language_code ?? interim.language;
+            interimReplyLanguage = detectNuboGuestReplyLanguage(interim.text, language) ?? interimReplyLanguage;
+          }
           if (!silentUntilWakeRef.current && typeof userText === "string") {
             if (socketRef.current === socket && !closingRef.current && userText.trim()) {
               const input = serverContent.inputTranscription;
               const language = input?.languageCode ?? input?.language_code ?? input?.language;
-              spokenTurnLanguage = detectNuboGuestReplyLanguage(userText, language) ?? spokenTurnLanguage;
+              spokenTurnLanguage = detectNuboGuestReplyLanguage(userText, language) ?? interimReplyLanguage ?? spokenTurnLanguage;
               replyLanguage = spokenTurnLanguage ?? replyLanguage;
               awaitingGuestTranscript = false;
+              const transcript = userText.trim();
+              if (transcript.startsWith(guestTranscriptForClosing)) guestTranscriptForClosing = transcript;
+              else if (!guestTranscriptForClosing.endsWith(transcript)) guestTranscriptForClosing += " " + transcript;
               if (reportNuboKioskSpeech(userText, language)) {
                 kioskResponseBufferRef.current = "";
                 setKioskResponse("");
               }
               const reply = readNuboShortReply(userText);
               followUpRef.current = reply ? { reply, question: lastQuestionRef.current } : null;
-              quietReply = activeToolRequests === 0 && isNuboConversationCloser(userText, lastQuestionRef.current);
-              if (quietReply) {
-                lastQuestionRef.current = "";
-                notifyNuboVoicePhase("listening");
-              }
             }
             const phrase = userText.replace(/[\s\p{P}]/gu, "");
             const phone = /撥打電話|打電話|電話號碼|電話(?:是)?(?:多少|幾號)|(?:飯店|酒店|旅館|公司|櫃檯)(?:的)?(?:聯絡)?電話|打給(?:飯店|酒店|旅館|公司|櫃檯)|^(?:我要|我想|請幫我)?撥打$/u.test(phrase);
@@ -997,12 +1025,27 @@ export function GeminiVoiceConsole() {
               openSpokenBooking();
             }
           }
+          const quietReply = !hasModelAudio && activeToolRequests === 0 &&
+            isNuboConversationCloser(guestTranscriptForClosing, lastQuestionRef.current, guestActivityMs);
+          if (quietReply && (activity === "ACTIVITY_END" || typeof userText === "string")) {
+            lastQuestionRef.current = "";
+            notifyNuboVoicePhase("listening");
+          }
           const completed = !!(serverContent?.turnComplete || serverContent?.turn_complete);
+          const generated = !!(serverContent?.generationComplete || serverContent?.generation_complete);
           const interrupted = !!serverContent?.interrupted;
+          const hasInterimLanguage = guestActivityMs !== null && interimReplyLanguage !== null;
+          if (awaitingGuestTranscript && hasInterimLanguage) replyLanguage = interimReplyLanguage;
+          const replyLanguageReady = !awaitingGuestTranscript || hasInterimLanguage || generated || completed;
           if (typeof modelText === "string" && modelText.trim()) {
             rawReplyText = modelText.startsWith(rawReplyText) ? modelText : rawReplyText + modelText;
           }
           const parts = serverContent?.modelTurn?.parts;
+          if (!firstModelAudioAt && Array.isArray(parts) &&
+              parts.some((part) => part?.inlineData?.data && !part?.thought)) {
+            firstModelAudioAt = performance.now();
+            if (guestActivityEndedAt) recordVoiceLatency("modelAudio", firstModelAudioAt - guestActivityEndedAt);
+          }
           // The audio and its transcript can arrive in separate frames. Hold
           // audio when the current language or the first English words are pending.
           if (Array.isArray(parts) && !rejectedEnglishReply && !interrupted && !quietReply) {
@@ -1011,9 +1054,9 @@ export function GeminiVoiceConsole() {
             }
           }
           const englishCheck = replyLanguage === "en"
-            ? checkNuboEnglishReply(rawReplyText, completed || !!serverContent?.generationComplete)
+            ? checkNuboEnglishReply(rawReplyText, completed || generated)
             : "match";
-          if (!awaitingGuestTranscript && englishCheck === "mismatch" && !rejectedEnglishReply) {
+          if (replyLanguageReady && englishCheck === "mismatch" && !rejectedEnglishReply) {
             rejectedEnglishReply = true;
             unplayedAudio.length = 0;
             playback.interrupt();
@@ -1021,7 +1064,7 @@ export function GeminiVoiceConsole() {
             setKioskResponse("");
           }
           const canPlayReply = !quietReply && !interrupted && !rejectedEnglishReply &&
-            englishCheck === "match" && (!awaitingGuestTranscript || completed);
+            englishCheck === "match" && replyLanguageReady;
           let visibleModelText = "";
           if (canPlayReply && rawReplyText && (typeof modelText === "string" || !kioskResponseBufferRef.current)) {
             const previous = kioskResponseBufferRef.current;
@@ -1061,6 +1104,9 @@ export function GeminiVoiceConsole() {
             const turn = guestTurn;
             for (const audio of availableAudio) {
               if (turn !== guestTurn || socketRef.current !== socket) break;
+              if (!hasModelAudio && firstModelAudioAt) {
+                recordVoiceLatency("playbackBuffer", performance.now() - firstModelAudioAt);
+              }
               hasModelAudio = true;
               noteVoiceInteraction();
               recordIncomingAudioChunk();
@@ -1447,6 +1493,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
         }
       };
     } catch (cause) {
+      if (closingRef.current || playbackRef.current !== playback) return;
+      playbackRef.current = null;
+      void playback.close();
       const message = cause instanceof Error ? cause.message : "即時語音啟動失敗";
       if (isReconnect && !closingRef.current) {
         scheduleReconnect(message);
