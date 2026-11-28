@@ -160,6 +160,8 @@ type Props = {
   sleeping?: boolean;
   onToggleCall: (language: NuboKioskLanguage) => void;
   bookingUrl?: string;
+  bookingBlocked?: boolean;
+  onBookingClick?: () => void;
   roomPhotoRequest?: number | null;
   contact?: { visible: boolean; open: () => void; close: () => void };
   children?: ReactNode;
@@ -167,13 +169,19 @@ type Props = {
 
 export function NuboConciergeKiosk({
   state, transcript, error, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
-  contact, roomPhotoRequest, children,
+  bookingBlocked, onBookingClick, contact, roomPhotoRequest, children,
 }: Props) {
   const { language, preference } = useNuboKioskLanguage();
   const openDuringCall = (event: MouseEvent<HTMLAnchorElement>) => {
     if (state !== "connected" && state !== "ringing" && state !== "connecting") return;
     if (tryNativeAndroidLaunch(event.currentTarget.href, "網站")) event.preventDefault();
   };
+  const openBooking = (event: MouseEvent<HTMLAnchorElement>) => {
+    onBookingClick?.();
+    openDuringCall(event);
+  };
+  const manualBookingLabel = { zh: "點此開啟訂房／入住頁", en: "Open booking / check-in", ja: "予約・チェックイン画面を開く",
+    ko: "예약·체크인 화면 열기", vi: "Mở trang đặt phòng / nhận phòng" };
   const locale = NUBO_KIOSK_LOCALES[language];
   const date = useMemo(() => new Intl.DateTimeFormat(locale, {
     timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", weekday: "short",
@@ -304,7 +312,7 @@ export function NuboConciergeKiosk({
             </button>
           </section>
           <div className="nubo-kiosk-dock">
-            <a href={bookingUrl} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{copy.hints[0]}</a>
+            <a href={bookingUrl} onClick={openBooking} target="_blank" rel="noopener noreferrer">{bookingBlocked ? manualBookingLabel[language] : copy.hints[0]}</a>
             <NuboPhoneAction state={state} onClick={() => onToggleCall(language)} kioskLabels={copy.controls} />
             <a href={FOOD_MAP_URL} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{copy.hints[1]}</a>
           </div>
@@ -319,7 +327,7 @@ export function NuboConciergeKiosk({
           <nav aria-labelledby="nubo-kiosk-services-title" className="nubo-kiosk-services">
             <h2 id="nubo-kiosk-services-title">{copy.services}</h2>
             <div className="nubo-kiosk-grid">
-              <a className="nubo-kiosk-tile" href={bookingUrl} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
+              <a className="nubo-kiosk-tile" href={bookingUrl} onClick={openBooking} target="_blank" rel="noopener noreferrer">{card(0, "key")}</a>
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" onClick={openContact}
                 aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
               <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>

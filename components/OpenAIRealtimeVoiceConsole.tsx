@@ -1,5 +1,8 @@
 "use client";
 
+import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
+import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
+
 import { useEffect, useRef, useState } from "react";
 import { NuboConciergeKiosk } from "@/components/NuboConciergeKiosk";
 import { playNuboCallTones } from "@/lib/nubo-call-tones";
@@ -105,7 +108,7 @@ function toRealtimeJsonSchema(input: unknown): Record<string, unknown> {
 }
 
 function toRealtimeTools() {
-  return geminiFunctionDeclarations.map((declaration) => ({
+  return [...geminiFunctionDeclarations, BOOKING_HANDOFF_TOOL].map((declaration) => ({
     type: "function" as const,
     name: declaration.name,
     description: declaration.description,
@@ -136,6 +139,8 @@ export function OpenAIRealtimeVoiceConsole({
 }: {
   profile: NuboVoiceProfile;
 }) {
+  const { link: bookingPage, handoff: bookingHandoff, resetLink: resetBookingLink } = useGuestBookingPage();
+  const bookingUrlRef = useRef<string | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -189,6 +194,8 @@ export function OpenAIRealtimeVoiceConsole({
   };
 
   const disconnect = async () => {
+    bookingHandoff.reset();
+    resetBookingLink();
     callTonePendingRef.current = false;
     setIsRinging(false);
     connectionEpochRef.current += 1;
@@ -237,15 +244,20 @@ export function OpenAIRealtimeVoiceConsole({
       args = {};
     }
 
+    const epoch = connectionEpochRef.current;
     const callId = event.call_id ?? event.item_id ?? crypto.randomUUID();
 
     try {
       notifyNuboVoicePhase("thinking");
-      const result = await executeNuboBrowserTool({
-        id: callId,
-        name: event.name,
-        args,
-      } as FunctionCall);
+      const purpose = inventoryPurpose(event.name);
+      const revision = purpose ? bookingHandoff.invalidate() : 0;
+      let result: unknown = event.name === BOOKING_HANDOFF_TOOL.name
+        ? bookingHandoff.request(args, bookingUrlRef.current)
+        : await executeNuboBrowserTool({ id: callId, name: event.name, args } as FunctionCall);
+      if (closingRef.current || connectionEpochRef.current !== epoch) return;
+      if (purpose && result && typeof result === "object") {
+        result = bookingHandoff.inventory(revision, purpose, args, result as Record<string, unknown>, bookingUrlRef.current);
+      }
 
       sendEvent({
         type: "conversation.item.create",
@@ -283,7 +295,14 @@ export function OpenAIRealtimeVoiceConsole({
       return;
     }
 
+    if (type === "output_audio_buffer.started") {
+      bookingHandoff.playback(true);
+      bookingHandoff.spoken();
+    }
+    if (type === "output_audio_buffer.cleared") bookingHandoff.interrupt();
+    if (type === "output_audio_buffer.stopped" || type === "output_audio_buffer.cleared") bookingHandoff.playback(false);
     if (type === "input_audio_buffer.speech_started") {
+      bookingHandoff.guestTurn();
       noteEcoActivity();
       notifyNuboVoicePhase("listening");
       return;
@@ -295,6 +314,7 @@ export function OpenAIRealtimeVoiceConsole({
     ) {
       noteEcoActivity();
       const text = event.transcript.trim();
+      bookingHandoff.guestTranscript(text);
       reportNuboKioskSpeech(text, event.language);
       recordNuboQuestion(text);
       setTranscript(text);
@@ -310,6 +330,7 @@ export function OpenAIRealtimeVoiceConsole({
       type === "response.audio_transcript.delta"
     ) {
       noteEcoActivity();
+      if (event.delta) bookingHandoff.replyTranscript(event.delta);
       transcriptBufferRef.current += event.delta ?? "";
       if (transcriptBufferRef.current.trim()) {
         setTranscript(transcriptBufferRef.current.trim());
@@ -347,6 +368,8 @@ export function OpenAIRealtimeVoiceConsole({
     }
 
     if (type === "response.done") {
+      if (event.response?.status === "completed") bookingHandoff.endReply();
+      else bookingHandoff.guestTurn();
       noteEcoActivity();
       transcriptBufferRef.current = "";
       notifyNuboVoicePhase("listening");
@@ -381,6 +404,12 @@ export function OpenAIRealtimeVoiceConsole({
     connectGuardRef.current = true;
     const epoch = connectionEpochRef.current + 1;
     connectionEpochRef.current = epoch;
+    bookingHandoff.reset();
+    resetBookingLink();
+    bookingUrlRef.current = null;
+    void loadGuestBookingLink().then(url => {
+      if (connectionEpochRef.current === epoch) bookingUrlRef.current = url;
+    });
     closingRef.current = false;
     removeStaleNuboAudioOutputs();
     setEcoMode("active");
@@ -517,7 +546,7 @@ export function OpenAIRealtimeVoiceConsole({
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
 
-      const instructions = `${geminiSystemInstruction}\n\n${getNuboPersonalityInstruction(
+      const instructions = `${geminiSystemInstruction}\n\n${BOOKING_FLOW}\n\n${getNuboPersonalityInstruction(
         profile.personality,
       )}\n\n${sessionClockInstruction}`;
       const session = {
@@ -614,6 +643,9 @@ export function OpenAIRealtimeVoiceConsole({
     <NuboConciergeKiosk
       state={isRinging ? "ringing" : state}
       transcript={transcript}
+      bookingUrl={bookingPage.url}
+      bookingBlocked={bookingPage.blocked}
+      onBookingClick={() => bookingHandoff.manual(bookingPage.url)}
       sleeping={ecoMode === "sleeping"}
       onToggleCall={() => void (state === "connected" ? disconnect() : startWithCallTones())}
     >

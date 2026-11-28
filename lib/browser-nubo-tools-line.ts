@@ -275,6 +275,7 @@ export async function executeNuboBrowserTool(call: FunctionCall) {
       call.name === "pms_lookup_reservation") {
     const pmsArgs = { ...call.args };
     delete pmsArgs.replyLanguage;
+    delete pmsArgs.navigation;
     const route = call.name === "pms_check_availability"
       ? "/api/pms/v1/availability"
       : call.name === "pms_check_rest_availability"
@@ -408,7 +409,7 @@ NUBO 語音主畫面的聯絡卡（僅限 NUBO 畫面）：
 - 【時間與日期最高優先】一律以當次 get_current_time 工具回傳 source=server-clock、timezone=Asia/Taipei 的 localDate、weekday、today、tomorrow、dayAfterTomorrow 為準。連線起始時間快照只是參考，過午夜後不得沿用舊快照；不可把 isoUtc 的 UTC 日期當成台灣日期，不可信任手機時鐘、模型記憶或價格雷達的相對日期。
 - 需要回答當前日期、星期、時間，或換算「今晚／下週／明仔載」等相對日期時，先呼叫 get_current_time。若資料還不夠查房，直接補問缺少的日期或人數。已知完整入住與退房日期可直接查 PMS；未指定未來時間的現場休息直接查 startAt="now"。時鐘工具失敗時，請旅客確認絕對日期，勿自行猜測。
 - 兩種查房的間數只供內部判斷。依本次 PMS 房型名稱回答有無；資訊不足、只有合計、未回傳指定房型、未知必要條件、逾時或查詢失敗，都說目前無法確認，不能當成售完。已核對指定房型為零時，用兩句話：第一句說該房型在這個時段沒有房；第二句只提一種同次查到可售、符合人數與必要條件的替代房型，問是否願意。優先選相同床型，同等合適時取第一個。若床型不同需說明。說完等客人回答，避免再次推薦被拒絕的選項。沒有合適替代時可問要不要換日期。旅客明確要求清單才列出符合的房型名稱。不得報出剩餘間數、猜價格、承諾立即入住或代為保留。
-- bookingPageReady=true 只表示有旅客自助頁連結。從 NUBO 畫面可按「訂房／入住」或「我要辦理入住」開啟。進入後依下方自助頁指引回答；查到有房不代表已保留。
+- 查到有房後先說房型與房價，再引導開頁。已有訂單者使用原訂單，查房或開頁都不會保留房間。
 - 旅客問怎麼在自助頁查訂單時，引導在頁面輸入；旅客明確請語音代查且已提供訂單編號與姓氏時，呼叫 pms_lookup_reservation。matched=false 只說目前無法核對，不能透露其他訂單。不得把市場行情當成本館實際售價。
 
 對話人格與口語風格：
@@ -485,6 +486,10 @@ ${NUBOSCI_GUEST_GUIDE}
 ${NUBO_JINXIN_REFERENCE}
 `;
 
+const bookingNavigationParameter = {
+  type: "STRING", enum: ["after_quote", "information_only"],
+  description: "尚未訂房的旅客尋房選 after_quote。已在自助頁操作、只問價目、拒絕開頁或只比價選 information_only。",
+};
 const requiredAmenitiesParameter = {
   type: "ARRAY",
   items: { type: "STRING", enum: ["bidet", "bathtub"] },
@@ -712,6 +717,7 @@ export const geminiFunctionDeclarations = [
         checkOut: { type: "STRING", description: "退房日 YYYY-MM-DD" },
         adults: { type: "NUMBER", description: "單間房成人數（非全團人數，通常1至4位；多房間團體改 pms_group_inquiry）" },
         requiredAmenities: requiredAmenitiesParameter,
+        navigation: bookingNavigationParameter,
       },
       required: ["checkIn", "checkOut", "adults"],
     },
@@ -725,6 +731,7 @@ export const geminiFunctionDeclarations = [
         startAt: { type: "STRING", description: "now 或 YYYY-MM-DDTHH:mm:00+08:00" },
         durationMinutes: { type: "NUMBER", description: "休息時長，60 至 720 分鐘" },
         requiredAmenities: requiredAmenitiesParameter,
+        navigation: bookingNavigationParameter,
       },
       required: ["durationMinutes"],
     },

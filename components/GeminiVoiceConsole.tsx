@@ -1,6 +1,7 @@
 "use client";
 
-import { tryNativeAndroidLaunch } from "../lib/mobile-direct-app-v4";
+import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
+import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
 
 import { useEffect, useRef, useState } from "react";
 import { preconnect } from "react-dom";
@@ -72,22 +73,6 @@ function asksForRoomPhotos(text: string) {
     /(?:객실|방).{0,9}(?:사진|이미지)|(?:사진|이미지).{0,9}(?:객실|방)/u.test(text) ||
     /\b(?:room(?:s)? (?:photos?|pictures?|images?)|(?:photos?|pictures?|images?) of (?:a |the |your )?rooms?)\b/iu.test(text) ||
     /(?:ảnh|hình).{0,9}phòng|phòng.{0,9}(?:ảnh|hình)/iu.test(text);
-}
-
-async function loadGuestBookingLink() {
-  try {
-    const response = await fetch("/api/guest-booking-link", {
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (!response.ok) return null;
-    const data: { enabled?: unknown; url?: unknown } = await response.json();
-    if (data.enabled !== true || typeof data.url !== "string" ||
-        new URL(data.url).protocol !== "https:") return null;
-    return data.url;
-  } catch {
-    return null;
-  }
 }
 
 function bookingLookupNeedsContact(call: FunctionCall, result: Record<string, unknown>) {
@@ -255,8 +240,8 @@ export function GeminiVoiceConsole() {
     playerUrl: string;
     title: string;
   } | null>(null);
-  const guestBookingUrl = "https://nubosci.ainubohub.com/";
-  const bookingAttemptedRef = useRef(false);
+  const { link: bookingPage, handoff: bookingHandoff, resetLink: resetBookingLink } = useGuestBookingPage();
+
   const guestKeywordNoticeRef = useRef<Promise<{ ok: boolean; sent: boolean; duplicate?: boolean }> | null>(null);
 
   function notifyGuestKeywords(issue: string, originalSpeech?: string) {
@@ -280,24 +265,6 @@ export function GeminiVoiceConsole() {
     }
     return guestKeywordNoticeRef.current;
   }
-  const [bookingLink, setBookingLink] = useState<string | null>(null);
-
-  function openSpokenBooking() {
-    setBookingLink(guestBookingUrl);
-    if (bookingAttemptedRef.current) return;
-    bookingAttemptedRef.current = true;
-    if (tryNativeAndroidLaunch(guestBookingUrl, "網站")) return;
-    try {
-      const bookingTab = window.open(guestBookingUrl, "nubo_guest_booking");
-      if (bookingTab) {
-        bookingTab.opener = null;
-        bookingTab.focus();
-      }
-    } catch {
-      // The link remains available when the browser blocks the new tab.
-    }
-  }
-
   const stopNuboOutput = () => {
     playbackRef.current?.interrupt();
     window.speechSynthesis?.cancel();
@@ -578,6 +545,7 @@ export function GeminiVoiceConsole() {
     reconnectAttemptsRef.current = 0;
     sessionHandleRef.current = null;
 
+    bookingHandoff.invalidate();
     // Detach first so old socket onclose cannot schedule a cloud reconnect.
     socketRef.current = null;
     try { socket.close(1000, "NUBO 30s eco sleep"); } catch {}
@@ -659,6 +627,8 @@ export function GeminiVoiceConsole() {
   };
 
   const disconnect = async () => {
+    bookingHandoff.reset();
+    resetBookingLink();
     callActiveRef.current = false;
     microphoneSinkRef.current = null;
     setContactCard(null);
@@ -715,8 +685,8 @@ export function GeminiVoiceConsole() {
       kioskResponseBufferRef.current = "";
       setKioskResponse("");
       if (!isReconnect) guestKeywordNoticeRef.current = null;
-      bookingAttemptedRef.current = false;
-      setBookingLink(null);
+      bookingHandoff.reset();
+      resetBookingLink();
     }
     setState("connecting");
     closingRef.current = false;
@@ -757,7 +727,6 @@ export function GeminiVoiceConsole() {
       let firstModelAudioAt = 0;
       const unplayedAudio: string[] = [];
       let roomPhotosRequested = false;
-      let confirmedRoomsAvailable = false;
       let configuredBookingLink: string | null = null;
       const isGemini38Live = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
       function sendMicrophoneAudio(data: string) {
@@ -773,7 +742,6 @@ export function GeminiVoiceConsole() {
       void bookingLinkRequest.then((url) => {
         if (!url || socketRef.current !== socket || closingRef.current) return;
         configuredBookingLink = url;
-        if (confirmedRoomsAvailable && !bookingAttemptedRef.current) setBookingLink(url);
       });
 
       function sendToolResponses(functionResponses: (Pick<FunctionCall, "id" | "name"> & {
@@ -811,6 +779,7 @@ export function GeminiVoiceConsole() {
       }
 
       async function executeVoiceTool(call: FunctionCall) {
+        if (call.name === BOOKING_HANDOFF_TOOL.name) return bookingHandoff.request(call.args ?? {}, configuredBookingLink);
         if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos();
         if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name)) return executeNuboBrowserTool(call);
         const queryStartedAt = performance.now();
@@ -844,7 +813,7 @@ export function GeminiVoiceConsole() {
           ? "【查房與查訂單的進度】條件齊全時直接呼叫 PMS。櫃檯會視需要以本輪已辨識的國語或台語播放簡短等待提示，收到結果後用旅客本輪的語言報重點。"
           : "";
         const photoInstruction = "旅客想看本館房間照片時呼叫 show_room_photos。回傳 shown=true 後，用旅客的語言簡短說已開啟客房相簿、可以點選樓層和照片。";
-        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, lookupCueInstruction, photoInstruction, GREETING_INSTRUCTION]
+        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, BOOKING_FLOW, lookupCueInstruction, photoInstruction, GREETING_INSTRUCTION]
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
@@ -859,7 +828,7 @@ export function GeminiVoiceConsole() {
               systemInstruction: { parts: [{ text: musicEnabled
                 ? sessionInstruction
                 : `旅客模式暫時不提供音樂或 YouTube 播放。被要求播放時，簡短說明目前未開放；不要開啟音樂、影片或相關網站。\n\n${sessionInstruction}` }] },
-              tools: [{ functionDeclarations: [...tools, ROOM_PHOTO_TOOL] }],
+              tools: [{ functionDeclarations: [...tools, ROOM_PHOTO_TOOL, BOOKING_HANDOFF_TOOL] }],
               inputAudioTranscription: {},
               outputAudioTranscription: {},
               contextWindowCompression: { slidingWindow: {} },
@@ -875,6 +844,7 @@ export function GeminiVoiceConsole() {
           const message = await parseSocketMessage(event.data);
           const activity = message.voiceActivity?.type ?? message.voiceActivity?.voiceActivityType;
           if (activity === "ACTIVITY_START") {
+            bookingHandoff.guestTurn();
             liveAudioInput?.startCloudActivity();
             guestTurn += 1;
             hasModelAudio = false;
@@ -987,6 +957,7 @@ export function GeminiVoiceConsole() {
               replyLanguage = spokenTurnLanguage ?? replyLanguage;
               awaitingGuestTranscript = false;
               const transcript = userText.trim();
+              bookingHandoff.guestTranscript(transcript);
               if (transcript.startsWith(guestTranscriptForClosing)) guestTranscriptForClosing = transcript;
               else if (!guestTranscriptForClosing.endsWith(transcript)) guestTranscriptForClosing += " " + transcript;
               if (reportNuboKioskSpeech(userText, language)) {
@@ -1011,9 +982,6 @@ export function GeminiVoiceConsole() {
             if (taiwaneseBooking) keywords.add("訂房");
             if (keywords.size) void notifyGuestKeywords([...keywords].join("／"));
             if (asksForRoomPhotos(userText)) showRoomPhotos();
-            if (taiwaneseBooking || /^(?:你好|請問)?(?:(?:我|我們)?(?:要|想要?|需要|準備)(?:現在|現場|直接)?|(?:請)?幫我)(?:訂房|訂(?:一間)?房間)(?:可以嗎|謝謝)?$/u.test(phrase)) {
-              openSpokenBooking();
-            }
           }
           const quietReply = !hasModelAudio && activeToolRequests === 0 &&
             isNuboConversationCloser(guestTranscriptForClosing, lastQuestionRef.current, guestActivityMs);
@@ -1079,6 +1047,7 @@ export function GeminiVoiceConsole() {
             visibleModelText = filtered.text;
             if (visibleModelText) setKioskResponse(visibleModelText);
           }
+          if (!interrupted && !pauseReply && typeof modelText === "string") bookingHandoff.replyTranscript(modelText);
           const availableAudio = canPlayReply ? unplayedAudio.splice(0) : [];
           const needsLanguageRepair = guardedLanguage && !quietReply && !pauseReply && !interrupted &&
             (rejectedReply || (replyCheck !== "match" && (unplayedAudio.length > 0 || rawReplyText.trim().length > 0)));
@@ -1095,6 +1064,7 @@ export function GeminiVoiceConsole() {
           }
 
           if (interrupted) {
+            bookingHandoff.interrupt();
             recordServerInterruption();
             playbackRef.current?.interrupt();
             notifyNuboVoicePhase("listening");
@@ -1111,6 +1081,7 @@ export function GeminiVoiceConsole() {
               noteVoiceInteraction();
               recordIncomingAudioChunk();
               await playbackRef.current?.enqueue(audio, 24_000);
+              if (turn === guestTurn && socketRef.current === socket) bookingHandoff.spoken();
             }
           }
           if (completed && needsLanguageRepair && serverContent?.interactionStatus !== "IN_PROGRESS" && activeToolRequests === 0 &&
@@ -1127,6 +1098,7 @@ export function GeminiVoiceConsole() {
             }
           }
 
+          if (completed && !interrupted && !needsLanguageRepair && !quietReply && !pauseReply) bookingHandoff.endReply();
           if (serverContent?.turnComplete) finishIncomingAudioTurn();
           if (visibleModelText) {
             noteVoiceInteraction();
@@ -1275,6 +1247,8 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
                 // The model may still emit open_youtube after the local fast route already
                 // switched the song. Treat that tool call as acknowledged, not a second launch.
+                const purpose = inventoryPurpose(call.name);
+                const revision = purpose ? bookingHandoff.invalidate() : 0;
                 const result = fastRouteDuplicate
                   ? recentFastRoute?.result ?? {
                       ok: true,
@@ -1420,19 +1394,8 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
                 const supportResult = showBookingSupport(call, result);
                 let responseResult: unknown = supportResult ?? result;
-                const availableRooms = !supportResult && call.name === "pms_check_availability" &&
-                  result && typeof result === "object" &&
-                  "covered" in result && result.covered === true &&
-                  "roomTypes" in result && Array.isArray(result.roomTypes) &&
-                  result.roomTypes.some((room: unknown) =>
-                    room && typeof room === "object" && "availableCount" in room &&
-                    typeof room.availableCount === "number" && room.availableCount > 0);
-                if (call.name === "pms_check_availability") {
-                  confirmedRoomsAvailable = !!availableRooms;
-                  if (!bookingAttemptedRef.current) setBookingLink(availableRooms ? configuredBookingLink : null);
-                }
-                if (availableRooms) {
-                  responseResult = { ...result, bookingPageReady: !!configuredBookingLink };
+                if (purpose && socketRef.current === socket && !closingRef.current && responseResult && typeof responseResult === "object") {
+                  responseResult = bookingHandoff.inventory(revision, purpose, call.args ?? {}, responseResult as Record<string, unknown>, configuredBookingLink);
                 }
                 functionResponses.push({
                   id: call.id,
@@ -1466,6 +1429,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
       socket.onclose = (event) => {
         if (socketRef.current !== socket) return;
+        bookingHandoff.invalidate();
         console.warn("NUBO Gemini Live socket closed", {
           code: event.code,
           reason: event.reason,
@@ -1740,7 +1704,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       state={isRinging ? "ringing" : state}
       transcript={kioskResponse}
       error={error}
-      bookingUrl={bookingLink ?? guestBookingUrl}
+      bookingUrl={bookingPage.url}
+      bookingBlocked={bookingPage.blocked}
+      onBookingClick={() => bookingHandoff.manual(bookingPage.url)}
       roomPhotoRequest={roomPhotoRequest}
       contact={{
         visible: contactCard !== null,
