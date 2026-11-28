@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { NuboKioskLanguage } from "@/lib/nubo-kiosk-language";
-import type { RoomPhotoFloor, RoomPhotoFloorGallery } from "@/lib/nubo-room-photos";
+import type { RoomPhotoFloor, RoomPhotoFloorGallery, RoomPhotoRequest } from "@/lib/nubo-room-photos";
 
 const COPY = {
   zh: { loading: "正在載入客房照片…", empty: "目前尚無客房照片。", failed: "照片暫時無法載入，請稍後再試。", floors: "樓層", photo: "客房照片" },
@@ -15,7 +15,21 @@ const ALL_PHOTOS: Record<NuboKioskLanguage, string> = {
   zh: "查看全部照片", en: "All photos", ja: "すべての写真", ko: "전체 사진", vi: "Tất cả ảnh",
 };
 
-export function NuboRoomPhotoGallery({ language, title, close, onClose }: {
+const CHOOSE_FLOOR: Record<NuboKioskLanguage, string> = {
+  zh: "請選擇要查看的樓層。", en: "Choose a floor to view its photos.", ja: "写真を見るフロアを選んでください。",
+  ko: "사진을 볼 층을 선택해 주세요.", vi: "Chọn tầng để xem ảnh phòng.",
+};
+
+const FLOOR_EMPTY: Record<NuboKioskLanguage, (floor: RoomPhotoFloor) => string> = {
+  zh: floor => `${floor} 目前尚無客房照片。`,
+  en: floor => `No room photos are available for ${floor} yet.`,
+  ja: floor => `${floor} の客室写真は準備中です。`,
+  ko: floor => `${floor} 객실 사진은 아직 준비 중입니다.`,
+  vi: floor => `Hiện chưa có ảnh phòng của tầng ${floor}.`,
+};
+
+export function NuboRoomPhotoGallery({ request, contextFloor, language, title, close, onClose }: {
+  request: RoomPhotoRequest; contextFloor: RoomPhotoFloor | null;
   language: NuboKioskLanguage; title: string; close: string; onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -26,6 +40,11 @@ export function NuboRoomPhotoGallery({ language, title, close, onClose }: {
   const copy = COPY[language];
 
   useEffect(() => {
+    setSelected(null);
+    setSelectedPhoto(null);
+  }, [request]);
+
+  useEffect(() => {
     if (dialog.current && !dialog.current.open) dialog.current.showModal();
     const controller = new AbortController();
     void fetch("/api/room-photos", { cache: "no-store", signal: controller.signal })
@@ -33,12 +52,16 @@ export function NuboRoomPhotoGallery({ language, title, close, onClose }: {
         if (!response.ok) throw new Error("room_photos_unavailable");
         return response.json() as Promise<{ floors: RoomPhotoFloorGallery[] }>;
       })
-      .then((data) => setFloors(data.floors.filter((floor) => floor.photos.length)))
+      .then((data) => setFloors(data.floors))
       .catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, []);
 
-  const current = floors?.find(({ floor }) => floor === selected) ?? floors?.[0];
+  const target = request.floor ?? contextFloor;
+  const activeFloor = selected ?? target;
+  const choices = floors?.filter(row => row.photos.length > 0 || row.floor === target);
+  // Even when the requested floor has no images, keep its own label and empty state.
+  const current = activeFloor ? floors?.find(row => row.floor === activeFloor) ?? (floors && { floor: activeFloor, photos: [] }) : null;
   const enlargedPhoto = current?.photos.find(({ id }) => id === selectedPhoto);
 
   return (
@@ -47,11 +70,11 @@ export function NuboRoomPhotoGallery({ language, title, close, onClose }: {
         <h2 id="nubo-room-photo-title">{title}</h2>
         <form method="dialog"><button type="submit" aria-label={close}>×</button></form>
       </header>
-      {current ? (
+      {floors && (current || choices?.length) ? (
         <>
           <nav aria-label={copy.floors} className="nubo-kiosk-gallery-floors">
-            {floors?.map(({ floor }) => (
-              <button key={floor} type="button" aria-pressed={current.floor === floor} onClick={() => {
+            {choices?.map(({ floor }) => (
+              <button key={floor} type="button" aria-pressed={current?.floor === floor} onClick={() => {
                 setSelected(floor);
                 setSelectedPhoto(null);
               }}>
@@ -59,13 +82,15 @@ export function NuboRoomPhotoGallery({ language, title, close, onClose }: {
               </button>
             ))}
           </nav>
+          {!current && <p role="status">{CHOOSE_FLOOR[language]}</p>}
+          {current && current.photos.length === 0 && <p role="status">{FLOOR_EMPTY[language](current.floor)}</p>}
           {enlargedPhoto && (
             <button type="button" className="nubo-kiosk-gallery-back" onClick={() => setSelectedPhoto(null)}>
               {ALL_PHOTOS[language]}
             </button>
           )}
           <div className="nubo-kiosk-gallery-images" data-enlarged={enlargedPhoto ? true : undefined}>
-            {current.photos.map((item, index) => (!enlargedPhoto || item.id === enlargedPhoto.id) && (
+            {current?.photos.map((item, index) => (!enlargedPhoto || item.id === enlargedPhoto.id) && (
               <button key={item.id} type="button" aria-pressed={item.id === selectedPhoto}
                 onClick={() => setSelectedPhoto(enlargedPhoto ? null : item.id)}>
                 <img src={item.url} alt={`${copy.photo} ${current.floor} · ${index + 1}`} loading="lazy" decoding="async" />

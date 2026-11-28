@@ -1,10 +1,11 @@
+import { isRoomPhotoFloor, type RoomPhotoFloor } from "./nubo-room-photos.ts";
 import { JINXIN_ROOM_RATES } from "./nubo-jinxin-reference.ts";
 import { floorsForRequiredAmenities, hasPmsFloorScope } from "./pms-facility-floors.ts";
 
 export const GUEST_KIOSK_URL = "https://nubosci.ainubohub.com/#/standby";
 type Purpose = "stay" | "rest" | "existing";
 type Fields = Record<string, unknown>;
-type Offer = { roomCode: string; roomName: string; referenceTwd: number | null };
+type Offer = { roomCode: string; roomName: string; referenceTwd: number | null; photoFloor?: RoomPhotoFloor };
 const DAY = 86_400_000;
 
 export function inventoryPurpose(toolName?: string) {
@@ -40,7 +41,7 @@ export function availableBookingOffers(purpose: "stay" | "rest", args: Fields, r
         !Number.isInteger(room.availableCount) || room.availableCount < 1) return [];
     const referenceTwd = purpose === "stay" ? stayReference(room.code, room.name, args.checkIn, args.checkOut)
       : result.durationMinutes === 180 ? 890 : null;
-    return [{ roomCode: room.code, roomName: room.name, referenceTwd }];
+    return [{ roomCode: room.code, roomName: room.name, referenceTwd, ...(isRoomPhotoFloor(room.photoFloor) ? { photoFloor: room.photoFloor } : {}) }];
   });
 }
 
@@ -113,6 +114,9 @@ export class GuestBookingHandoff {
   private revision = 0;
   private latest: { purpose: Purpose; offers: Offer[]; asOf: number } | null = null;
   private pending: { url: string; spoken: boolean; ended: boolean; offers: Offer[]; stepSpoken: boolean; existing: boolean } | null = null;
+  private photoNarration = "";
+  private mentionedRooms: Offer[] = [];
+  private reservationPhoto: { floor: RoomPhotoFloor; received: number } | null = null;
   private guestWords = "";
   private replyWords = "";
   private suppressPage = false;
@@ -139,6 +143,9 @@ export class GuestBookingHandoff {
 
   invalidate() {
     this.latest = null;
+    this.photoNarration = "";
+    this.mentionedRooms = [];
+    this.reservationPhoto = null;
     this.replyWords = "";
     this.pending = null;
     return ++this.revision;
@@ -147,6 +154,7 @@ export class GuestBookingHandoff {
   interrupt() { this.pending = null; this.replyWords = ""; }
 
   guestTurn() {
+    this.photoNarration = "";
     this.interrupt();
     ++this.revision;
     this.guestWords = "";
@@ -169,7 +177,8 @@ export class GuestBookingHandoff {
   private openSelfService() {
     if (this.suppressPage) return { ok: false, reason: "guest_requested_information_only" };
     if (!this.directPageStatus) {
-      this.invalidate();
+      this.interrupt();
+      ++this.revision;
       this.directPageStatus = this.launch(GUEST_KIOSK_URL) ? "opened" : "blocked";
     }
     const nextStep = this.directPageStatus === "blocked"
@@ -179,6 +188,13 @@ export class GuestBookingHandoff {
   }
 
   replyTranscript(words: string) {
+    if (this.latest?.offers.length) {
+      this.photoNarration = (this.photoNarration + words).slice(-1200);
+      const name = this.photoNarration.replace(/\s+/gu, "");
+      const codes: string[] = this.photoNarration.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
+      const mentioned = this.latest.offers.filter(room => name.includes(room.roomName) || codes.includes(room.roomCode));
+      if (mentioned.length) this.mentionedRooms = mentioned;
+    }
     if (!this.pending && !this.suppressPage && !this.attempted.has(GUEST_KIOSK_URL) && describesExistingReservation(this.guestWords)) {
       this.arm(GUEST_KIOSK_URL, [], true);
     }
@@ -186,6 +202,26 @@ export class GuestBookingHandoff {
     this.replyWords += words;
     this.pending.stepSpoken = this.pending.existing ? existingBookingStep.test(this.replyWords)
       : quotedOffer(this.replyWords, this.pending.offers);
+  }
+
+  rememberReservation(revision: number, result: Fields) {
+    if (revision !== this.revision || result.matched !== true || !result.reservation || typeof result.reservation !== "object") return;
+    const row = result.reservation as Fields;
+    if (row.status === "confirmed" && (row.stayStatus === "checked_in" || row.stayStatus === "not_checked_in") && isRoomPhotoFloor(row.photoFloor)) {
+      this.reservationPhoto = { floor: row.photoFloor, received: Date.now() };
+    }
+  }
+
+  roomPhotoFloor(roomCode?: unknown): RoomPhotoFloor | null {
+    if (!this.latest) return this.reservationPhoto && !roomCode && Date.now() - this.reservationPhoto.received <= 300_000
+      ? this.reservationPhoto.floor : null;
+    if (Date.now() - this.latest.asOf > 300_000) return null;
+    const guestRoom = this.latest.offers.filter(room => this.guestWords.replace(/\s+/gu, "").includes(room.roomName));
+    const rooms = roomCode != null
+      ? this.latest.offers.filter(room => room.roomCode === roomCode)
+      : guestRoom.length ? guestRoom : this.mentionedRooms.length ? this.mentionedRooms : this.latest.offers;
+    const floor = rooms[0]?.photoFloor;
+    return floor && rooms.every(room => room.photoFloor === floor) ? floor : null;
   }
 
   inventory(revision: number, purpose: "stay" | "rest", args: Fields, result: Fields, stayBookingUrl: string | null = null) {
@@ -210,8 +246,12 @@ export class GuestBookingHandoff {
       const age = latest ? Date.now() - latest.asOf : NaN;
       if (!latest || !Number.isFinite(age) || age > 300_000 || age < -60_000 || latest.purpose !== purpose ||
           !latest.offers.some(room => room.roomCode === args.roomCode)) return { ok: false, reason: "matching_live_offer_required" };
+      this.mentionedRooms = latest.offers.filter(room => room.roomCode === args.roomCode);
     } else {
+      // An existing booking keeps its verified floor when the kiosk page opens.
+      const reservationPhoto = this.reservationPhoto;
       this.invalidate();
+      this.reservationPhoto = reservationPhoto;
     }
     const url = purpose === "stay" && stayBookingUrl ? stayBookingUrl : GUEST_KIOSK_URL;
     if (this.suppressPage) return { ok: false, reason: "guest_requested_information_only" };

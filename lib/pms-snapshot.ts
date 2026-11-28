@@ -1,3 +1,5 @@
+import { pmsPhotoFloor } from "./pms-photo-floor.ts";
+import type { RoomPhotoFloor } from "./nubo-room-photos.ts";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { readJson, writeJson } from "./json-store.ts";
@@ -20,6 +22,7 @@ type Reservation = {
   checkIn: string;
   checkOut: string;
   roomTypeName: string;
+  photoFloor?: RoomPhotoFloor;
 };
 export type PmsSnapshot = {
   version: 1;
@@ -146,7 +149,9 @@ function parseSnapshot(value: unknown): PmsSnapshot {
     if (!bookingReference || !surname || !roomTypeName ||
         !reservationStatuses.has(status) || !stayStatuses.has(stayStatus) ||
         !validDateRange(row.checkIn, row.checkOut)) throw new Error("invalid_payload");
+    const photoFloor = pmsPhotoFloor(row);
     return {
+      ...(photoFloor ? { photoFloor } : {}),
       lookupKey: lookupKey(bookingReference, surname),
       status: status as Reservation["status"],
       stayStatus: stayStatus as Reservation["stayStatus"],

@@ -1,7 +1,9 @@
+import { pmsPhotoFloor } from "./pms-photo-floor.ts";
+import type { RoomPhotoFloor } from "./nubo-room-photos.ts";
 import { PMS_PROPERTY_ID } from "./pms-snapshot.ts";
 import { guestRoomTypeFloorView, hasPmsFloorScope } from "./pms-facility-floors.ts";
 
-type RoomType = { code: string; name: string; availableCount: number };
+type RoomType = { code: string; name: string; availableCount: number; photoFloor?: RoomPhotoFloor };
 export const guestRoomTypeView = "guest-room-types-v1";
 
 export class PmsLiveError extends Error {
@@ -46,7 +48,7 @@ function configuredEndpoint() {
   return { url: url.toString(), token };
 }
 
-export function roomTypesFrom(value: unknown): RoomType[] {
+export function roomTypesFrom(value: unknown, floors: readonly number[] = []): RoomType[] {
   if (!Array.isArray(value) || value.length > 60) throw new Error("pms_live_invalid_response");
   return value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -59,7 +61,9 @@ export function roomTypesFrom(value: unknown): RoomType[] {
         (row.availableCount as number) > 1000) {
       throw new Error("pms_live_invalid_response");
     }
+    const photoFloor = row.availableCount === 0 ? null : pmsPhotoFloor(row, floors);
     return {
+      ...(photoFloor ? { photoFloor } : {}),
       code: row.code.trim(),
       name: row.name.trim(),
       availableCount: row.availableCount as number,
@@ -127,7 +131,7 @@ export async function queryLivePmsAvailability(
     ready: true as const,
     covered: true as const,
     asOf: result.asOf,
-    roomTypes: roomTypesFrom(result.roomTypes),
+    roomTypes: roomTypesFrom(result.roomTypes, floors),
     source: "live" as const,
     ...(guestRoomTypes || floorQuery ? { inventoryView } : {}),
     ...(floorQuery ? { floors } : {}),

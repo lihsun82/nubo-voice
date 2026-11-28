@@ -110,6 +110,17 @@ for (const [path, body] of [
   });
 }
 
+for (const [path, query] of [["availability", stayQuery], ["rest-availability", restQuery]]) {
+  test(path + " returns the verified album floor without the physical room number", async t => {
+    t.mock.method(globalThis, "fetch", async () => Response.json({
+      ...responseBody(path), roomTypes: [{code:"CD",name:"智享雙人房",availableCount:1,roomNumber:"601"}],
+    }));
+    const response = await route(path).POST(input(path, query));
+    assert.equal(response.status,200);
+    assert.deepEqual((await response.json()).roomTypes,[{code:"CD",name:"智享雙人房",availableCount:1,photoFloor:"6F"}]);
+  });
+}
+
 test("same-origin unpaired access NEVER authorizes reservation lookup", async () => {
   const reservation = route("reservation");
   const denied = await reservation.POST(input("reservation", {

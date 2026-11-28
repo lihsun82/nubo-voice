@@ -101,6 +101,6 @@ export async function queryLivePmsRestAvailability(
     asOf: result.asOf,
   };
   return byRoomType
-    ? { ...interval, inventoryView, roomTypes: roomTypesFrom(result.roomTypes), ...(floorQuery ? { floors } : {}) }
+    ? { ...interval, inventoryView, roomTypes: roomTypesFrom(result.roomTypes, floors), ...(floorQuery ? { floors } : {}) }
     : { ...interval, availableCount: result.availableCount as number };
 }

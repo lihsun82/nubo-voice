@@ -1,5 +1,7 @@
 "use client";
 
+import { ROOM_PHOTO_TOOL, ROOM_PHOTO_GUIDANCE, type RoomPhotoRequest } from "@/lib/nubo-room-photos";
+
 import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
 import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
 
@@ -108,7 +110,7 @@ function toRealtimeJsonSchema(input: unknown): Record<string, unknown> {
 }
 
 function toRealtimeTools() {
-  return [...geminiFunctionDeclarations, BOOKING_HANDOFF_TOOL].map((declaration) => ({
+  return [...geminiFunctionDeclarations, BOOKING_HANDOFF_TOOL, ROOM_PHOTO_TOOL].map((declaration) => ({
     type: "function" as const,
     name: declaration.name,
     description: declaration.description,
@@ -141,6 +143,7 @@ export function OpenAIRealtimeVoiceConsole({
 }) {
   const { link: bookingPage, handoff: bookingHandoff, resetLink: resetBookingLink } = useGuestBookingPage();
   const bookingUrlRef = useRef<string | null>(null);
+  const [roomPhotoRequest, setRoomPhotoRequest] = useState<RoomPhotoRequest | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const channelRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -250,11 +253,21 @@ export function OpenAIRealtimeVoiceConsole({
     try {
       notifyNuboVoicePhase("thinking");
       const purpose = inventoryPurpose(event.name);
-      const revision = purpose ? bookingHandoff.invalidate() : 0;
-      let result: unknown = event.name === BOOKING_HANDOFF_TOOL.name
-        ? bookingHandoff.request(args, bookingUrlRef.current)
-        : await executeNuboBrowserTool({ id: callId, name: event.name, args } as FunctionCall);
+      const revision = purpose || event.name === "pms_lookup_reservation" ? bookingHandoff.invalidate() : 0;
+      let result: unknown;
+      if (event.name === ROOM_PHOTO_TOOL.name) {
+        const floor = bookingHandoff.roomPhotoFloor(args.roomCode);
+        setRoomPhotoRequest({ floor });
+        result = { ok: true, shown: true, floor };
+      } else if (event.name === BOOKING_HANDOFF_TOOL.name) {
+        result = bookingHandoff.request(args, bookingUrlRef.current);
+      } else {
+        result = await executeNuboBrowserTool({ id: callId, name: event.name, args } as FunctionCall);
+      }
       if (closingRef.current || connectionEpochRef.current !== epoch) return;
+      if (event.name === "pms_lookup_reservation" && result && typeof result === "object") {
+        bookingHandoff.rememberReservation(revision, result as Record<string, unknown>);
+      }
       if (purpose && result && typeof result === "object") {
         result = bookingHandoff.inventory(revision, purpose, args, result as Record<string, unknown>, bookingUrlRef.current);
       }
@@ -550,7 +563,7 @@ export function OpenAIRealtimeVoiceConsole({
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
 
-      const instructions = `${geminiSystemInstruction}\n\n${BOOKING_FLOW}\n\n${getNuboPersonalityInstruction(
+      const instructions = `${geminiSystemInstruction}\n\n${BOOKING_FLOW}\n\n${ROOM_PHOTO_GUIDANCE}\n\n${getNuboPersonalityInstruction(
         profile.personality,
       )}\n\n${sessionClockInstruction}`;
       const session = {
@@ -647,6 +660,8 @@ export function OpenAIRealtimeVoiceConsole({
     <NuboConciergeKiosk
       state={isRinging ? "ringing" : state}
       transcript={transcript}
+      roomPhotoRequest={roomPhotoRequest}
+      getRoomPhotoFloor={() => bookingHandoff.roomPhotoFloor()}
       bookingUrl={bookingPage.url}
       bookingBlocked={bookingPage.blocked}
       onBookingClick={() => bookingHandoff.manual(bookingPage.url)}

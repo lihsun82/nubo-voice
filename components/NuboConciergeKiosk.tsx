@@ -1,5 +1,7 @@
 "use client";
 
+import type { RoomPhotoRequest, RoomPhotoFloor } from "@/lib/nubo-room-photos";
+
 import { tryNativeAndroidLaunch } from "../lib/mobile-direct-app-v4";
 import type { MouseEvent } from "react";
 
@@ -162,14 +164,15 @@ type Props = {
   bookingUrl?: string;
   bookingBlocked?: boolean;
   onBookingClick?: () => void;
-  roomPhotoRequest?: number | null;
+  roomPhotoRequest?: RoomPhotoRequest | null;
+  getRoomPhotoFloor?: () => RoomPhotoFloor | null;
   contact?: { visible: boolean; open: () => void; close: () => void };
   children?: ReactNode;
 };
 
 export function NuboConciergeKiosk({
   state, transcript, error, sleeping, onToggleCall, bookingUrl = GUEST_SERVICE_URL,
-  bookingBlocked, onBookingClick, contact, roomPhotoRequest, children,
+  bookingBlocked, onBookingClick, contact, roomPhotoRequest, getRoomPhotoFloor, children,
 }: Props) {
   const { language, preference } = useNuboKioskLanguage();
   const openDuringCall = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -190,11 +193,11 @@ export function NuboConciergeKiosk({
   const wasConnected = useRef(false);
   const [clock, setClock] = useState<Date | null>(null);
   const [voicePhase, setVoicePhase] = useState<NuboVoicePhase>("idle");
-  const [photosOpen, setPhotosOpen] = useState(false);
+  const [photos, setPhotos] = useState<RoomPhotoRequest | null>(null);
   const [localContactAt, setLocalContactAt] = useState<number | null>(null);
   const copy = COPY[language];
   useEffect(() => {
-    if (roomPhotoRequest != null) setPhotosOpen(true);
+    if (roomPhotoRequest) setPhotos(roomPhotoRequest);
   }, [roomPhotoRequest]);
   const phase = state === "connected" ? (
     sleeping ? "idle" : voicePhase === "speaking" || voicePhase === "thinking" ? voicePhase : "listening"
@@ -210,6 +213,7 @@ export function NuboConciergeKiosk({
     if (state === "connected") wasConnected.current = true;
     if (state === "idle" && wasConnected.current) {
       wasConnected.current = false;
+      setPhotos(null);
       resetNuboKioskLanguage();
     }
   }, [state]);
@@ -332,7 +336,7 @@ export function NuboConciergeKiosk({
                 aria-expanded={contactVisible} aria-controls="nubo-kiosk-contact">{card(1, "qr")}</button>
               <a className="nubo-kiosk-tile" href={FOOD_MAP_URL} onClick={openDuringCall} target="_blank" rel="noopener noreferrer">{card(2, "map")}</a>
               <button className="nubo-kiosk-tile nubo-kiosk-cyan" type="button" aria-haspopup="dialog"
-                onClick={() => setPhotosOpen(true)}>{card(3, "camera")}</button>
+                onClick={() => setPhotos({ floor: getRoomPhotoFloor?.() ?? null })}>{card(3, "camera")}</button>
               <div className="nubo-kiosk-tile nubo-kiosk-wifi">
                 <span className="nubo-kiosk-tile-icon"><Icon name="wifi" /></span>
                 <span>
@@ -350,9 +354,9 @@ export function NuboConciergeKiosk({
         </div>
       </div>
 
-      {photosOpen && (
-        <NuboRoomPhotoGallery language={language} title={copy.cards[3][0]} close={copy.close}
-          onClose={() => setPhotosOpen(false)} />
+      {photos && (
+        <NuboRoomPhotoGallery request={photos} contextFloor={getRoomPhotoFloor?.() ?? null} language={language} title={copy.cards[3][0]} close={copy.close}
+          onClose={() => setPhotos(null)} />
       )}
     </section>
   );

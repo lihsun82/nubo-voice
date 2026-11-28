@@ -1,5 +1,7 @@
 "use client";
 
+import { ROOM_PHOTO_TOOL, ROOM_PHOTO_GUIDANCE, type RoomPhotoRequest } from "@/lib/nubo-room-photos";
+
 import { BOOKING_FLOW, BOOKING_HANDOFF_TOOL, inventoryPurpose } from "@/lib/nubo-booking-handoff";
 import { loadGuestBookingLink, useGuestBookingPage } from "@/lib/use-guest-booking-page";
 
@@ -61,11 +63,6 @@ const LOOKUP_CUE_TOOLS = new Set(["pms_check_availability", "pms_check_rest_avai
 const LOOKUP_CUES = { nan: "我來共你查一下。", zh: "我幫您查一下。" } as const;
 type LookupCueLanguage = keyof typeof LOOKUP_CUES;
 const ARRIVAL_KEYWORDS = { booking: "訂房", lodging: "住宿", checkin: "入住" } as const;
-const ROOM_PHOTO_TOOL = {
-  name: "show_room_photos",
-  description: "旅客想看本館房間照片時顯示現有客房相簿，旅客可點選樓層與照片。地圖、景點或其他旅館的照片不使用此工具。",
-};
-
 function asksForRoomPhotos(text: string) {
   if (/不要看|不想看|不用看|其他飯店|別家飯店|唔使睇|don.t (?:need|want)|no need|見たくない|いりません|보고 싶지 않|không muốn xem/iu.test(text)) return false;
   return /(?:客房|房間|房型).{0,9}(?:照片|相片|圖片)|(?:照片|相片|圖片).{0,9}(?:客房|房間|房型)/u.test(text) ||
@@ -222,7 +219,7 @@ export function GeminiVoiceConsole() {
   const [state, setState] = useState<ConnectionState>("idle");
   const [isRinging, setIsRinging] = useState(false);
   const [contactCard, setContactCard] = useState<number | null>(null);
-  const [roomPhotoRequest, setRoomPhotoRequest] = useState<number | null>(null);
+  const [roomPhotoRequest, setRoomPhotoRequest] = useState<RoomPhotoRequest | null>(null);
 
   useEffect(() => {
     if (contactCard === null) return;
@@ -726,7 +723,7 @@ export function GeminiVoiceConsole() {
       let rejectedReply = false;
       let firstModelAudioAt = 0;
       const unplayedAudio: string[] = [];
-      let roomPhotosRequested = false;
+      let lastPhotoRequest: RoomPhotoRequest | null = null;
       let configuredBookingLink: string | null = null;
       const isGemini38Live = /^gemini-3\.8-live(?:-extended-thinking)?$/u.test(tokenData.model);
       function sendMicrophoneAudio(data: string) {
@@ -769,18 +766,19 @@ export function GeminiVoiceConsole() {
         return { ...lookup, contactCardShown: true };
       }
 
-      function showRoomPhotos() {
+      function showRoomPhotos(roomCode?: unknown) {
         if (socketRef.current !== socket || closingRef.current) return { ok: false, shown: false };
-        if (!roomPhotosRequested) {
-          roomPhotosRequested = true;
-          setRoomPhotoRequest(performance.now());
+        const floor = bookingHandoff.roomPhotoFloor(roomCode);
+        if (!lastPhotoRequest || lastPhotoRequest.floor !== floor) {
+          lastPhotoRequest = { floor };
+          setRoomPhotoRequest(lastPhotoRequest);
         }
-        return { ok: true, shown: true };
+        return { ok: true, shown: true, floor };
       }
 
       async function executeVoiceTool(call: FunctionCall) {
         if (call.name === BOOKING_HANDOFF_TOOL.name) return bookingHandoff.request(call.args ?? {}, configuredBookingLink);
-        if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos();
+        if (call.name === ROOM_PHOTO_TOOL.name) return showRoomPhotos(call.args?.roomCode);
         if (!call.name || !LOOKUP_CUE_TOOLS.has(call.name)) return executeNuboBrowserTool(call);
         const queryStartedAt = performance.now();
         const language = spokenTurnLanguage === "nan" || spokenTurnLanguage === "zh" ? spokenTurnLanguage : null;
@@ -812,8 +810,7 @@ export function GeminiVoiceConsole() {
         const lookupCueInstruction = lookupCueAudioRef.current.zh || lookupCueAudioRef.current.nan
           ? "【查房與查訂單的進度】條件齊全時直接呼叫 PMS。櫃檯會視需要以本輪已辨識的國語或台語播放簡短等待提示，收到結果後用旅客本輪的語言報重點。"
           : "";
-        const photoInstruction = "旅客想看本館房間照片時呼叫 show_room_photos。回傳 shown=true 後，用旅客的語言簡短說已開啟客房相簿、可以點選樓層和照片。";
-        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, BOOKING_FLOW, lookupCueInstruction, photoInstruction, GREETING_INSTRUCTION]
+        const sessionInstruction = [NUBO_KIOSK_LANGUAGE_INSTRUCTION, geminiSystemInstruction, sessionClockInstruction, BOOKING_SUPPORT_INSTRUCTION, BOOKING_FLOW, lookupCueInstruction, ROOM_PHOTO_GUIDANCE, GREETING_INSTRUCTION]
           .filter(Boolean).join("\n\n");
         const tools = geminiFunctionDeclarations
           .filter((tool) => musicEnabled || (tool.name !== "open_youtube" && tool.name !== "control_youtube"))
@@ -863,7 +860,7 @@ export function GeminiVoiceConsole() {
             firstModelAudioAt = 0;
             resetVoiceReplyLatency();
             unplayedAudio.length = 0;
-            roomPhotosRequested = false;
+            lastPhotoRequest = null;
           }
           if (activity === "ACTIVITY_END" && guestActivityStartedAt) {
             guestActivityEndedAt = performance.now();
@@ -1250,7 +1247,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
                 // The model may still emit open_youtube after the local fast route already
                 // switched the song. Treat that tool call as acknowledged, not a second launch.
                 const purpose = inventoryPurpose(call.name);
-                const revision = purpose ? bookingHandoff.invalidate() : 0;
+                const revision = purpose || call.name === "pms_lookup_reservation" ? bookingHandoff.invalidate() : 0;
                 const result = fastRouteDuplicate
                   ? recentFastRoute?.result ?? {
                       ok: true,
@@ -1396,6 +1393,9 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
 
                 const supportResult = showBookingSupport(call, result);
                 let responseResult: unknown = supportResult ?? result;
+                if (call.name === "pms_lookup_reservation" && socketRef.current === socket && !closingRef.current && result && typeof result === "object") {
+                  bookingHandoff.rememberReservation(revision, result as Record<string, unknown>);
+                }
                 if (purpose && socketRef.current === socket && !closingRef.current && responseResult && typeof responseResult === "object") {
                   responseResult = bookingHandoff.inventory(revision, purpose, call.args ?? {}, responseResult as Record<string, unknown>, configuredBookingLink);
                 }
@@ -1710,6 +1710,7 @@ void runLocalVoiceCommand(trimmedUserText)              .then((command) => {
       bookingBlocked={bookingPage.blocked}
       onBookingClick={() => bookingHandoff.manual(bookingPage.url)}
       roomPhotoRequest={roomPhotoRequest}
+      getRoomPhotoFloor={() => bookingHandoff.roomPhotoFloor()}
       contact={{
         visible: contactCard !== null,
         open: () => setContactCard(performance.now()),
