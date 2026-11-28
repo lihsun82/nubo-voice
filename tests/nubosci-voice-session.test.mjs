@@ -272,7 +272,7 @@ test("guides guests through the published counter screens in both partner config
     assert.match(text, /輕觸螢幕開始.*請選擇入住服務/);
     assert.match(text, /確認信或簡訊.*完整英文字母與數字.*查詢訂單/);
     assert.match(text, /退房」。.*請先掃描本次住宿的入住 QR.*重新掃描/);
-    assert.match(text, /開始歸還房卡.*一次插一張.*停止退卡/);
+    assert.match(text, /開始歸還房卡.*一次插一張.*停止退卡.*自動顯示「退房完成」/);
     assert.match(text, /一般訂單下一步是櫃檯協助提示/);
     assert.match(text, /特定訂單.*證件正面.*證件反面/);
     assert.match(text, /測試付款.*不能當成正式收款/);
